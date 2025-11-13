@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Search, DollarSign, Activity, Droplet } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, DollarSign, Activity, Droplet, Filter, Building2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,116 +17,57 @@ import {
 } from "@/components/ui/table";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-
-interface Formula {
-  id: string;
-  name: string;
-  type: "Fechado" | "Aberto";
-  calories: number;
-  protein: number;
-  carbs: number;
-  lipids: number;
-  fiber: number;
-  osmolarity: number;
-  cost: number;
-  indication: string;
-}
+import { getAllFormulas, getAllManufacturers, getAllTypes, getFormulasByManufacturer, getFormulasByType, getFormulasBySystem, searchFormulas } from "@/lib/formulasDatabase";
 
 const Formulas = () => {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedManufacturer, setSelectedManufacturer] = useState<string>("all");
+  const [selectedType, setSelectedType] = useState<string>("all");
+  const [selectedSystem, setSelectedSystem] = useState<string>("all");
 
-  const formulas: Formula[] = [
-    {
-      id: "1",
-      name: "Nutrison Advanced Diason",
-      type: "Fechado",
-      calories: 1.0,
-      protein: 4.0,
-      carbs: 10.6,
-      lipids: 3.9,
-      fiber: 1.5,
-      osmolarity: 295,
-      cost: 45.0,
-      indication: "Diabetes, hiperglicemia",
-    },
-    {
-      id: "2",
-      name: "Fresubin Original",
-      type: "Fechado",
-      calories: 1.0,
-      protein: 3.8,
-      carbs: 13.8,
-      lipids: 3.4,
-      fiber: 1.5,
-      osmolarity: 285,
-      cost: 38.0,
-      indication: "Nutrição geral",
-    },
-    {
-      id: "3",
-      name: "Peptamen",
-      type: "Fechado",
-      calories: 1.0,
-      protein: 4.0,
-      carbs: 12.7,
-      lipids: 3.9,
-      fiber: 0,
-      osmolarity: 270,
-      cost: 52.0,
-      indication: "Má absorção, pancreatite",
-    },
-    {
-      id: "4",
-      name: "Nutridrink",
-      type: "Fechado",
-      calories: 1.5,
-      protein: 6.0,
-      carbs: 18.5,
-      lipids: 5.8,
-      fiber: 0,
-      osmolarity: 365,
-      cost: 42.0,
-      indication: "Hipercatabolismo",
-    },
-    {
-      id: "5",
-      name: "Fórmula Artesanal Padrão",
-      type: "Aberto",
-      calories: 1.0,
-      protein: 3.5,
-      carbs: 14.0,
-      lipids: 3.0,
-      fiber: 2.0,
-      osmolarity: 300,
-      cost: 12.0,
-      indication: "Nutrição geral - econômica",
-    },
-    {
-      id: "6",
-      name: "Fórmula Artesanal Hipercalórica",
-      type: "Aberto",
-      calories: 1.5,
-      protein: 5.0,
-      carbs: 20.0,
-      lipids: 5.0,
-      fiber: 1.5,
-      osmolarity: 380,
-      cost: 18.0,
-      indication: "Desnutrição, hipercatabolismo",
-    },
-  ];
+  const allFormulas = getAllFormulas();
+  const manufacturers = getAllManufacturers();
+  const types = getAllTypes();
 
-  const filteredFormulas = formulas.filter((formula) =>
-    formula.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    formula.indication.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Apply filters
+  let filteredFormulas = allFormulas;
+
+  if (searchQuery) {
+    filteredFormulas = searchFormulas(searchQuery);
+  }
+
+  if (selectedManufacturer !== "all") {
+    filteredFormulas = filteredFormulas.filter(f => f.manufacturer === selectedManufacturer);
+  }
+
+  if (selectedType !== "all") {
+    filteredFormulas = filteredFormulas.filter(f => f.type === selectedType);
+  }
+
+  if (selectedSystem !== "all") {
+    filteredFormulas = filteredFormulas.filter(f => 
+      f.systemType === selectedSystem || f.systemType === "both"
+    );
+  }
+
+  const getSystemBadge = (systemType: string) => {
+    if (systemType === "closed") return <Badge className="bg-success">Fechado</Badge>;
+    if (systemType === "open") return <Badge className="bg-info">Aberto</Badge>;
+    return <Badge variant="outline">Ambos</Badge>;
+  };
 
   const getTypeBadge = (type: string) => {
-    return type === "Fechado" ? (
-      <Badge className="bg-success">Sistema Fechado</Badge>
-    ) : (
-      <Badge className="bg-info">Sistema Aberto</Badge>
-    );
+    const colors: Record<string, string> = {
+      'standard': 'bg-gray-500',
+      'high-protein': 'bg-red-500',
+      'high-calorie': 'bg-orange-500',
+      'diabetic': 'bg-blue-500',
+      'renal': 'bg-purple-500',
+      'peptide': 'bg-green-500',
+      'fiber': 'bg-yellow-600',
+      'immune': 'bg-pink-500',
+    };
+    return <Badge className={colors[type] || 'bg-gray-500'}>{type}</Badge>;
   };
 
   return (
@@ -138,7 +82,7 @@ const Formulas = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -147,20 +91,32 @@ const Formulas = () => {
             <Activity className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{formulas.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Disponíveis no sistema</p>
+            <div className="text-3xl font-bold">{allFormulas.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Cadastradas</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Sistemas Fechados
+              Fabricantes
+            </CardTitle>
+            <Building2 className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{manufacturers.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Diferentes marcas</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Sistema Fechado
             </CardTitle>
             <Droplet className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {formulas.filter((f) => f.type === "Fechado").length}
+              {allFormulas.filter((f) => f.systemType === "closed").length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">Maior segurança</p>
           </CardContent>
@@ -168,36 +124,81 @@ const Formulas = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Custo Médio
+              Tipos
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-warning" />
+            <Filter className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">
-              R$ {(formulas.reduce((acc, f) => acc + f.cost, 0) / formulas.length).toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Por litro</p>
+            <div className="text-3xl font-bold">{types.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Categorias</p>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>Catálogo de Fórmulas</CardTitle>
-              <CardDescription>
-                {filteredFormulas.length} fórmula(s) encontrada(s)
-              </CardDescription>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle>Catálogo de Fórmulas</CardTitle>
+                <CardDescription>
+                  {filteredFormulas.length} de {allFormulas.length} fórmula(s)
+                </CardDescription>
+              </div>
+              <div className="relative w-full md:w-[300px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar fórmulas..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
-            <div className="relative w-full md:w-[300px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar fórmulas..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+            
+            {/* Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Fabricante</Label>
+                <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {manufacturers.map(m => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Tipo</Label>
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    {types.map(t => (
+                      <SelectItem key={t.type} value={t.type}>{t.label} ({t.count})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Sistema</Label>
+                <Select value={selectedSystem} onValueChange={setSelectedSystem}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="closed">Fechado</SelectItem>
+                    <SelectItem value="open">Aberto</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -207,33 +208,37 @@ const Formulas = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fórmula</TableHead>
+                  <TableHead>Fabricante</TableHead>
+                  <TableHead>Sistema</TableHead>
                   <TableHead>Tipo</TableHead>
-                  <TableHead className="text-center">Cal/ml</TableHead>
-                  <TableHead className="text-center">PTN g/L</TableHead>
-                  <TableHead className="text-center">CHO g/L</TableHead>
-                  <TableHead className="text-center">LIP g/L</TableHead>
-                  <TableHead className="text-center">Fibras g/L</TableHead>
+                  <TableHead className="text-center">Cal/100ml</TableHead>
+                  <TableHead className="text-center">PTN g/100ml</TableHead>
+                  <TableHead className="text-center">CHO g/100ml</TableHead>
+                  <TableHead className="text-center">LIP g/100ml</TableHead>
+                  <TableHead className="text-center">Fibras</TableHead>
                   <TableHead className="text-center">Osmol.</TableHead>
-                  <TableHead className="text-right">Custo/L</TableHead>
-                  <TableHead>Indicação</TableHead>
+                  <TableHead>Indicações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredFormulas.map((formula) => (
                   <TableRow key={formula.id}>
                     <TableCell className="font-medium">{formula.name}</TableCell>
+                    <TableCell className="text-sm">{formula.manufacturer}</TableCell>
+                    <TableCell>{getSystemBadge(formula.systemType)}</TableCell>
                     <TableCell>{getTypeBadge(formula.type)}</TableCell>
-                    <TableCell className="text-center">{formula.calories}</TableCell>
-                    <TableCell className="text-center">{formula.protein}</TableCell>
-                    <TableCell className="text-center">{formula.carbs}</TableCell>
-                    <TableCell className="text-center">{formula.lipids}</TableCell>
-                    <TableCell className="text-center">{formula.fiber}</TableCell>
-                    <TableCell className="text-center">{formula.osmolarity}</TableCell>
-                    <TableCell className="text-right font-medium">
-                      R$ {formula.cost.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="max-w-[200px]">
-                      <span className="text-sm text-muted-foreground">{formula.indication}</span>
+                    <TableCell className="text-center font-medium">{formula.composition.calories}</TableCell>
+                    <TableCell className="text-center">{formula.composition.protein}</TableCell>
+                    <TableCell className="text-center">{formula.composition.carbohydrates}</TableCell>
+                    <TableCell className="text-center">{formula.composition.fat}</TableCell>
+                    <TableCell className="text-center">{formula.composition.fiber || '-'}</TableCell>
+                    <TableCell className="text-center text-xs">{formula.composition.osmolality || '-'}</TableCell>
+                    <TableCell className="max-w-[250px]">
+                      <div className="text-xs text-muted-foreground space-y-1">
+                        {formula.indications.slice(0, 2).map((ind, i) => (
+                          <div key={i}>• {ind}</div>
+                        ))}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -242,23 +247,26 @@ const Formulas = () => {
           </div>
 
           <div className="mt-6 p-4 bg-muted rounded-lg">
-            <h4 className="font-semibold mb-2">Legenda:</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-              <div>
-                <span className="font-medium">Cal/ml:</span> Calorias por mililitro
+            <h4 className="font-semibold mb-3">Legenda e Informações:</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="space-y-2">
+                <div><span className="font-medium">Cal/100ml:</span> Calorias por 100 mililitros</div>
+                <div><span className="font-medium">PTN:</span> Proteínas em gramas por 100ml</div>
+                <div><span className="font-medium">CHO:</span> Carboidratos em gramas por 100ml</div>
+                <div><span className="font-medium">LIP:</span> Lipídios em gramas por 100ml</div>
               </div>
-              <div>
-                <span className="font-medium">PTN:</span> Proteínas (gramas/litro)
+              <div className="space-y-2">
+                <div><span className="font-medium">Fibras:</span> Fibras em gramas por 100ml</div>
+                <div><span className="font-medium">Osmol.:</span> Osmolalidade em mOsm/kg</div>
+                <div><span className="font-medium">Sistema Fechado:</span> Pronto para uso, menor risco de contaminação</div>
+                <div><span className="font-medium">Sistema Aberto:</span> Requer preparo, mais econômico</div>
               </div>
-              <div>
-                <span className="font-medium">CHO:</span> Carboidratos (gramas/litro)
-              </div>
-              <div>
-                <span className="font-medium">LIP:</span> Lipídios (gramas/litro)
-              </div>
-              <div>
-                <span className="font-medium">Osmol.:</span> Osmolaridade (mOsm/L)
-              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-xs text-muted-foreground">
+                💡 <strong>Dica:</strong> Use os filtros acima para encontrar fórmulas específicas por fabricante, tipo ou sistema.
+                Todas as informações nutricionais são por 100ml de produto.
+              </p>
             </div>
           </div>
         </CardContent>

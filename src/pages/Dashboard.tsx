@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Users,
@@ -15,16 +16,27 @@ import {
   Calculator,
   FileBarChart,
   LogOut,
+  Utensils,
+  Droplet,
+  Syringe,
+  BanIcon,
+  Pill,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
 import BottomNav from "@/components/BottomNav";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [selectedWard, setSelectedWard] = useState("UTI-ADULTO");
+  const [selectedWard, setSelectedWard] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
+  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
+  const [newPatient, setNewPatient] = useState({ name: "", dob: "", record: "", ward: "" });
 
   const stats = [
     { label: "Prescrições do dia", value: "24", icon: FileText, color: "text-primary" },
@@ -33,25 +45,69 @@ const Dashboard = () => {
   ];
 
   const wardBeds = [
-    { bed: "Leito 01", patient: "Antonio Pereira", dob: "10/01/1978", status: "enteral" },
-    { bed: "Leito 02", patient: "Alicia Gomes", dob: "06/11/1981", status: "enteral" },
-    { bed: "Leito 03", patient: "Renata Fortes", dob: "10/05/1980", status: "parenteral" },
-    { bed: "Leito 04", patient: null, dob: null, status: "empty" },
-    { bed: "Leito 05", patient: null, dob: null, status: "empty" },
-    { bed: "Leito 06", patient: null, dob: null, status: "empty" },
+    { bed: "Leito 01", patient: "Antonio Pereira", dob: "10/01/1978", record: "2024001", feedingRoute: "oral" },
+    { bed: "Leito 02", patient: "Alicia Gomes", dob: "06/11/1981", record: "2024002", feedingRoute: "enteral" },
+    { bed: "Leito 03", patient: "Renata Fortes", dob: "10/05/1980", record: "2024003", feedingRoute: "parenteral" },
+    { bed: "Leito 04", patient: "Carlos Silva", dob: "15/03/1965", record: "2024004", feedingRoute: "oral-supplement" },
+    { bed: "Leito 05", patient: "Maria Santos", dob: "22/07/1990", record: "2024005", feedingRoute: "fasting" },
+    { bed: "Leito 06", patient: null, dob: null, record: null, feedingRoute: "empty" },
+    { bed: "Leito 07", patient: "João Oliveira", dob: "30/12/1972", record: "2024006", feedingRoute: "enteral" },
+    { bed: "Leito 08", patient: null, dob: null, record: null, feedingRoute: "empty" },
   ];
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getFeedingIcon = (route: string) => {
+    switch (route) {
+      case "oral":
+        return <Utensils className="h-6 w-6 text-green-600" />;
+      case "oral-supplement":
+        return <Pill className="h-6 w-6 text-blue-600" />;
       case "enteral":
-        return <Badge className="bg-success">Enteral</Badge>;
+        return <Droplet className="h-6 w-6 text-purple-600" />;
       case "parenteral":
-        return <Badge className="bg-info">Parenteral</Badge>;
+        return <Syringe className="h-6 w-6 text-orange-600" />;
+      case "fasting":
+        return <BanIcon className="h-6 w-6 text-red-600" />;
+      default:
+        return null;
+    }
+  };
+
+  const getFeedingBadge = (route: string) => {
+    switch (route) {
+      case "oral":
+        return <Badge className="bg-green-600">Oral</Badge>;
+      case "oral-supplement":
+        return <Badge className="bg-blue-600">Suplementação Oral</Badge>;
+      case "enteral":
+        return <Badge className="bg-purple-600">Enteral</Badge>;
+      case "parenteral":
+        return <Badge className="bg-orange-600">Parenteral</Badge>;
+      case "fasting":
+        return <Badge className="bg-red-600">Jejum</Badge>;
       case "empty":
         return <Badge variant="outline">Vazio</Badge>;
       default:
         return null;
     }
+  };
+
+  const handleSearchPatient = () => {
+    if (!patientSearch.name && !patientSearch.dob && !patientSearch.record) {
+      toast.error("Preencha pelo menos um campo de busca");
+      return;
+    }
+    toast.success("Buscando paciente...");
+    setSearchDialogOpen(false);
+  };
+
+  const handleRegisterPatient = () => {
+    if (!newPatient.name || !newPatient.dob || !newPatient.record) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+    toast.success("Paciente cadastrado com sucesso!");
+    setRegisterDialogOpen(false);
+    setNewPatient({ name: "", dob: "", record: "", ward: "" });
   };
 
   return (
@@ -77,24 +133,10 @@ const Dashboard = () => {
 
       <div className="container px-4 py-6 space-y-6">
         {/* Welcome Section */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Olá, Dr. Online 👋</h1>
             <p className="text-muted-foreground">Bem-vindo ao sistema de nutrição enteral</p>
-          </div>
-          <div className="flex gap-2">
-            <Select value={selectedWard} onValueChange={setSelectedWard}>
-              <SelectTrigger className="w-[180px]">
-                <Building2 className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="UTI-ADULTO">UTI - Adulto</SelectItem>
-                <SelectItem value="UTI-PEDIATRICA">UTI - Pediátrica</SelectItem>
-                <SelectItem value="CLINICA-MEDICA">Clínica Médica</SelectItem>
-                <SelectItem value="CIRURGIA">Cirurgia</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
@@ -106,18 +148,143 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2">
-                <Search className="h-6 w-6" />
-                <span>Buscar Paciente</span>
-              </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2">
-                <UserPlus className="h-6 w-6" />
-                <span>Cadastrar Paciente</span>
-              </Button>
-              <Button className="h-auto py-4 flex flex-col gap-2">
-                <ClipboardList className="h-6 w-6" />
-                <span>Nova Prescrição</span>
-              </Button>
+              <div className="space-y-2">
+                <Label htmlFor="ward-select" className="text-sm font-medium">Selecionar Ala</Label>
+                <Select value={selectedWard} onValueChange={setSelectedWard}>
+                  <SelectTrigger id="ward-select" className="h-auto py-4">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5" />
+                      <SelectValue placeholder="Escolher setor do hospital" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="UTI-ADULTO">UTI - Adulto</SelectItem>
+                    <SelectItem value="UTI-PEDIATRICA">UTI - Pediátrica</SelectItem>
+                    <SelectItem value="CLINICA-MEDICA">Clínica Médica</SelectItem>
+                    <SelectItem value="CIRURGIA">Cirurgia</SelectItem>
+                    <SelectItem value="CARDIOLOGIA">Cardiologia</SelectItem>
+                    <SelectItem value="NEUROLOGIA">Neurologia</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
+                <DialogTrigger asChild>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Buscar Paciente</Label>
+                    <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2">
+                      <Search className="h-6 w-6" />
+                      <span>Buscar Paciente</span>
+                    </Button>
+                  </div>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Buscar Paciente</DialogTitle>
+                    <DialogDescription>Busque por nome, data de nascimento ou número de prontuário</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="search-name">Nome do Paciente</Label>
+                      <Input
+                        id="search-name"
+                        placeholder="Digite o nome"
+                        value={patientSearch.name}
+                        onChange={(e) => setPatientSearch({ ...patientSearch, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="search-dob">Data de Nascimento</Label>
+                      <Input
+                        id="search-dob"
+                        type="date"
+                        value={patientSearch.dob}
+                        onChange={(e) => setPatientSearch({ ...patientSearch, dob: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="search-record">Número de Prontuário</Label>
+                      <Input
+                        id="search-record"
+                        placeholder="Digite o prontuário"
+                        value={patientSearch.record}
+                        onChange={(e) => setPatientSearch({ ...patientSearch, record: e.target.value })}
+                      />
+                    </div>
+                    <Button onClick={handleSearchPatient} className="w-full">
+                      <Search className="h-4 w-4 mr-2" />
+                      Buscar
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={registerDialogOpen} onOpenChange={setRegisterDialogOpen}>
+                <DialogTrigger asChild>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Cadastrar Paciente</Label>
+                    <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2">
+                      <UserPlus className="h-6 w-6" />
+                      <span>Cadastrar Paciente</span>
+                    </Button>
+                  </div>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Cadastrar Novo Paciente</DialogTitle>
+                    <DialogDescription>Preencha os dados do novo paciente</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="new-name">Nome do Paciente *</Label>
+                      <Input
+                        id="new-name"
+                        placeholder="Digite o nome completo"
+                        value={newPatient.name}
+                        onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-dob">Data de Nascimento *</Label>
+                      <Input
+                        id="new-dob"
+                        type="date"
+                        value={newPatient.dob}
+                        onChange={(e) => setNewPatient({ ...newPatient, dob: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-record">Número de Prontuário *</Label>
+                      <Input
+                        id="new-record"
+                        placeholder="Digite o prontuário"
+                        value={newPatient.record}
+                        onChange={(e) => setNewPatient({ ...newPatient, record: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-ward">Ala</Label>
+                      <Select value={newPatient.ward} onValueChange={(value) => setNewPatient({ ...newPatient, ward: value })}>
+                        <SelectTrigger id="new-ward">
+                          <SelectValue placeholder="Selecione a ala" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="UTI-ADULTO">UTI - Adulto</SelectItem>
+                          <SelectItem value="UTI-PEDIATRICA">UTI - Pediátrica</SelectItem>
+                          <SelectItem value="CLINICA-MEDICA">Clínica Médica</SelectItem>
+                          <SelectItem value="CIRURGIA">Cirurgia</SelectItem>
+                          <SelectItem value="CARDIOLOGIA">Cardiologia</SelectItem>
+                          <SelectItem value="NEUROLOGIA">Neurologia</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button onClick={handleRegisterPatient} className="w-full">
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Cadastrar
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>
@@ -139,55 +306,100 @@ const Dashboard = () => {
           ))}
         </div>
 
-        {/* Ward Map */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Mapa do Setor - {selectedWard}</CardTitle>
-                <CardDescription>Visualização dos leitos e pacientes</CardDescription>
+        {/* Ward Map - Only shows after ward selection */}
+        {selectedWard && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Mapa do Setor - {selectedWard}</CardTitle>
+                  <CardDescription>Visualização dos leitos e pacientes com vias alimentares</CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Buscar paciente..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-[200px]"
+                  />
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Buscar paciente..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-[200px]"
-                />
+            </CardHeader>
+            <CardContent>
+              {/* Legend */}
+              <div className="mb-6 p-4 bg-muted rounded-lg">
+                <p className="text-sm font-medium mb-3">Legenda - Vias Alimentares:</p>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="flex items-center gap-2">
+                    <Utensils className="h-5 w-5 text-green-600" />
+                    <span className="text-sm">Oral</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Pill className="h-5 w-5 text-blue-600" />
+                    <span className="text-sm">Suplementação</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Droplet className="h-5 w-5 text-purple-600" />
+                    <span className="text-sm">Enteral</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Syringe className="h-5 w-5 text-orange-600" />
+                    <span className="text-sm">Parenteral</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <BanIcon className="h-5 w-5 text-red-600" />
+                    <span className="text-sm">Jejum</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {wardBeds.map((bed, index) => (
-                <Card
-                  key={index}
-                  className={`border-2 ${bed.patient ? "border-primary" : "border-dashed border-muted"}`}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">{bed.bed}</CardTitle>
-                      {getStatusBadge(bed.status)}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {bed.patient ? (
-                      <div className="space-y-1">
-                        <p className="font-medium">{bed.patient}</p>
-                        <p className="text-sm text-muted-foreground">{bed.dob}</p>
-                        <Button variant="link" className="p-0 h-auto text-primary">
-                          Ver detalhes →
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Leito disponível</p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+
+              {/* Ward Beds Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {wardBeds
+                  .filter((bed) => 
+                    !searchQuery || 
+                    bed.patient?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    bed.record?.includes(searchQuery)
+                  )
+                  .map((bed, index) => (
+                    <Card
+                      key={index}
+                      className={`border-2 transition-all hover:shadow-lg cursor-pointer ${
+                        bed.patient ? "border-primary" : "border-dashed border-muted"
+                      }`}
+                      onClick={() => bed.patient && navigate("/prescription")}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base">{bed.bed}</CardTitle>
+                          <div className="flex items-center gap-2">
+                            {getFeedingIcon(bed.feedingRoute)}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {bed.patient ? (
+                          <div className="space-y-2">
+                            <p className="font-medium">{bed.patient}</p>
+                            <p className="text-xs text-muted-foreground">Nasc: {bed.dob}</p>
+                            <p className="text-xs text-muted-foreground">Pront: {bed.record}</p>
+                            <div className="pt-2">
+                              {getFeedingBadge(bed.feedingRoute)}
+                            </div>
+                            <Button variant="link" className="p-0 h-auto text-primary text-sm">
+                              Prescrever →
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Leito disponível</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <BottomNav />
