@@ -24,7 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, UserPlus, FileText, Stethoscope, Calendar } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect } from "react";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 
@@ -43,6 +44,7 @@ interface Patient {
 
 const Patients = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newPatient, setNewPatient] = useState({
@@ -54,6 +56,12 @@ const Patients = () => {
     height: "",
     notes: "",
   });
+
+  useEffect(() => {
+    if (searchParams.get("action") === "add") {
+      setIsDialogOpen(true);
+    }
+  }, [searchParams]);
 
   const mockPatients: Patient[] = [
     {
@@ -316,7 +324,7 @@ const Patients = () => {
         </CardContent>
       </Card>
       </div>
-      <BottomNav />
+      <BottomNav onAddPatient={() => setIsDialogOpen(true)} />
     </div>
   );
 };
