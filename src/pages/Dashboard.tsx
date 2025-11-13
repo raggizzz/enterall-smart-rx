@@ -17,9 +17,12 @@ import {
   LogOut,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useNavigate } from "react-router-dom";
 import logo from "@/assets/logoenmeta.png";
+import BottomNav from "@/components/BottomNav";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [selectedWard, setSelectedWard] = useState("UTI-ADULTO");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -187,29 +190,7 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-lg">
-        <div className="container px-4">
-          <div className="grid grid-cols-4 gap-1">
-            <Button variant="ghost" className="flex flex-col gap-1 h-auto py-3">
-              <Users className="h-5 w-5" />
-              <span className="text-xs">Pacientes</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col gap-1 h-auto py-3">
-              <Activity className="h-5 w-5" />
-              <span className="text-xs">Fórmulas</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col gap-1 h-auto py-3">
-              <Calculator className="h-5 w-5" />
-              <span className="text-xs">Utilidades</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col gap-1 h-auto py-3">
-              <FileBarChart className="h-5 w-5" />
-              <span className="text-xs">Relatórios</span>
-            </Button>
-          </div>
-        </div>
-      </nav>
+      <BottomNav />
     </div>
   );
 };
