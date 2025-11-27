@@ -9,15 +9,22 @@ export const FORMULAS_DATABASE: Formula[] = [
   // DANONE NUTRICIA
   {
     id: 'nutrison-standard',
+    code: 'FNEA01',
     name: 'Nutrison Standard',
     manufacturer: 'Danone Nutricia',
     type: 'standard',
+    classification: 'Normocalórica Normoproteica',
+    macronutrientComplexity: 'polymeric',
     systemType: 'closed',
     composition: {
       calories: 100,
+      density: 1.0,
       protein: 4.0,
+      proteinPct: 16, // Example value
       carbohydrates: 12.3,
+      carbohydratesPct: 49, // Example value
       fat: 3.9,
+      fatPct: 35, // Example value
       sodium: 100,
       potassium: 140,
       calcium: 80,
@@ -26,6 +33,15 @@ export const FORMULAS_DATABASE: Formula[] = [
       waterContent: 84,
     },
     presentations: [500, 1000, 1500],
+    presentationDescription: 'Frasco Sistema Fechado',
+    billingUnit: 'ml',
+    billingPrice: 0.05, // Example price
+    residueInfo: {
+      plastic: 50,
+      paper: 10,
+      metal: 0,
+      glass: 0
+    },
     indications: ['Necessidades nutricionais padrão', 'Trato GI funcionante'],
     contraindications: ['Galactosemia'],
     specialFeatures: ['Sistema fechado', 'Isocalórica 1.0 kcal/ml'],

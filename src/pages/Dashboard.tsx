@@ -8,13 +8,9 @@ import {
   Users,
   FileText,
   AlertCircle,
-  Activity,
   Search,
   UserPlus,
   Building2,
-  ClipboardList,
-  Calculator,
-  FileBarChart,
   LogOut,
   Utensils,
   Droplet,
@@ -28,6 +24,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
 import BottomNav from "@/components/BottomNav";
+import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -35,8 +32,20 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+  const [evolutionDialogOpen, setEvolutionDialogOpen] = useState(false);
+  const [selectedPatientForEvolution, setSelectedPatientForEvolution] = useState<any>(null);
+
   const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
-  const [newPatient, setNewPatient] = useState({ name: "", dob: "", record: "", ward: "" });
+  const [newPatient, setNewPatient] = useState({
+    name: "",
+    dob: "",
+    record: "",
+    ward: "",
+    sex: "masculino",
+    height: "",
+    weight: "",
+    observation: ""
+  });
 
   const stats = [
     { label: "Prescrições do dia", value: "24", icon: FileText, color: "text-primary" },
@@ -45,14 +54,14 @@ const Dashboard = () => {
   ];
 
   const wardBeds = [
-    { bed: "Leito 01", patient: "Antonio Pereira", dob: "10/01/1978", record: "2024001", feedingRoute: "oral" },
-    { bed: "Leito 02", patient: "Alicia Gomes", dob: "06/11/1981", record: "2024002", feedingRoute: "enteral" },
-    { bed: "Leito 03", patient: "Renata Fortes", dob: "10/05/1980", record: "2024003", feedingRoute: "parenteral" },
-    { bed: "Leito 04", patient: "Carlos Silva", dob: "15/03/1965", record: "2024004", feedingRoute: "oral-supplement" },
-    { bed: "Leito 05", patient: "Maria Santos", dob: "22/07/1990", record: "2024005", feedingRoute: "fasting" },
-    { bed: "Leito 06", patient: null, dob: null, record: null, feedingRoute: "empty" },
-    { bed: "Leito 07", patient: "João Oliveira", dob: "30/12/1972", record: "2024006", feedingRoute: "enteral" },
-    { bed: "Leito 08", patient: null, dob: null, record: null, feedingRoute: "empty" },
+    { bed: "Leito 01", patient: "Antonio Pereira", dob: "10/01/1978", record: "2024001", feedingRoute: "oral", status: "goal_met", prescribedVolume: 1500, prescribedCalories: 1800 },
+    { bed: "Leito 02", patient: "Alicia Gomes", dob: "06/11/1981", record: "2024002", feedingRoute: "enteral", status: "below_goal", prescribedVolume: 1200, prescribedCalories: 1500 },
+    { bed: "Leito 03", patient: "Renata Fortes", dob: "10/05/1980", record: "2024003", feedingRoute: "parenteral", status: "goal_met", prescribedVolume: 1000, prescribedCalories: 1200 },
+    { bed: "Leito 04", patient: "Carlos Silva", dob: "15/03/1965", record: "2024004", feedingRoute: "oral-supplement", status: "warning", prescribedVolume: 600, prescribedCalories: 900 },
+    { bed: "Leito 05", patient: "Maria Santos", dob: "22/07/1990", record: "2024005", feedingRoute: "fasting", status: "no_diet", prescribedVolume: 0, prescribedCalories: 0 },
+    { bed: "Leito 06", patient: null, dob: null, record: null, feedingRoute: "empty", status: null, prescribedVolume: 0, prescribedCalories: 0 },
+    { bed: "Leito 07", patient: "João Oliveira", dob: "30/12/1972", record: "2024006", feedingRoute: "enteral", status: "goal_met", prescribedVolume: 1500, prescribedCalories: 1800 },
+    { bed: "Leito 08", patient: null, dob: null, record: null, feedingRoute: "empty", status: null, prescribedVolume: 0, prescribedCalories: 0 },
   ];
 
   const getFeedingIcon = (route: string) => {
@@ -91,6 +100,21 @@ const Dashboard = () => {
     }
   };
 
+  const getStatusBadge = (status: string | null) => {
+    switch (status) {
+      case "goal_met":
+        return <Badge className="bg-green-500 hover:bg-green-600">Meta Atingida</Badge>;
+      case "below_goal":
+        return <Badge className="bg-yellow-500 hover:bg-yellow-600">Abaixo da Meta</Badge>;
+      case "warning":
+        return <Badge className="bg-orange-500 hover:bg-orange-600">Atenção</Badge>;
+      case "no_diet":
+        return <Badge variant="secondary">Sem Dieta</Badge>;
+      default:
+        return null;
+    }
+  };
+
   const handleSearchPatient = () => {
     if (!patientSearch.name && !patientSearch.dob && !patientSearch.record) {
       toast.error("Preencha pelo menos um campo de busca");
@@ -107,7 +131,22 @@ const Dashboard = () => {
     }
     toast.success("Paciente cadastrado com sucesso!");
     setRegisterDialogOpen(false);
-    setNewPatient({ name: "", dob: "", record: "", ward: "" });
+    setNewPatient({
+      name: "",
+      dob: "",
+      record: "",
+      ward: "",
+      sex: "masculino",
+      height: "",
+      weight: "",
+      observation: ""
+    });
+  };
+
+  const handleOpenEvolution = (e: React.MouseEvent, patient: any) => {
+    e.stopPropagation(); // Prevent card click
+    setSelectedPatientForEvolution(patient);
+    setEvolutionDialogOpen(true);
   };
 
   return (
@@ -278,6 +317,71 @@ const Dashboard = () => {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Sexo Biológico *</Label>
+                        <div className="flex gap-4 pt-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sex"
+                              value="masculino"
+                              checked={newPatient.sex === "masculino"}
+                              onChange={(e) => setNewPatient({ ...newPatient, sex: e.target.value })}
+                              className="accent-primary"
+                            />
+                            <span className="text-sm">Masculino</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sex"
+                              value="feminino"
+                              checked={newPatient.sex === "feminino"}
+                              onChange={(e) => setNewPatient({ ...newPatient, sex: e.target.value })}
+                              className="accent-primary"
+                            />
+                            <span className="text-sm">Feminino</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="new-height">Estatura (m) *</Label>
+                        <Input
+                          id="new-height"
+                          type="number"
+                          step="0.01"
+                          placeholder="Ex: 1.75"
+                          value={newPatient.height}
+                          onChange={(e) => setNewPatient({ ...newPatient, height: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-weight">Peso Atual (kg) *</Label>
+                        <Input
+                          id="new-weight"
+                          type="number"
+                          step="0.1"
+                          placeholder="Ex: 70.5"
+                          value={newPatient.weight}
+                          onChange={(e) => setNewPatient({ ...newPatient, weight: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="new-obs">Observação (Identidade)</Label>
+                      <Input
+                        id="new-obs"
+                        placeholder="Informações que não mudam"
+                        value={newPatient.observation}
+                        onChange={(e) => setNewPatient({ ...newPatient, observation: e.target.value })}
+                      />
+                    </div>
                     <Button onClick={handleRegisterPatient} className="w-full">
                       <UserPlus className="h-4 w-4 mr-2" />
                       Cadastrar
@@ -356,17 +460,16 @@ const Dashboard = () => {
               {/* Ward Beds Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {wardBeds
-                  .filter((bed) => 
-                    !searchQuery || 
+                  .filter((bed) =>
+                    !searchQuery ||
                     bed.patient?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     bed.record?.includes(searchQuery)
                   )
                   .map((bed, index) => (
                     <Card
                       key={index}
-                      className={`border-2 transition-all hover:shadow-lg cursor-pointer ${
-                        bed.patient ? "border-primary" : "border-dashed border-muted"
-                      }`}
+                      className={`border-2 transition-all hover:shadow-lg cursor-pointer ${bed.patient ? "border-primary" : "border-dashed border-muted"
+                        }`}
                       onClick={() => bed.patient && navigate("/prescription")}
                     >
                       <CardHeader className="pb-3">
@@ -383,12 +486,22 @@ const Dashboard = () => {
                             <p className="font-medium">{bed.patient}</p>
                             <p className="text-xs text-muted-foreground">Nasc: {bed.dob}</p>
                             <p className="text-xs text-muted-foreground">Pront: {bed.record}</p>
-                            <div className="pt-2">
+                            <div className="pt-2 flex flex-wrap gap-2">
                               {getFeedingBadge(bed.feedingRoute)}
+                              {getStatusBadge(bed.status)}
                             </div>
-                            <Button variant="link" className="p-0 h-auto text-primary text-sm">
-                              Prescrever →
-                            </Button>
+                            <div className="flex gap-2 mt-2">
+                              <Button variant="link" className="p-0 h-auto text-primary text-sm">
+                                Prescrever →
+                              </Button>
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-primary text-sm"
+                                onClick={(e) => handleOpenEvolution(e, bed)}
+                              >
+                                Evoluir →
+                              </Button>
+                            </div>
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground">Leito disponível</p>
@@ -403,6 +516,16 @@ const Dashboard = () => {
       </div>
 
       <BottomNav />
+
+      {selectedPatientForEvolution && (
+        <DailyEvolutionDialog
+          open={evolutionDialogOpen}
+          onOpenChange={setEvolutionDialogOpen}
+          patientName={selectedPatientForEvolution.patient}
+          prescribedVolume={selectedPatientForEvolution.prescribedVolume}
+          prescribedCalories={selectedPatientForEvolution.prescribedCalories}
+        />
+      )}
     </div>
   );
 };

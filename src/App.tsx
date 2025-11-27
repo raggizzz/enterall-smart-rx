@@ -11,6 +11,11 @@ import Prescription from "./pages/Prescription";
 import PrescriptionNew from "./pages/PrescriptionNew";
 import AIRecommendations from "./pages/AIRecommendations";
 import Formulas from "./pages/Formulas";
+import Reports from "./pages/Reports";
+import Professionals from "./pages/Professionals";
+import Supplies from "./pages/Supplies";
+import Billing from "./pages/Billing";
+import OralMap from "./pages/OralMap";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +34,11 @@ const App = () => (
           <Route path="/prescription-new" element={<PrescriptionNew />} />
           <Route path="/ai-recommendations" element={<AIRecommendations />} />
           <Route path="/formulas" element={<Formulas />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/professionals" element={<Professionals />} />
+          <Route path="/supplies" element={<Supplies />} />
+          <Route path="/billing" element={<Billing />} />
+          <Route path="/oral-map" element={<OralMap />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
