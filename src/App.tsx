@@ -18,6 +18,7 @@ import Billing from "./pages/Billing";
 import OralMap from "./pages/OralMap";
 import NotFound from "./pages/NotFound";
 
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -39,12 +40,14 @@ const App = () => (
           <Route path="/supplies" element={<Supplies />} />
           <Route path="/billing" element={<Billing />} />
           <Route path="/oral-map" element={<OralMap />} />
+          <Route path="/select-route" element={<Route />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
+  
 );
 
 export default App;
