@@ -29,6 +29,8 @@ import { calcInfusionRate, calcTotals } from "@/lib/nutrition"; // assume existe
 import { supabase } from "@/lib/supabase"; // opcional
 
 
+
+
 /* ===========================
    Tipagens
    =========================== */
@@ -39,6 +41,7 @@ interface FormulaEntry {
   volume: string; // volume por administração (mL)
   hours: string[]; // horários selecionados
   diluteUntilMl?: string; // "Diluir até" por fórmula (ml)
+  
 }
 
 type ModuleType =
@@ -133,6 +136,7 @@ const MODULE_OPTIONS: { value: ModuleType; label: string; unit: "g" | "kcal" }[]
    =========================== */
 export default function Prescription() {
   const navigate = useNavigate();
+  const warnedFormulaConflictsRef = useRef(false);
 
   const [patient, setPatient] = useState<Patient>({});
   const [loadingPatient, setLoadingPatient] = useState(false);
@@ -165,12 +169,20 @@ export default function Prescription() {
   const [systemMenuOpen, setSystemMenuOpen] = useState(false);
   const systemTriggerRef = useRef<HTMLDivElement | null>(null);
 
-  const [calculations, setCalculations] = useState({
-    totalCalories: 0,
-    totalProtein: 0,
-    infusionRate: 0,
-    totalVolume: 0,
-  });
+  const [calculations, setCalculations] = useState<{
+  totalCalories: number;
+  totalProtein: number;
+  totalVolume: number;
+  infusionRate: number;
+  infusionRateLabel: "ml/h" | "gotas/min" | "";
+}>({
+  totalCalories: 0,
+  totalProtein: 0,
+  totalVolume: 0,
+  infusionRate: 0,
+  infusionRateLabel: "",
+});
+
 
   const availableFormulas = prescription.system
     ? ALL_FORMULAS.filter((f) => f.type === prescription.system)
@@ -239,8 +251,16 @@ export default function Prescription() {
   function toggleRoute(route: "oral" | "enteral" | "parenteral") {
     setPrescription((p) => ({ ...p, routeSelections: { ...p.routeSelections, [route]: !p.routeSelections[route] } }));
   }
-
+  useEffect(() => {
+  if (!prescription.routeSelections.enteral) {
+    setPrescription((p) => ({
+      ...p,
+      enteralAccess: "",
+    }));
+  }
+}, [prescription.routeSelections.enteral]);
   function addFormulaEntry() {
+    if (prescription.system === "fechado") return;
     setPrescription((p) => ({ ...p, formulas: [...p.formulas, { id: Date.now().toString(), formulaId: "", volume: "", hours: [], diluteUntilMl: "" }] }));
   }
 
@@ -294,32 +314,43 @@ export default function Prescription() {
     // fórmulas
     for (const f of prescription.formulas) {
       const horarioCount = Math.max(1, (f.hours || []).length);
-      let perAdminVol = Number(f.volume || 0);
-      if (prescription.system === "aberto") {
-        const d = Number(f.diluteUntilMl || 0);
-        if (d > 0) perAdminVol = d;
-      }
-      const totalVolFormula = perAdminVol * horarioCount;
-      totalVolume += totalVolFormula;
+      const dietaPorEtapa = Number(f.volume || 0);
+const diluicaoPorEtapa = Number(f.diluteUntilMl || 0);
+
+// volume da DIETA (entra em kcal/proteína)
+const volumeDietaTotal = dietaPorEtapa * horarioCount;
+totalVolume += volumeDietaTotal;
+
+// água livre da diluição (SÓ sistema aberto)
+if (
+  prescription.system === "aberto" &&
+  diluicaoPorEtapa > dietaPorEtapa
+) {
+  const aguaLivreTotal =
+    (diluicaoPorEtapa - dietaPorEtapa) * horarioCount;
+  totalVolume += aguaLivreTotal;
+}
+    
 
       if (f.formulaId) {
         const fo = ALL_FORMULAS.find((a) => a.id === f.formulaId);
         if (fo) {
           try {
-            const totals = calcTotals(fo, totalVolFormula); // assume retorna { totalCalories, totalProtein } em unidades compatíveis
+            const totals = calcTotals(fo, volumeDietaTotal);
+
             if (totals && typeof totals.totalCalories !== "undefined") {
               totalCalories += Number(totals.totalCalories || 0);
             } else {
-              totalCalories += (fo.calories || 0) * totalVolFormula;
+              totalCalories += (fo.calories || 0) * volumeDietaTotal;
             }
             if (totals && typeof totals.totalProtein !== "undefined") {
               totalProtein += Number(totals.totalProtein || 0);
             } else {
-              totalProtein += ((fo.protein || 0) * totalVolFormula) / 100;
+              totalProtein += ((fo.protein || 0) * volumeDietaTotal) / 100;
             }
           } catch {
-            totalCalories += (fo.calories || 0) * totalVolFormula;
-            totalProtein += ((fo.protein || 0) * totalVolFormula) / 100;
+            totalCalories += (fo.calories || 0) * volumeDietaTotal;
+            totalProtein += ((fo.protein || 0) * volumeDietaTotal) / 100;
           }
         }
       }
@@ -367,37 +398,68 @@ export default function Prescription() {
       }
     }
 
-    const infusionRate = calcInfusionRate(totalVolume, Number(prescription.infusionTime || 0), prescription.system);
+    let infusionRate = 0;
+let infusionRateLabel: "ml/h" | "gotas/min" | "" = "";
 
-    setCalculations({
-      totalCalories: Math.round(totalCalories * 100) / 100,
-      totalProtein: Math.round(totalProtein * 100) / 100,
-      infusionRate,
-      totalVolume: Math.round(totalVolume * 100) / 100,
-    });
+if (
+  prescription.infusionMode !== "bolus" &&
+  Number(prescription.infusionTime) > 0
+) {
+  const hours = Number(prescription.infusionTime);
+
+  if (prescription.infusionMode === "bomba") {
+    infusionRate = totalVolume / hours;
+    infusionRateLabel = "ml/h";
+  }
+
+  if (prescription.infusionMode === "grav") {
+    // 1 ml = 20 gotas
+    infusionRate = (totalVolume * 20) / (hours * 60);
+    infusionRateLabel = "gotas/min";
+  }
+}
+
+
+   setCalculations({
+  totalCalories: Math.round(totalCalories * 100) / 100,
+  totalProtein: Math.round(totalProtein * 100) / 100,
+  infusionRate: Math.round(infusionRate * 100) / 100,
+  infusionRateLabel,
+  totalVolume: Math.round(totalVolume * 100) / 100,
+});
+
   }, [prescription.formulas, prescription.modules, prescription.waterVolume, prescription.infusionTime, prescription.system]);
 
   /* -------------------------
      Horários conflitando -> aviso
      ------------------------- */
   useEffect(() => {
-    const hourMap: Record<string, number> = {};
+  const hourCount: Record<string, number> = {};
 
-    for (const f of prescription.formulas) for (const h of f.hours || []) hourMap[`F:${h}`] = (hourMap[`F:${h}`] || 0) + 1;
-    for (const m of prescription.modules) for (const h of m.hours || []) hourMap[`M:${h}`] = (hourMap[`M:${h}`] || 0) + 1;
-    for (const h of prescription.waterHours || []) hourMap[`W:${h}`] = (hourMap[`W:${h}`] || 0) + 1;
+  // SOMENTE FÓRMULAS
+  for (const f of prescription.formulas) {
+    for (const h of f.hours || []) {
+      hourCount[h] = (hourCount[h] || 0) + 1;
+    }
+  }
 
-    const plainHourCount: Record<string, number> = {};
-    for (const key of Object.keys(hourMap)) {
-      const hour = key.split(":")[1];
-      plainHourCount[hour] = (plainHourCount[hour] || 0) + hourMap[key];
-    }
-    const conflicts = Object.entries(plainHourCount).filter(([, v]) => v > 1).map(([k]) => k);
-    if (conflicts.length > 0) {
-      toast.warning(`Atenção: itens agendados no mesmo horário: ${conflicts.join(", ")}`);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prescription.formulas.map((f) => (f.hours || []).join(",")).join("|"), prescription.modules.map((m) => (m.hours || []).join(",")).join("|"), prescription.waterHours.join(",")]);
+  const conflicts = Object.entries(hourCount)
+    .filter(([, count]) => count > 1)
+    .map(([hour]) => hour);
+
+  if (conflicts.length > 0 && !warnedFormulaConflictsRef.current) {
+    toast.warning(
+      `Atenção: mais de uma fórmula programada no mesmo horário: ${conflicts.join(", ")}`
+    );
+    warnedFormulaConflictsRef.current = true;
+  }
+
+  if (conflicts.length === 0) {
+    warnedFormulaConflictsRef.current = false;
+  }
+}, [
+  prescription.formulas.map((f) => (f.hours || []).join(",")).join("|"),
+]);
 
   /* -------------------------
      Salvar prescrição (monta payload)
@@ -579,29 +641,6 @@ export default function Prescription() {
                   );
                 })}
               </div>
-
-              <Separator />
-
-              {/* Acesso enteral */}
-              <div>
-                <Label>Acesso Enteral (disponível para todas as vias)</Label>
-                <Select value={prescription.enteralAccess ?? ""} onValueChange={(v) => setField("enteralAccess", v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o acesso enteral" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="SOE">Sonda Oroenteral (SOE)</SelectItem>
-                    <SelectItem value="SNE">Sonda Nasoenteral (SNE)</SelectItem>
-                    <SelectItem value="SNG">Sonda Nasogástrica (SNG)</SelectItem>
-                    <SelectItem value="GTT">Gastrostomia (GTT/PEG)</SelectItem>
-                    <SelectItem value="JTT">Jejunostomia (JTT)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Separator />
-
-              {/* ORAL */}
               {prescription.routeSelections.oral && (
                 <Card className="bg-card">
                   <CardHeader>
@@ -654,19 +693,27 @@ export default function Prescription() {
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div>
-                        <Label>Modo de infusão</Label>
-                        <Select value={prescription.infusionMode ?? ""} onValueChange={(v) => setField("infusionMode", v)}>
-                          <SelectTrigger><SelectValue placeholder="Modo de infusão" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="bomba">Bomba de Infusão</SelectItem>
-                            <SelectItem value="grav">Gravitacional</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    <div>
+  <Label>Acesso Enteral</Label>
+  <Select
+    value={prescription.enteralAccess ?? ""}
+    onValueChange={(v) => setField("enteralAccess", v)}
+  >
+    <SelectTrigger>
+      <SelectValue placeholder="Selecione o acesso enteral" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="SOE">Sonda Oroenteral (SOE)</SelectItem>
+      <SelectItem value="SNE">Sonda Nasoenteral (SNE)</SelectItem>
+      <SelectItem value="SNG">Sonda Nasogástrica (SNG)</SelectItem>
+      <SelectItem value="GTT">Gastrostomia (GTT / PEG)</SelectItem>
+      <SelectItem value="JTT">Jejunostomia (JTT)</SelectItem>
+    </SelectContent>
+  </Select>
+</div>
 
-                      <div className="relative">
+<Separator />
+ <div className="relative">
                         <Label>Sistema</Label>
                         <div className="mt-2">
                           <button onClick={() => setSystemMenuOpen((s) => !s)} className="w-full border rounded px-3 py-2 text-left">
@@ -683,11 +730,40 @@ export default function Prescription() {
                           </div>
                         )}
                       </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <Label>Modo de infusão</Label>
+                        <Select value={prescription.infusionMode ?? ""} onValueChange={(v) => setField("infusionMode", v)}>
+                          <SelectTrigger><SelectValue placeholder="Modo de infusão" /></SelectTrigger>
+                          <SelectContent>
+  <SelectItem value="bomba">Bomba de Infusão</SelectItem>
+  <SelectItem value="grav">Gravitacional</SelectItem>
+  {prescription.system === "aberto" && (
+    <SelectItem value="bolus">Bolus</SelectItem>
+  )}
+</SelectContent>
+                        </Select>
+                      </div>
+
+                     
 
                       <div>
                         <Label>Tempo de infusão (horas)</Label>
-                        <Input type="number" value={prescription.infusionTime ?? ""} onChange={(e) => setField("infusionTime", e.target.value)} />
+                        <Input
+  type="number"
+  disabled={prescription.infusionMode === "bolus"}
+  placeholder={prescription.infusionMode === "bolus" ? "Não se aplica ao bolus" : ""}
+  value={prescription.infusionTime ?? ""}
+  onChange={(e) => setField("infusionTime", e.target.value)}
+/>
+
                       </div>
+                      {prescription.infusionMode === "bolus" && (
+  <p className="text-sm text-muted-foreground">
+    Administração em bolus: não há velocidade de infusão.
+  </p>
+)}
+
                     </div>
 
                     {/* Fórmulas */}
@@ -699,28 +775,26 @@ export default function Prescription() {
                         {prescription.formulas.map((entry, idx) => {
                           const selectedFormula = ALL_FORMULAS.find((f) => f.id === entry.formulaId);
                           const horarioCount = Math.max(1, (entry.hours || []).length);
-                          let perAdminVol = Number(entry.volume || 0);
-                          if (prescription.system === "aberto") {
-                            const d = Number(entry.diluteUntilMl || 0);
-                            if (d > 0) perAdminVol = d;
-                          }
-                          const totalVolFormula = perAdminVol * horarioCount;
+                          const dietaPorEtapa = Number(entry.volume || 0);
+                          const volumeDietaTotal = dietaPorEtapa * horarioCount;
+                          const all = calcTotals(selectedFormula, volumeDietaTotal);
+
 
                           let subtotalKcal = 0;
                           let subtotalProtein = 0;
                           if (selectedFormula) {
                             try {
-                              const all = calcTotals(selectedFormula, totalVolFormula);
+                              const all = calcTotals(selectedFormula, volumeDietaTotal);
                               if (all && typeof all.totalCalories !== "undefined") {
                                 subtotalKcal = Number(all.totalCalories || 0);
                                 subtotalProtein = Number(all.totalProtein || 0);
                               } else {
-                                subtotalKcal = (selectedFormula.calories || 0) * totalVolFormula;
-                                subtotalProtein = ((selectedFormula.protein || 0) * totalVolFormula) / 100;
+                                subtotalKcal = (selectedFormula.calories || 0) * volumeDietaTotal;
+                                subtotalProtein = ((selectedFormula.protein || 0) * volumeDietaTotal) / 100;
                               }
                             } catch {
-                              subtotalKcal = (selectedFormula.calories || 0) * totalVolFormula;
-                              subtotalProtein = ((selectedFormula.protein || 0) * totalVolFormula) / 100;
+                              subtotalKcal = (selectedFormula.calories || 0) * volumeDietaTotal;
+                              subtotalProtein = ((selectedFormula.protein || 0) * volumeDietaTotal) / 100;
                             }
                           }
 
@@ -768,6 +842,11 @@ export default function Prescription() {
                                     <p className="text-sm text-muted-foreground">Subtotal</p>
                                     <p className="font-semibold">
                                       {selectedFormula && entry.volume ? `Total: ${Math.round(subtotalKcal * 100) / 100} kcal • ${Math.round(subtotalProtein * 100) / 100} g` : "—"}
+                                      {prescription.system === "fechado" && entry.volume && (
+  <p className="text-xs text-muted-foreground">
+    A fórmula solicitada possui {entry.volume} mL por bolsa
+  </p>
+)}
                                     </p>
                                   </div>
 
@@ -999,19 +1078,63 @@ export default function Prescription() {
                   <p className="text-xl font-bold">{calculations.totalProtein} g</p>
                 </div>
 
-                <div>
-                  <p className="text-muted-foreground text-sm">Velocidade da infusão</p>
-                  <p className="text-xl font-bold">
-                    {prescription.routeSelections.parenteral
-                      ? (() => {
-                          const vol = Number(prescription.parenteralVolume || 0) + Number(prescription.parenteralHydration || 0);
-                          const rate = calcInfusionRate(vol, Number(prescription.infusionTime || 0), "fechado");
-                          return `${rate} ml/h`;
-                        })()
-                      : `${calculations.infusionRate} ${prescription.system === "fechado" ? "ml/h" : "gotas/min"}`}
-                  </p>
-                </div>
+           <div>
+  <p className="text-muted-foreground text-sm">
+    Velocidade da infusão
+  </p>
+
+  <p className="text-xl font-bold">
+    {prescription.infusionMode === "bolus"
+      ? "Bolus"
+      : calculations.infusionRateLabel
+      ? `${calculations.infusionRate} ${calculations.infusionRateLabel}`
+      : "—"}
+  </p>
+</div>
+
               </div>
+
+              
+              <div className="space-y-1">
+  <p className="text-muted-foreground text-sm">
+    Tempo de infusão
+  </p>
+
+  <p className="text-base">
+    Infundir em <strong>{prescription.infusionTime}</strong> horas/dia
+  </p>
+
+  
+
+  {prescription.system === "fechado" &&
+  (() => {
+    const closedFormula = ALL_FORMULAS.find(
+      (f) => f.id === prescription.formulas[0]?.formulaId
+    ) as (typeof ALL_FORMULAS[number] & { bagVolume?: number }) | undefined;
+
+    if (!closedFormula?.bagVolume) return null;
+
+    return (
+      <p className="text-sm text-muted-foreground">
+        A fórmula solicitada possui{" "}
+        <strong>{closedFormula.bagVolume}</strong> ml em cada bolsa
+      </p>
+    );
+  })()}
+
+
+</div>
+
+              <div>
+  <p className="text-muted-foreground text-sm">
+    Volume prescrito para 24 horas
+  </p>
+  <p className="text-xl font-bold">
+    {calculations.totalVolume} mL
+  </p>
+</div>
+
+
 
               <div className="mt-4 flex gap-3 p-4 bg-muted rounded-lg">
                 <AlertCircle />
