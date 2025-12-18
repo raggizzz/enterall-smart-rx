@@ -15,7 +15,9 @@ import Reports from "./pages/Reports";
 import Professionals from "./pages/Professionals";
 import Supplies from "./pages/Supplies";
 import Billing from "./pages/Billing";
+import Labels from "./pages/Labels";
 import OralMap from "./pages/OralMap";
+import DietPrescription from "./pages/DietPrescription";
 import NotFound from "./pages/NotFound";
 
 
@@ -31,7 +33,7 @@ const App = () => (
           <Route path="/" element={<Login />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/patients" element={<Patients />} />
-          <Route path="/prescription" element={<Prescription />} />
+          <Route path="/prescription" element={<PrescriptionNew />} />
           <Route path="/prescription-new" element={<PrescriptionNew />} />
           <Route path="/ai-recommendations" element={<AIRecommendations />} />
           <Route path="/formulas" element={<Formulas />} />
@@ -39,7 +41,9 @@ const App = () => (
           <Route path="/professionals" element={<Professionals />} />
           <Route path="/supplies" element={<Supplies />} />
           <Route path="/billing" element={<Billing />} />
+          <Route path="/labels" element={<Labels />} />
           <Route path="/oral-map" element={<OralMap />} />
+          <Route path="/diet-prescription" element={<DietPrescription />} />
           <Route path="/select-route" element={<Route />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
@@ -47,7 +51,7 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
-  
+
 );
 
 export default App;

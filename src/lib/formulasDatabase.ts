@@ -38,19 +38,22 @@ export interface Formula {
   manufacturer: string; // T: Fabricante
   type: 'standard' | 'high-protein' | 'high-calorie' | 'diabetic' | 'renal' | 'peptide' | 'fiber' | 'immune';
   classification?: string; // T: Classificação (ex: hiperproteica)
-  macronutrientComplexity?: 'polymeric' | 'oligomeric'; // T: Complexidade
-  systemType: 'open' | 'closed' | 'both';
+  macronutrientComplexity?: 'polymeric' | 'oligomeric'; // T: Complexidade dos macronutrientes
+  systemType: 'open' | 'closed' | 'both'; // Legacy field, use formulaTypes for multi-select
+  formulaTypes?: string[]; // NEW: Array para múltipla seleção: 'open', 'closed', 'supplement', 'module'
   composition: FormulaComposition;
   presentations: number[]; // Embalagem padrão (N)
-  presentationDescription?: string; // T: Apresentação (ex: gramas/mL, sachê)
+  presentationDescription?: string; // T: Apresentação detalhada (ex: Frasco 1000ml)
+  presentationForm?: 'liquido' | 'po'; // NEW: Forma de apresentação: líquido ou pó
+  description?: string; // NEW: Descrição da fórmula para sugestão de evolução
   billingUnit?: 'ml' | 'g' | 'unit'; // T: Unidade de faturamento
   conversionFactor?: number; // N: Fator de conversão (mL/g por unidade)
   billingPrice?: number; // N: Valor por unidade
-  residueInfo?: ResidueInfo; // Informações sobre resíduo
+  residueInfo?: ResidueInfo; // Informações sobre geração de resíduos
   indications?: string[];
   contraindications?: string[];
   specialFeatures?: string[];
-  descriptionForEvolution?: string; // T: Texto padrão para evolução
+  descriptionForEvolution?: string; // T: Texto padrão para evolução (legacy, use description)
 
   // Reference values for catalog display
   referenceVolume?: number; // ml

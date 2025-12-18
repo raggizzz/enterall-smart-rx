@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,8 +35,10 @@ const Formulas = () => {
     filteredFormulas = searchFormulas(searchQuery);
   }
 
-  const openFormulas = filteredFormulas.filter(f => f.systemType === 'open' || f.systemType === 'both');
-  const closedFormulas = filteredFormulas.filter(f => f.systemType === 'closed');
+  // Filtrar módulos também
+  const filteredModules = allModules.filter(m =>
+    m.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -75,61 +77,72 @@ const Formulas = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="open" className="space-y-4">
+        <Tabs defaultValue="formulas" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="open">Fórmulas (Sistema Aberto)</TabsTrigger>
+            <TabsTrigger value="formulas">Fórmulas Enterais</TabsTrigger>
             <TabsTrigger value="modules">Módulos</TabsTrigger>
-            <TabsTrigger value="closed">Fórmulas (Sistema Fechado)</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="open">
+          {/* Tab Fórmulas - Visão Geral Simplificada */}
+          <TabsContent value="formulas">
             <Card>
               <CardHeader>
-                <CardTitle>Fórmulas Enterais (Sistema Aberto)</CardTitle>
+                <CardTitle>Fórmulas Enterais</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Fórmula enteral</TableHead>
-                        <TableHead className="text-center">Dens. Calórica</TableHead>
-                        <TableHead className="text-center">Volume</TableHead>
-                        <TableHead className="text-center">x/dia</TableHead>
-                        <TableHead className="text-center">KCAL</TableHead>
-                        <TableHead className="text-center">PTN</TableHead>
-                        <TableHead className="text-center">Na</TableHead>
-                        <TableHead className="text-center">K</TableHead>
-                        <TableHead className="text-center">Fibras</TableHead>
-                        <TableHead className="text-center">Água livre</TableHead>
-                        <TableHead className="text-center">CHO</TableHead>
-                        <TableHead className="text-center">LIP</TableHead>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-semibold">Fórmula Enteral (Nome + Código)</TableHead>
+                        <TableHead className="text-center font-semibold">Unid. Faturamento</TableHead>
+                        <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
+                        <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
+                        <TableHead className="text-center font-semibold">% Proteínas</TableHead>
+                        <TableHead className="text-center font-semibold">% Carboidratos</TableHead>
+                        <TableHead className="text-center font-semibold">% Lipídeos</TableHead>
+                        <TableHead className="text-center font-semibold">Fibras/100ml</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {openFormulas.map((f) => (
-                        <TableRow key={f.id}>
-                          <TableCell className="font-medium">{f.name} <span className="text-xs text-muted-foreground">({f.code})</span></TableCell>
-                          <TableCell className="text-center">{f.composition.density?.toFixed(1) || (f.composition.calories / 100).toFixed(1)}</TableCell>
-                          <TableCell className="text-center">{f.referenceVolume}</TableCell>
-                          <TableCell className="text-center">{f.referenceTimesPerDay}</TableCell>
-
-                          {/* Calculated values based on Reference Volume */}
-                          <TableCell className="text-center">{((f.referenceVolume || 100) * (f.composition.density || f.composition.calories / 100)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 100) / 100 * f.composition.protein).toFixed(1)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 100) / 100 * (f.composition.sodium || 0)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 100) / 100 * (f.composition.potassium || 0)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 100) / 100 * (f.composition.fiber || 0)).toFixed(1)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 100) / 100 * (f.composition.waterContent || 0)).toFixed(1)}</TableCell>
-
-                          {/* CHO/LIP - User didn't provide absolute values for all, but we can calculate if we had % or g/100ml. 
-                              For now, using placeholders or calculated if available in composition. 
-                              The user provided specific columns, I will try to calculate from composition if available.
-                          */}
-                          <TableCell className="text-center">{f.composition.carbohydrates ? ((f.referenceVolume || 100) / 100 * f.composition.carbohydrates).toFixed(1) : '-'}</TableCell>
-                          <TableCell className="text-center">{f.composition.fat ? ((f.referenceVolume || 100) / 100 * f.composition.fat).toFixed(1) : '-'}</TableCell>
+                      {filteredFormulas.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            Nenhuma fórmula encontrada
+                          </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        filteredFormulas.map((f) => (
+                          <TableRow key={f.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium">
+                              {f.name} <span className="text-xs text-muted-foreground">({f.code || '-'})</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                                {f.billingUnit === 'ml' ? 'mL' : f.billingUnit === 'g' ? 'g' : f.billingUnit === 'unit' ? 'Unid' : 'mL'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {f.billingPrice ? f.billingPrice.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="text-center font-medium">
+                              {f.composition.density?.toFixed(2) || (f.composition.calories / 100).toFixed(2)} kcal/ml
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {f.composition.proteinPct ? `${f.composition.proteinPct}%` : '-'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {f.composition.carbohydratesPct ? `${f.composition.carbohydratesPct}%` : '-'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {f.composition.fatPct ? `${f.composition.fatPct}%` : '-'}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              {f.composition.fiber ? `${f.composition.fiber}g` : '-'}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
@@ -137,103 +150,50 @@ const Formulas = () => {
             </Card>
           </TabsContent>
 
+          {/* Tab Módulos - Visão Geral Simplificada */}
           <TabsContent value="modules">
             <Card>
               <CardHeader>
-                <CardTitle>Módulos</CardTitle>
+                <CardTitle>Módulos para Nutrição Enteral</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Módulos</TableHead>
-                        <TableHead className="text-center">DC</TableHead>
-                        <TableHead className="text-center">g</TableHead>
-                        <TableHead className="text-center">x/dia</TableHead>
-                        <TableHead className="text-center">KCAL</TableHead>
-                        <TableHead className="text-center">PTN</TableHead>
-                        <TableHead className="text-center">Na</TableHead>
-                        <TableHead className="text-center">K</TableHead>
-                        <TableHead className="text-center">Fibras</TableHead>
-                        <TableHead className="text-center">Água Livre</TableHead>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="font-semibold">Módulo (Nome)</TableHead>
+                        <TableHead className="text-center font-semibold">Unid. Faturamento</TableHead>
+                        <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
+                        <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
+                        <TableHead className="text-center font-semibold">Proteína/dose</TableHead>
+                        <TableHead className="text-center font-semibold">Kcal/dose</TableHead>
+                        <TableHead className="text-center font-semibold">Fibras/dose</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allModules.map((m) => (
-                        <TableRow key={m.id}>
-                          <TableCell className="font-medium">{m.name}</TableCell>
-                          <TableCell className="text-center">{m.density.toFixed(2)}</TableCell>
-                          <TableCell className="text-center">{m.referenceAmount}</TableCell>
-                          <TableCell className="text-center">{m.referenceTimesPerDay}</TableCell>
-                          <TableCell className="text-center">{m.calories}</TableCell>
-                          <TableCell className="text-center">{m.protein}</TableCell>
-                          <TableCell className="text-center">{m.sodium}</TableCell>
-                          <TableCell className="text-center">{m.potassium}</TableCell>
-                          <TableCell className="text-center">{m.fiber}</TableCell>
-                          <TableCell className="text-center">{m.freeWater}</TableCell>
+                      {filteredModules.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            Nenhum módulo encontrado
+                          </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="closed">
-            <Card>
-              <CardHeader>
-                <CardTitle>Fórmulas Enterais (Sistema Fechado)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Fórmula enteral</TableHead>
-                        <TableHead className="text-center">Dens. Calórica</TableHead>
-                        <TableHead className="text-center">Volume</TableHead>
-                        <TableHead className="text-center">x/dia</TableHead>
-                        <TableHead className="text-center">KCAL</TableHead>
-                        <TableHead className="text-center">PTN</TableHead>
-                        <TableHead className="text-center">Na</TableHead>
-                        <TableHead className="text-center">K</TableHead>
-                        <TableHead className="text-center">Fibras</TableHead>
-                        <TableHead className="text-center">Água livre</TableHead>
-                        <TableHead className="text-center">CHO</TableHead>
-                        <TableHead className="text-center">LIP</TableHead>
-                        <TableHead className="text-center">Pack ml</TableHead>
-                        <TableHead className="text-center">Tempo de infusão</TableHead>
-                        <TableHead className="text-center">Got</TableHead>
-                        <TableHead className="text-center">Nº Packs</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {closedFormulas.map((f) => (
-                        <TableRow key={f.id}>
-                          <TableCell className="font-medium">{f.name} <span className="text-xs text-muted-foreground">({f.code})</span></TableCell>
-                          <TableCell className="text-center">{f.composition.density?.toFixed(2)}</TableCell>
-                          <TableCell className="text-center">{f.referenceVolume}</TableCell>
-                          <TableCell className="text-center">{f.referenceTimesPerDay}</TableCell>
-
-                          {/* Calculated values based on Reference Volume (which is usually the daily total in this view) */}
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) * (f.composition.density || 1)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) / 100 * f.composition.protein).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) / 100 * (f.composition.sodium || 0)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) / 100 * (f.composition.potassium || 0)).toFixed(0)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) / 100 * (f.composition.fiber || 0)).toFixed(1)}</TableCell>
-                          <TableCell className="text-center">{((f.referenceVolume || 1000) / 100 * (f.composition.waterContent || 0)).toFixed(1)}</TableCell>
-                          <TableCell className="text-center">{f.composition.carbohydrates ? ((f.referenceVolume || 1000) / 100 * f.composition.carbohydrates).toFixed(1) : '-'}</TableCell>
-                          <TableCell className="text-center">{f.composition.fat ? ((f.referenceVolume || 1000) / 100 * f.composition.fat).toFixed(1) : '-'}</TableCell>
-
-                          {/* Closed System Specifics */}
-                          <TableCell className="text-center">{f.referencePackSize}</TableCell>
-                          <TableCell className="text-center">{f.referenceInfusionTime}</TableCell>
-                          <TableCell className="text-center">{f.referenceDripRate}</TableCell>
-                          <TableCell className="text-center">{f.referenceNumPacks}</TableCell>
-                        </TableRow>
-                      ))}
+                      ) : (
+                        filteredModules.map((m) => (
+                          <TableRow key={m.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium">{m.name}</TableCell>
+                            <TableCell className="text-center">
+                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                                g
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">-</TableCell>
+                            <TableCell className="text-center font-medium">{m.density.toFixed(2)} kcal/g</TableCell>
+                            <TableCell className="text-center">{m.protein}g</TableCell>
+                            <TableCell className="text-center">{m.calories} kcal</TableCell>
+                            <TableCell className="text-center">{m.fiber}g</TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>
