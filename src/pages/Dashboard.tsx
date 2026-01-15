@@ -27,10 +27,11 @@ import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
 import BottomNav from "@/components/BottomNav";
 import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
-import { usePatients, usePrescriptions, useDashboardData, useClinics } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useDashboardData, useClinics, useHospitals, useWards } from "@/hooks/useDatabase";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [selectedHospital, setSelectedHospital] = useState("");
   const [selectedWard, setSelectedWard] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
@@ -42,6 +43,8 @@ const Dashboard = () => {
   const { prescriptions } = usePrescriptions();
   const dashboardData = useDashboardData();
   const { clinics } = useClinics();
+  const { hospitals } = useHospitals();
+  const { wards } = useWards(selectedHospital);
 
   const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
 
@@ -54,7 +57,13 @@ const Dashboard = () => {
 
   // Generate ward beds from real patients
   const wardBeds = useMemo(() => {
-    const activePatients = patients.filter(p => p.status === 'active');
+    if (!selectedHospital || !selectedWard) return [];
+
+    const activePatients = patients.filter(p =>
+      p.status === 'active' &&
+      p.hospitalId === selectedHospital &&
+      p.ward === selectedWard
+    );
 
     // Create beds from patients
     const patientBeds = activePatients.map((patient, index) => {
@@ -78,9 +87,12 @@ const Dashboard = () => {
       };
     });
 
-    // Add empty beds to fill up to 8
+    // Add empty beds to fill up to 8 (or more if needed, but keeping 8 for now or until filled)
     const emptyBeds = [];
-    for (let i = patientBeds.length; i < 8; i++) {
+    // Ensure at least 8 slots or enough to cover all patients
+    const totalSlots = Math.max(8, patientBeds.length + (4 - (patientBeds.length % 4)));
+
+    for (let i = patientBeds.length; i < totalSlots; i++) {
       emptyBeds.push({
         bed: `Leito ${String(i + 1).padStart(2, '0')}`,
         patient: null,
@@ -94,8 +106,8 @@ const Dashboard = () => {
       });
     }
 
-    return [...patientBeds, ...emptyBeds].slice(0, 8);
-  }, [patients, prescriptions]);
+    return [...patientBeds, ...emptyBeds];
+  }, [patients, prescriptions, selectedHospital, selectedWard]);
 
   const getFeedingIcon = (route: string) => {
     switch (route) {
@@ -204,21 +216,51 @@ const Dashboard = () => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="ward-select" className="text-sm font-medium">Selecionar Ala</Label>
-                <Select value={selectedWard} onValueChange={setSelectedWard}>
-                  <SelectTrigger id="ward-select" className="h-auto py-4">
+                <Label htmlFor="hospital-select" className="text-sm font-medium">Selecionar Hospital</Label>
+                <Select value={selectedHospital} onValueChange={(val) => {
+                  setSelectedHospital(val);
+                  setSelectedWard(""); // Reset ward when hospital changes
+                }}>
+                  <SelectTrigger id="hospital-select" className="h-auto py-4">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-5 w-5" />
-                      <SelectValue placeholder="Escolher setor do hospital" />
+                      <SelectValue placeholder="Selecione o Hospital" />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="UTI-ADULTO">UTI - Adulto</SelectItem>
-                    <SelectItem value="UTI-PEDIATRICA">UTI - Pediátrica</SelectItem>
-                    <SelectItem value="CLINICA-MEDICA">Clínica Médica</SelectItem>
-                    <SelectItem value="CIRURGIA">Cirurgia</SelectItem>
-                    <SelectItem value="CARDIOLOGIA">Cardiologia</SelectItem>
-                    <SelectItem value="NEUROLOGIA">Neurologia</SelectItem>
+                    {hospitals.map((hospital) => (
+                      <SelectItem key={hospital.id} value={hospital.id || ""}>
+                        {hospital.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ward-select" className="text-sm font-medium">Selecionar Ala</Label>
+                <Select
+                  value={selectedWard}
+                  onValueChange={setSelectedWard}
+                  disabled={!selectedHospital}
+                >
+                  <SelectTrigger id="ward-select" className="h-auto py-4">
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="icon" className="p-0 h-5 w-5 pointer-events-none">
+                        <Building2 className="h-5 w-5" />
+                      </Button>
+                      <SelectValue placeholder={!selectedHospital ? "Selecione um hospital primeiro" : "Escolher setor do hospital"} />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {wards.map((ward) => (
+                      <SelectItem key={ward.id} value={ward.name}>
+                        {ward.name}
+                      </SelectItem>
+                    ))}
+                    {wards.length === 0 && (
+                      <div className="p-2 text-sm text-muted-foreground text-center">Nenhuma ala cadastrada</div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
