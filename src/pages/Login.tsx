@@ -8,29 +8,64 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Activity } from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
+import { useProfessionals } from "@/hooks/useDatabase";
+import { useEffect } from "react";
 
 const Login = () => {
   const navigate = useNavigate();
+  const { professionals } = useProfessionals();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     hospital: "",
-    email: "",
+    identifier: "", // Replaces email, can be CRN or Matrícula
     password: "",
     role: "nutritionist", // manager, nutritionist, technician
   });
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.hospital || !formData.email || !formData.password) {
+    if (!formData.hospital || !formData.identifier || !formData.password) {
       toast.error("Por favor, preencha todos os campos");
       return;
     }
 
-    // Mock login - in production this would call an API
-    localStorage.setItem('userRole', formData.role); // Store role for later use
-    toast.success(`Login realizado com sucesso como ${formData.role === 'manager' ? 'Gestor' : formData.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'}!`);
-    navigate("/dashboard");
+    // Bypass for empty database (Bootstrap mode)
+    if (professionals.length === 0 && formData.role === 'manager') {
+      toast.info("Modo de Inicialização: Nenhum profissional cadastrado. Acesso de Gestor liberado.");
+      localStorage.setItem('userRole', formData.role);
+      localStorage.setItem('userName', "Gestor Inicial");
+      navigate("/dashboard");
+      return;
+    }
+
+    // Validation
+    const user = professionals.find(p => {
+      const isRoleMatch = p.role === formData.role;
+      // Check CRN for nutritionist, or Registration/CPF for others if needed. 
+      // For simplicity/user request, matching "identifier" against CRN or Matricula
+      const isIdMatch = p.crn === formData.identifier || p.registrationNumber === formData.identifier;
+      // In a real app, we would hash/check password here. 
+      // Current DB doesn't store passwords, so we check if record exists + basic password presence
+      return isRoleMatch && isIdMatch;
+    });
+
+    if (user) {
+      if (!user.isActive) {
+        toast.error("Usuário inativo. Contate o gestor.");
+        return;
+      }
+      localStorage.setItem('userRole', formData.role);
+      localStorage.setItem('userName', user.name);
+      toast.success(`Bem-vindo(a), ${user.name}!`);
+      navigate("/dashboard");
+    } else {
+      if (formData.role !== 'manager') {
+        toast.error(`Acesso negado. ${formData.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'} deve ser cadastrado pelo Gestor.`);
+      } else {
+        toast.error("Gestor não encontrado. Verifique suas credenciais.");
+      }
+    }
   };
 
   return (
@@ -84,13 +119,15 @@ const Login = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">E-mail</Label>
+                <Label htmlFor="identifier">
+                  {formData.role === 'nutritionist' ? 'CRN' : 'Matrícula'}
+                </Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="nutri@enmeta.test"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  id="identifier"
+                  type="text"
+                  placeholder={formData.role === 'nutritionist' ? 'CRN-0000' : '000000'}
+                  value={formData.identifier}
+                  onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
                 />
               </div>
 
