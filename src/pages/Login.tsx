@@ -8,12 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Activity } from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
-import { useProfessionals } from "@/hooks/useDatabase";
+import { useProfessionals, useHospitals } from "@/hooks/useDatabase";
 import { useEffect } from "react";
 
 const Login = () => {
   const navigate = useNavigate();
   const { professionals } = useProfessionals();
+  const { hospitals } = useHospitals();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     hospital: "",
@@ -94,9 +95,14 @@ const Login = () => {
                     <SelectValue placeholder="Selecione o hospital" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HM-001">HM-001 - Hospital Municipal</SelectItem>
-                    <SelectItem value="HE-002">HE-002 - Hospital Estadual</SelectItem>
-                    <SelectItem value="HC-003">HC-003 - Hospital Central</SelectItem>
+                    {hospitals.map((hospital) => (
+                      <SelectItem key={hospital.id} value={hospital.cnes || hospital.id || "unknown"}>
+                        {hospital.cnes ? `${hospital.cnes} - ` : ""}{hospital.name}
+                      </SelectItem>
+                    ))}
+                    {hospitals.length === 0 && (
+                      <SelectItem value="manual" disabled>Nenhum hospital cadastrado</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

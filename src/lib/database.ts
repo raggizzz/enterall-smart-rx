@@ -995,6 +995,9 @@ export const initializeDatabase = async (): Promise<void> => {
         await seedDefaultClinics();
         console.log('✅ Database seeded successfully!');
     }
+
+    // Cleanup mock hospitals if they exist (Proactive fix for user request)
+    await removeMockHospitals();
 };
 
 // Seed functions
@@ -1208,6 +1211,18 @@ async function seedDefaultClinics(): Promise<void> {
 
     for (const clinic of defaultClinics) {
         await clinicsService.create(clinic);
+    }
+}
+
+async function removeMockHospitals(): Promise<void> {
+    const mockCnes = ['HM-001', 'HE-002', 'HC-003'];
+    const hospitals = await db.hospitals.toArray();
+
+    for (const hospital of hospitals) {
+        if (hospital.cnes && mockCnes.includes(hospital.cnes)) {
+            console.log(`🗑️ Removing mock hospital: ${hospital.name} (${hospital.cnes})`);
+            if (hospital.id) await db.hospitals.delete(hospital.id);
+        }
     }
 }
 
