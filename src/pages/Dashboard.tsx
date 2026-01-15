@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ import {
   Syringe,
   BanIcon,
   Pill,
+  Database,
+  Settings,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -25,44 +27,75 @@ import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
 import BottomNav from "@/components/BottomNav";
 import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
+import { usePatients, usePrescriptions, useDashboardData, useClinics } from "@/hooks/useDatabase";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [selectedWard, setSelectedWard] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
-  const [registerDialogOpen, setRegisterDialogOpen] = useState(false);
+
   const [evolutionDialogOpen, setEvolutionDialogOpen] = useState(false);
   const [selectedPatientForEvolution, setSelectedPatientForEvolution] = useState<any>(null);
 
+  const { patients } = usePatients();
+  const { prescriptions } = usePrescriptions();
+  const dashboardData = useDashboardData();
+  const { clinics } = useClinics();
+
   const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
-  const [newPatient, setNewPatient] = useState({
-    name: "",
-    dob: "",
-    record: "",
-    ward: "",
-    sex: "masculino",
-    height: "",
-    weight: "",
-    observation: ""
-  });
 
+  // Stats from real database
   const stats = [
-    { label: "Prescrições do dia", value: "24", icon: FileText, color: "text-primary" },
-    { label: "Alertas pendentes", value: "5", icon: AlertCircle, color: "text-warning" },
-    { label: "Pacientes ativos", value: "42", icon: Users, color: "text-success" },
+    { label: "Prescrições ativas", value: dashboardData.activePrescriptions.toString(), icon: FileText, color: "text-primary" },
+    { label: "Evoluções hoje", value: dashboardData.todayEvolutions.toString(), icon: AlertCircle, color: "text-warning" },
+    { label: "Pacientes ativos", value: dashboardData.patientsCount.toString(), icon: Users, color: "text-success" },
   ];
 
-  const wardBeds = [
-    { bed: "Leito 01", patient: "Antonio Pereira", dob: "10/01/1978", record: "2024001", feedingRoute: "oral", status: "goal_met", prescribedVolume: 1500, prescribedCalories: 1800 },
-    { bed: "Leito 02", patient: "Alicia Gomes", dob: "06/11/1981", record: "2024002", feedingRoute: "enteral", status: "below_goal", prescribedVolume: 1200, prescribedCalories: 1500 },
-    { bed: "Leito 03", patient: "Renata Fortes", dob: "10/05/1980", record: "2024003", feedingRoute: "parenteral", status: "goal_met", prescribedVolume: 1000, prescribedCalories: 1200 },
-    { bed: "Leito 04", patient: "Carlos Silva", dob: "15/03/1965", record: "2024004", feedingRoute: "oral-supplement", status: "warning", prescribedVolume: 600, prescribedCalories: 900 },
-    { bed: "Leito 05", patient: "Maria Santos", dob: "22/07/1990", record: "2024005", feedingRoute: "fasting", status: "no_diet", prescribedVolume: 0, prescribedCalories: 0 },
-    { bed: "Leito 06", patient: null, dob: null, record: null, feedingRoute: "empty", status: null, prescribedVolume: 0, prescribedCalories: 0 },
-    { bed: "Leito 07", patient: "João Oliveira", dob: "30/12/1972", record: "2024006", feedingRoute: "enteral", status: "goal_met", prescribedVolume: 1500, prescribedCalories: 1800 },
-    { bed: "Leito 08", patient: null, dob: null, record: null, feedingRoute: "empty", status: null, prescribedVolume: 0, prescribedCalories: 0 },
-  ];
+  // Generate ward beds from real patients
+  const wardBeds = useMemo(() => {
+    const activePatients = patients.filter(p => p.status === 'active');
+
+    // Create beds from patients
+    const patientBeds = activePatients.map((patient, index) => {
+      const patientPrescription = prescriptions.find(p => p.patientId === patient.id);
+
+      let feedingRoute = 'oral';
+      if (patient.nutritionType === 'enteral') feedingRoute = 'enteral';
+      else if (patient.nutritionType === 'parenteral') feedingRoute = 'parenteral';
+      else if (patient.nutritionType === 'jejum') feedingRoute = 'fasting';
+
+      return {
+        bed: patient.bed || `Leito ${String(index + 1).padStart(2, '0')}`,
+        patient: patient.name,
+        dob: patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-',
+        record: patient.record,
+        feedingRoute,
+        status: patientPrescription ? 'goal_met' : 'no_diet',
+        prescribedVolume: patientPrescription?.totalVolume || 0,
+        prescribedCalories: patientPrescription?.totalCalories || 0,
+        patientId: patient.id,
+      };
+    });
+
+    // Add empty beds to fill up to 8
+    const emptyBeds = [];
+    for (let i = patientBeds.length; i < 8; i++) {
+      emptyBeds.push({
+        bed: `Leito ${String(i + 1).padStart(2, '0')}`,
+        patient: null,
+        dob: null,
+        record: null,
+        feedingRoute: 'empty',
+        status: null,
+        prescribedVolume: 0,
+        prescribedCalories: 0,
+        patientId: null,
+      });
+    }
+
+    return [...patientBeds, ...emptyBeds].slice(0, 8);
+  }, [patients, prescriptions]);
 
   const getFeedingIcon = (route: string) => {
     switch (route) {
@@ -124,24 +157,7 @@ const Dashboard = () => {
     setSearchDialogOpen(false);
   };
 
-  const handleRegisterPatient = () => {
-    if (!newPatient.name || !newPatient.dob || !newPatient.record) {
-      toast.error("Preencha todos os campos obrigatórios");
-      return;
-    }
-    toast.success("Paciente cadastrado com sucesso!");
-    setRegisterDialogOpen(false);
-    setNewPatient({
-      name: "",
-      dob: "",
-      record: "",
-      ward: "",
-      sex: "masculino",
-      height: "",
-      weight: "",
-      observation: ""
-    });
-  };
+
 
   const handleOpenEvolution = (e: React.MouseEvent, patient: any) => {
     e.stopPropagation(); // Prevent card click
@@ -258,137 +274,17 @@ const Dashboard = () => {
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={registerDialogOpen} onOpenChange={setRegisterDialogOpen}>
-                <DialogTrigger asChild>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Cadastrar Paciente</Label>
-                    <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2">
-                      <UserPlus className="h-6 w-6" />
-                      <span>Cadastrar Paciente</span>
-                    </Button>
-                  </div>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Cadastrar Novo Paciente</DialogTitle>
-                    <DialogDescription>Preencha os dados do novo paciente</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="new-name">Nome do Paciente *</Label>
-                      <Input
-                        id="new-name"
-                        placeholder="Digite o nome completo"
-                        value={newPatient.name}
-                        onChange={(e) => setNewPatient({ ...newPatient, name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-dob">Data de Nascimento *</Label>
-                      <Input
-                        id="new-dob"
-                        type="date"
-                        value={newPatient.dob}
-                        onChange={(e) => setNewPatient({ ...newPatient, dob: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-record">Número de Prontuário *</Label>
-                      <Input
-                        id="new-record"
-                        placeholder="Digite o prontuário"
-                        value={newPatient.record}
-                        onChange={(e) => setNewPatient({ ...newPatient, record: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-ward">Ala</Label>
-                      <Select value={newPatient.ward} onValueChange={(value) => setNewPatient({ ...newPatient, ward: value })}>
-                        <SelectTrigger id="new-ward">
-                          <SelectValue placeholder="Selecione a ala" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="UTI-ADULTO">UTI - Adulto</SelectItem>
-                          <SelectItem value="UTI-PEDIATRICA">UTI - Pediátrica</SelectItem>
-                          <SelectItem value="CLINICA-MEDICA">Clínica Médica</SelectItem>
-                          <SelectItem value="CIRURGIA">Cirurgia</SelectItem>
-                          <SelectItem value="CARDIOLOGIA">Cardiologia</SelectItem>
-                          <SelectItem value="NEUROLOGIA">Neurologia</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Sexo Biológico *</Label>
-                        <div className="flex gap-4 pt-2">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="sex"
-                              value="masculino"
-                              checked={newPatient.sex === "masculino"}
-                              onChange={(e) => setNewPatient({ ...newPatient, sex: e.target.value })}
-                              className="accent-primary"
-                            />
-                            <span className="text-sm">Masculino</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="sex"
-                              value="feminino"
-                              checked={newPatient.sex === "feminino"}
-                              onChange={(e) => setNewPatient({ ...newPatient, sex: e.target.value })}
-                              className="accent-primary"
-                            />
-                            <span className="text-sm">Feminino</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="new-height">Estatura (m) *</Label>
-                        <Input
-                          id="new-height"
-                          type="number"
-                          step="0.01"
-                          placeholder="Ex: 1.75"
-                          value={newPatient.height}
-                          onChange={(e) => setNewPatient({ ...newPatient, height: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="new-weight">Peso Atual (kg) *</Label>
-                        <Input
-                          id="new-weight"
-                          type="number"
-                          step="0.1"
-                          placeholder="Ex: 70.5"
-                          value={newPatient.weight}
-                          onChange={(e) => setNewPatient({ ...newPatient, weight: e.target.value })}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="new-obs">Observação (Identidade)</Label>
-                      <Input
-                        id="new-obs"
-                        placeholder="Informações que não mudam"
-                        value={newPatient.observation}
-                        onChange={(e) => setNewPatient({ ...newPatient, observation: e.target.value })}
-                      />
-                    </div>
-                    <Button onClick={handleRegisterPatient} className="w-full">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Cadastrar
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Cadastrar Paciente</Label>
+                <Button
+                  variant="outline"
+                  className="h-auto py-4 w-full flex flex-col gap-2"
+                  onClick={() => navigate('/patients')}
+                >
+                  <UserPlus className="h-6 w-6" />
+                  <span>Cadastrar Paciente</span>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,58 +21,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Search, Package, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import BottomNav from "@/components/BottomNav";
-import { supabase } from "@/lib/supabase";
-
-interface Supply {
-    id: string;
-    code: string;
-    name: string;
-    type: 'bottle' | 'set' | 'other';
-    billing_unit?: 'unit' | 'pack' | 'box' | 'other'; // Unidade de faturamento
-    capacity_ml?: number;
-    unit_price: number;
-    plastic_g?: number;
-    paper_g?: number;
-    metal_g?: number;
-    glass_g?: number;
-}
+import Header from "@/components/Header";
+import { useSupplies } from "@/hooks/useDatabase";
+import { Supply } from "@/lib/database";
 
 const Supplies = () => {
-    const [supplies, setSupplies] = useState<Supply[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingSupply, setEditingSupply] = useState<Supply | null>(null);
     const [currentSupply, setCurrentSupply] = useState<Partial<Supply>>({});
 
-    useEffect(() => {
-        fetchSupplies();
-    }, []);
-
-    const fetchSupplies = async () => {
-        setIsLoading(true);
-        try {
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                setSupplies([
-                    { id: '1', code: 'FR20', name: 'Frasco Biodose 100', type: 'bottle', capacity_ml: 100, unit_price: 2.50, plastic_g: 5 },
-                    { id: '2', code: 'EQ01', name: 'Equipo Gravitacional', type: 'set', unit_price: 1.80, plastic_g: 10 },
-                ]);
-                setIsLoading(false);
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from('supplies')
-                .select('*')
-                .order('name');
-
-            if (error) throw error;
-            setSupplies(data || []);
-        } catch (error) {
-            console.error('Error fetching supplies:', error);
-            toast.error("Erro ao carregar insumos");
-        } finally {
-            setIsLoading(false);
-        }
+    const resetForm = () => {
+        setCurrentSupply({});
+        setEditingSupply(null);
     };
 
     const handleSave = async () => {
@@ -82,54 +44,51 @@ const Supplies = () => {
         }
 
         try {
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                if (currentSupply.id) {
-                    setSupplies(supplies.map(s => s.id === currentSupply.id ? { ...s, ...currentSupply } as Supply : s));
-                } else {
-                    setSupplies([...supplies, { ...currentSupply, id: Date.now().toString() } as Supply]);
-                }
-                toast.success("Insumo salvo (Mock)");
-                setIsDialogOpen(false);
-                return;
-            }
+            const supplyData = {
+                code: currentSupply.code!,
+                name: currentSupply.name!,
+                type: currentSupply.type!,
+                billingUnit: currentSupply.billingUnit || 'unit',
+                capacityMl: currentSupply.capacityMl,
+                unitPrice: currentSupply.unitPrice || 0,
+                plasticG: currentSupply.plasticG,
+                paperG: currentSupply.paperG,
+                metalG: currentSupply.metalG,
+                glassG: currentSupply.glassG,
+                isActive: true,
+            };
 
-            if (currentSupply.id) {
-                const { error } = await supabase
-                    .from('supplies')
-                    .update(currentSupply)
-                    .eq('id', currentSupply.id);
-                if (error) throw error;
+            if (editingSupply?.id) {
+                await updateSupply(editingSupply.id, supplyData);
+                toast.success("Insumo atualizado com sucesso!");
             } else {
-                const { error } = await supabase
-                    .from('supplies')
-                    .insert([currentSupply]);
-                if (error) throw error;
+                await createSupply(supplyData);
+                toast.success("Insumo criado com sucesso!");
             }
 
-            toast.success("Insumo salvo com sucesso!");
             setIsDialogOpen(false);
-            fetchSupplies();
+            resetForm();
         } catch (error) {
             console.error('Error saving supply:', error);
             toast.error("Erro ao salvar insumo");
         }
     };
 
+    const handleEdit = (supply: Supply) => {
+        setEditingSupply(supply);
+        setCurrentSupply({
+            ...supply,
+            // Map from database naming to form
+        });
+        setIsDialogOpen(true);
+    };
+
     const handleDelete = async (id: string) => {
         if (!confirm("Tem certeza que deseja excluir este insumo?")) return;
 
         try {
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                setSupplies(supplies.filter(s => s.id !== id));
-                toast.success("Insumo excluído (Mock)");
-                return;
-            }
-
-            const { error } = await supabase.from('supplies').delete().eq('id', id);
-            if (error) throw error;
-
+            await deleteSupply(id);
             toast.success("Insumo excluído com sucesso!");
-            fetchSupplies();
         } catch (error) {
             console.error('Error deleting supply:', error);
             toast.error("Erro ao excluir insumo");
@@ -143,22 +102,26 @@ const Supplies = () => {
 
     return (
         <div className="min-h-screen bg-background pb-20">
+            <Header />
             <div className="container py-6 space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Insumos</h1>
-                        <p className="text-muted-foreground">Gerencie frascos, equipos e outros materiais</p>
+                        <p className="text-muted-foreground">Gerencie frascos, equipos e outros materiais - Dados Locais</p>
                     </div>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                        setIsDialogOpen(open);
+                        if (!open) resetForm();
+                    }}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => setCurrentSupply({})}>
+                            <Button onClick={() => resetForm()}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 Novo Insumo
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-2xl">
                             <DialogHeader>
-                                <DialogTitle>{currentSupply.id ? 'Editar' : 'Novo'} Insumo</DialogTitle>
+                                <DialogTitle>{editingSupply ? 'Editar' : 'Novo'} Insumo</DialogTitle>
                             </DialogHeader>
                             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
                                 {/* Tipo e Código */}
@@ -167,7 +130,7 @@ const Supplies = () => {
                                         <Label>Tipo *</Label>
                                         <Select
                                             value={currentSupply.type}
-                                            onValueChange={(val: any) => setCurrentSupply({ ...currentSupply, type: val })}
+                                            onValueChange={(val: 'bottle' | 'set' | 'other') => setCurrentSupply({ ...currentSupply, type: val })}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Selecione o tipo" />
@@ -203,8 +166,8 @@ const Supplies = () => {
                                 <div className="grid gap-2">
                                     <Label>Unidade de Faturamento</Label>
                                     <Select
-                                        value={currentSupply.billing_unit || 'unit'}
-                                        onValueChange={(val: any) => setCurrentSupply({ ...currentSupply, billing_unit: val })}
+                                        value={currentSupply.billingUnit || 'unit'}
+                                        onValueChange={(val: 'unit' | 'pack' | 'box' | 'other') => setCurrentSupply({ ...currentSupply, billingUnit: val })}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Selecione" />
@@ -235,8 +198,8 @@ const Supplies = () => {
                                                 <Input
                                                     type="number"
                                                     placeholder="Ex: 100, 200, 500"
-                                                    value={currentSupply.capacity_ml || ''}
-                                                    onChange={e => setCurrentSupply({ ...currentSupply, capacity_ml: parseFloat(e.target.value) })}
+                                                    value={currentSupply.capacityMl || ''}
+                                                    onChange={e => setCurrentSupply({ ...currentSupply, capacityMl: parseFloat(e.target.value) })}
                                                 />
                                             </div>
                                             <div className="grid gap-2">
@@ -245,8 +208,8 @@ const Supplies = () => {
                                                     type="number"
                                                     step="0.01"
                                                     placeholder="0.00"
-                                                    value={currentSupply.unit_price || ''}
-                                                    onChange={e => setCurrentSupply({ ...currentSupply, unit_price: parseFloat(e.target.value) })}
+                                                    value={currentSupply.unitPrice || ''}
+                                                    onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: parseFloat(e.target.value) })}
                                                 />
                                             </div>
                                         </div>
@@ -260,8 +223,8 @@ const Supplies = () => {
                                             <Label>Capacidade (mL) - Opcional</Label>
                                             <Input
                                                 type="number"
-                                                value={currentSupply.capacity_ml || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, capacity_ml: parseFloat(e.target.value) })}
+                                                value={currentSupply.capacityMl || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, capacityMl: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div className="grid gap-2">
@@ -270,8 +233,8 @@ const Supplies = () => {
                                                 type="number"
                                                 step="0.01"
                                                 placeholder="0.00"
-                                                value={currentSupply.unit_price || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, unit_price: parseFloat(e.target.value) })}
+                                                value={currentSupply.unitPrice || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                     </div>
@@ -287,8 +250,8 @@ const Supplies = () => {
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
-                                                value={currentSupply.plastic_g || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, plastic_g: parseFloat(e.target.value) })}
+                                                value={currentSupply.plasticG || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, plasticG: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
@@ -297,8 +260,8 @@ const Supplies = () => {
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
-                                                value={currentSupply.paper_g || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, paper_g: parseFloat(e.target.value) })}
+                                                value={currentSupply.paperG || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, paperG: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
@@ -307,8 +270,8 @@ const Supplies = () => {
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
-                                                value={currentSupply.metal_g || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, metal_g: parseFloat(e.target.value) })}
+                                                value={currentSupply.metalG || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, metalG: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
@@ -317,14 +280,16 @@ const Supplies = () => {
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
-                                                value={currentSupply.glass_g || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, glass_g: parseFloat(e.target.value) })}
+                                                value={currentSupply.glassG || ''}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, glassG: parseFloat(e.target.value) })}
                                             />
                                         </div>
                                     </div>
                                 </div>
 
-                                <Button onClick={handleSave} className="w-full mt-4">Salvar Insumo</Button>
+                                <Button onClick={handleSave} className="w-full mt-4">
+                                    {editingSupply ? 'Salvar Alterações' : 'Criar Insumo'}
+                                </Button>
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -386,24 +351,26 @@ const Supplies = () => {
                                             </TableCell>
                                             <TableCell>
                                                 <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
-                                                    {supply.billing_unit === 'pack' ? 'Pacote' :
-                                                        supply.billing_unit === 'box' ? 'Caixa' :
-                                                            supply.billing_unit === 'other' ? 'Outros' : 'Unidade'}
+                                                    {supply.billingUnit === 'pack' ? 'Pacote' :
+                                                        supply.billingUnit === 'box' ? 'Caixa' :
+                                                            supply.billingUnit === 'other' ? 'Outros' : 'Unidade'}
                                                 </span>
                                             </TableCell>
                                             <TableCell>
-                                                {supply.capacity_ml ? `${supply.capacity_ml} mL` : '-'}
+                                                {supply.capacityMl ? `${supply.capacityMl} mL` : '-'}
                                             </TableCell>
-                                            <TableCell>R$ {supply.unit_price?.toFixed(2)}</TableCell>
+                                            <TableCell>R$ {supply.unitPrice?.toFixed(2) || '0.00'}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
-                                                    <Button variant="ghost" size="icon" onClick={() => {
-                                                        setCurrentSupply(supply);
-                                                        setIsDialogOpen(true);
-                                                    }}>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(supply)}>
                                                         <Edit className="h-4 w-4" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(supply.id)}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="text-destructive"
+                                                        onClick={() => supply.id && handleDelete(supply.id)}
+                                                    >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>

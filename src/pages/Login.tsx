@@ -16,18 +16,20 @@ const Login = () => {
     hospital: "",
     email: "",
     password: "",
+    role: "nutritionist", // manager, nutritionist, technician
   });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.hospital || !formData.email || !formData.password) {
       toast.error("Por favor, preencha todos os campos");
       return;
     }
 
     // Mock login - in production this would call an API
-    toast.success("Login realizado com sucesso!");
+    localStorage.setItem('userRole', formData.role); // Store role for later use
+    toast.success(`Login realizado com sucesso como ${formData.role === 'manager' ? 'Gestor' : formData.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'}!`);
     navigate("/dashboard");
   };
 
@@ -60,6 +62,23 @@ const Login = () => {
                     <SelectItem value="HM-001">HM-001 - Hospital Municipal</SelectItem>
                     <SelectItem value="HE-002">HE-002 - Hospital Estadual</SelectItem>
                     <SelectItem value="HC-003">HC-003 - Hospital Central</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="role">Função</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) => setFormData({ ...formData, role: value })}
+                >
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Selecione sua função" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manager">Gestor</SelectItem>
+                    <SelectItem value="nutritionist">Nutricionista</SelectItem>
+                    <SelectItem value="technician">Técnico</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

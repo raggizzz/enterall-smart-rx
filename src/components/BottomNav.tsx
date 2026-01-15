@@ -61,6 +61,10 @@ const BottomNav = ({ onAddPatient }: BottomNavProps) => {
                       <Package className="mr-2 h-4 w-4" />
                       <span>Insumos</span>
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/settings")}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Configurações</span>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               );

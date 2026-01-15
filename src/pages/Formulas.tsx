@@ -3,9 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, Edit, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import FormulaForm from "@/components/FormulaForm";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -16,29 +23,245 @@ import {
 } from "@/components/ui/table";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import { getAllFormulas, getAllModules, searchFormulas } from "@/lib/formulasDatabase";
+import { useFormulas, useModules } from "@/hooks/useDatabase";
+import { Formula, Module } from "@/lib/database";
+import { toast } from "sonner";
 
 const Formulas = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isNewFormulaOpen, setIsNewFormulaOpen] = useState(false);
+  const [isNewModuleOpen, setIsNewModuleOpen] = useState(false);
+  const [editingFormula, setEditingFormula] = useState<Formula | null>(null);
+  const [editingModule, setEditingModule] = useState<Module | null>(null);
 
-  const handleCreateFormula = (data: any) => {
-    console.log("New Formula Data:", data);
-    setIsNewFormulaOpen(false);
-  };
+  const { formulas, isLoading: formulasLoading, createFormula, updateFormula, deleteFormula } = useFormulas();
+  const { modules, isLoading: modulesLoading, createModule, updateModule, deleteModule } = useModules();
 
-  const allFormulas = getAllFormulas();
-  const allModules = getAllModules();
+  // Formula form state
+  const [formulaForm, setFormulaForm] = useState({
+    code: "",
+    name: "",
+    manufacturer: "",
+    type: "standard" as Formula['type'],
+    systemType: "open" as Formula['systemType'],
+    presentations: "100",
+    caloriesPerUnit: "",
+    density: "",
+    proteinPerUnit: "",
+    proteinPct: "",
+    carbPct: "",
+    fatPct: "",
+    fiberPerUnit: "",
+    billingUnit: "ml" as Formula['billingUnit'],
+    billingPrice: "",
+  });
 
-  let filteredFormulas = allFormulas;
-  if (searchQuery) {
-    filteredFormulas = searchFormulas(searchQuery);
-  }
+  // Module form state
+  const [moduleForm, setModuleForm] = useState({
+    name: "",
+    density: "",
+    referenceAmount: "",
+    referenceTimesPerDay: "",
+    calories: "",
+    protein: "",
+    sodium: "",
+    potassium: "",
+    fiber: "",
+    freeWater: "",
+    billingUnit: "g" as Module['billingUnit'],
+    billingPrice: "",
+  });
 
-  // Filtrar módulos também
-  const filteredModules = allModules.filter(m =>
+  // Filter formulas
+  const filteredFormulas = formulas.filter(f =>
+    f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    f.code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    f.manufacturer?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Filter modules
+  const filteredModules = modules.filter(m =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const resetFormulaForm = () => {
+    setFormulaForm({
+      code: "",
+      name: "",
+      manufacturer: "",
+      type: "standard",
+      systemType: "open",
+      presentations: "100",
+      caloriesPerUnit: "",
+      density: "",
+      proteinPerUnit: "",
+      proteinPct: "",
+      carbPct: "",
+      fatPct: "",
+      fiberPerUnit: "",
+      billingUnit: "ml",
+      billingPrice: "",
+    });
+    setEditingFormula(null);
+  };
+
+  const resetModuleForm = () => {
+    setModuleForm({
+      name: "",
+      density: "",
+      referenceAmount: "",
+      referenceTimesPerDay: "",
+      calories: "",
+      protein: "",
+      sodium: "",
+      potassium: "",
+      fiber: "",
+      freeWater: "",
+      billingUnit: "g",
+      billingPrice: "",
+    });
+    setEditingModule(null);
+  };
+
+  const handleEditFormula = (formula: Formula) => {
+    setEditingFormula(formula);
+    setFormulaForm({
+      code: formula.code || "",
+      name: formula.name,
+      manufacturer: formula.manufacturer || "",
+      type: formula.type,
+      systemType: formula.systemType,
+      presentations: formula.presentations.join(", "),
+      caloriesPerUnit: formula.caloriesPerUnit?.toString() || "",
+      density: formula.density?.toString() || "",
+      proteinPerUnit: formula.proteinPerUnit?.toString() || "",
+      proteinPct: formula.proteinPct?.toString() || "",
+      carbPct: formula.carbPct?.toString() || "",
+      fatPct: formula.fatPct?.toString() || "",
+      fiberPerUnit: formula.fiberPerUnit?.toString() || "",
+      billingUnit: formula.billingUnit || "ml",
+      billingPrice: formula.billingPrice?.toString() || "",
+    });
+    setIsNewFormulaOpen(true);
+  };
+
+  const handleSaveFormula = async () => {
+    if (!formulaForm.name || !formulaForm.code) {
+      toast.error("Preencha nome e código da fórmula");
+      return;
+    }
+
+    const formulaData = {
+      code: formulaForm.code,
+      name: formulaForm.name,
+      manufacturer: formulaForm.manufacturer,
+      type: formulaForm.type,
+      systemType: formulaForm.systemType,
+      presentations: formulaForm.presentations.split(",").map(p => parseInt(p.trim())).filter(p => !isNaN(p)),
+      caloriesPerUnit: parseFloat(formulaForm.caloriesPerUnit) || 0,
+      density: parseFloat(formulaForm.density) || 0,
+      proteinPerUnit: parseFloat(formulaForm.proteinPerUnit) || 0,
+      proteinPct: parseFloat(formulaForm.proteinPct) || undefined,
+      carbPct: parseFloat(formulaForm.carbPct) || undefined,
+      fatPct: parseFloat(formulaForm.fatPct) || undefined,
+      fiberPerUnit: parseFloat(formulaForm.fiberPerUnit) || undefined,
+      billingUnit: formulaForm.billingUnit,
+      billingPrice: parseFloat(formulaForm.billingPrice) || undefined,
+      isActive: true,
+    };
+
+    try {
+      if (editingFormula?.id) {
+        await updateFormula(editingFormula.id, formulaData);
+        toast.success("Fórmula atualizada com sucesso!");
+      } else {
+        await createFormula(formulaData);
+        toast.success("Fórmula criada com sucesso!");
+      }
+      setIsNewFormulaOpen(false);
+      resetFormulaForm();
+    } catch (error) {
+      console.error("Error saving formula:", error);
+      toast.error("Erro ao salvar fórmula");
+    }
+  };
+
+  const handleDeleteFormula = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta fórmula?")) return;
+    try {
+      await deleteFormula(id);
+      toast.success("Fórmula excluída com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao excluir fórmula");
+    }
+  };
+
+  const handleEditModule = (module: Module) => {
+    setEditingModule(module);
+    setModuleForm({
+      name: module.name,
+      density: module.density?.toString() || "",
+      referenceAmount: module.referenceAmount?.toString() || "",
+      referenceTimesPerDay: module.referenceTimesPerDay?.toString() || "",
+      calories: module.calories?.toString() || "",
+      protein: module.protein?.toString() || "",
+      sodium: module.sodium?.toString() || "",
+      potassium: module.potassium?.toString() || "",
+      fiber: module.fiber?.toString() || "",
+      freeWater: module.freeWater?.toString() || "",
+      billingUnit: module.billingUnit || "g",
+      billingPrice: module.billingPrice?.toString() || "",
+    });
+    setIsNewModuleOpen(true);
+  };
+
+  const handleSaveModule = async () => {
+    if (!moduleForm.name) {
+      toast.error("Preencha o nome do módulo");
+      return;
+    }
+
+    const moduleData = {
+      name: moduleForm.name,
+      density: parseFloat(moduleForm.density) || 0,
+      referenceAmount: parseFloat(moduleForm.referenceAmount) || 0,
+      referenceTimesPerDay: parseFloat(moduleForm.referenceTimesPerDay) || 0,
+      calories: parseFloat(moduleForm.calories) || 0,
+      protein: parseFloat(moduleForm.protein) || 0,
+      sodium: parseFloat(moduleForm.sodium) || 0,
+      potassium: parseFloat(moduleForm.potassium) || 0,
+      fiber: parseFloat(moduleForm.fiber) || 0,
+      freeWater: parseFloat(moduleForm.freeWater) || 0,
+      billingUnit: moduleForm.billingUnit,
+      billingPrice: parseFloat(moduleForm.billingPrice) || undefined,
+      isActive: true,
+    };
+
+    try {
+      if (editingModule?.id) {
+        await updateModule(editingModule.id, moduleData);
+        toast.success("Módulo atualizado com sucesso!");
+      } else {
+        await createModule(moduleData);
+        toast.success("Módulo criado com sucesso!");
+      }
+      setIsNewModuleOpen(false);
+      resetModuleForm();
+    } catch (error) {
+      console.error("Error saving module:", error);
+      toast.error("Erro ao salvar módulo");
+    }
+  };
+
+  const handleDeleteModule = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este módulo?")) return;
+    try {
+      await deleteModule(id);
+      toast.success("Módulo excluído com sucesso!");
+    } catch (error) {
+      toast.error("Erro ao excluir módulo");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -47,22 +270,281 @@ const Formulas = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Catálogo de Nutrição</h1>
-            <p className="text-muted-foreground">Fórmulas Enterais e Módulos</p>
+            <p className="text-muted-foreground">Fórmulas Enterais e Módulos - Banco de Dados Local</p>
           </div>
-          <Dialog open={isNewFormulaOpen} onOpenChange={setIsNewFormulaOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                Nova Fórmula
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Cadastrar Nova Fórmula</DialogTitle>
-              </DialogHeader>
-              <FormulaForm onSubmit={handleCreateFormula} onCancel={() => setIsNewFormulaOpen(false)} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex gap-2">
+            {/* New Formula Dialog */}
+            <Dialog open={isNewFormulaOpen} onOpenChange={(open) => {
+              setIsNewFormulaOpen(open);
+              if (!open) resetFormulaForm();
+            }}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Nova Fórmula
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingFormula ? 'Editar' : 'Cadastrar Nova'} Fórmula</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Código *</Label>
+                      <Input
+                        value={formulaForm.code}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, code: e.target.value })}
+                        placeholder="Ex: FTNEA06"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Nome Comercial *</Label>
+                      <Input
+                        value={formulaForm.name}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, name: e.target.value })}
+                        placeholder="Ex: Novasource Senior"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Fabricante</Label>
+                      <Input
+                        value={formulaForm.manufacturer}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })}
+                        placeholder="Ex: Nestlé"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Tipo</Label>
+                      <Select
+                        value={formulaForm.type}
+                        onValueChange={(val: Formula['type']) => setFormulaForm({ ...formulaForm, type: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="standard">Padrão</SelectItem>
+                          <SelectItem value="high-protein">Hiperproteica</SelectItem>
+                          <SelectItem value="high-calorie">Hipercalórica</SelectItem>
+                          <SelectItem value="diabetic">Diabética</SelectItem>
+                          <SelectItem value="renal">Renal</SelectItem>
+                          <SelectItem value="peptide">Peptídica</SelectItem>
+                          <SelectItem value="fiber">Com Fibras</SelectItem>
+                          <SelectItem value="immune">Imunomoduladora</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Sistema</Label>
+                      <Select
+                        value={formulaForm.systemType}
+                        onValueChange={(val: Formula['systemType']) => setFormulaForm({ ...formulaForm, systemType: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Aberto</SelectItem>
+                          <SelectItem value="closed">Fechado</SelectItem>
+                          <SelectItem value="both">Ambos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <Label>Kcal/100ml</Label>
+                      <Input
+                        type="number"
+                        value={formulaForm.caloriesPerUnit}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, caloriesPerUnit: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Densidade (kcal/ml)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={formulaForm.density}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, density: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Proteína/100ml (g)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={formulaForm.proteinPerUnit}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, proteinPerUnit: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fibras/100ml (g)</Label>
+                      <Input
+                        type="number"
+                        step="0.1"
+                        value={formulaForm.fiberPerUnit}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, fiberPerUnit: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>% Proteínas (VET)</Label>
+                      <Input
+                        type="number"
+                        value={formulaForm.proteinPct}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, proteinPct: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>% Carboidratos (VET)</Label>
+                      <Input
+                        type="number"
+                        value={formulaForm.carbPct}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, carbPct: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>% Lipídeos (VET)</Label>
+                      <Input
+                        type="number"
+                        value={formulaForm.fatPct}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, fatPct: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Apresentações (mL)</Label>
+                      <Input
+                        value={formulaForm.presentations}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })}
+                        placeholder="100, 200, 500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Unid. Faturamento</Label>
+                      <Select
+                        value={formulaForm.billingUnit}
+                        onValueChange={(val: Formula['billingUnit']) => setFormulaForm({ ...formulaForm, billingUnit: val })}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ml">mL</SelectItem>
+                          <SelectItem value="g">g</SelectItem>
+                          <SelectItem value="unit">Unidade</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Valor (R$)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={formulaForm.billingPrice}
+                        onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleSaveFormula} className="w-full mt-4">
+                    {editingFormula ? 'Salvar Alterações' : 'Criar Fórmula'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* New Module Dialog */}
+            <Dialog open={isNewModuleOpen} onOpenChange={(open) => {
+              setIsNewModuleOpen(open);
+              if (!open) resetModuleForm();
+            }}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Novo Módulo
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingModule ? 'Editar' : 'Cadastrar Novo'} Módulo</DialogTitle>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label>Nome *</Label>
+                    <Input
+                      value={moduleForm.name}
+                      onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })}
+                      placeholder="Ex: Fresubin Protein"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Densidade (kcal/g)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={moduleForm.density}
+                        onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Qtd Referência</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.referenceAmount}
+                        onChange={(e) => setModuleForm({ ...moduleForm, referenceAmount: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Vezes/Dia</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.referenceTimesPerDay}
+                        onChange={(e) => setModuleForm({ ...moduleForm, referenceTimesPerDay: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="space-y-2">
+                      <Label>Kcal/dose</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.calories}
+                        onChange={(e) => setModuleForm({ ...moduleForm, calories: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Proteína/dose (g)</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.protein}
+                        onChange={(e) => setModuleForm({ ...moduleForm, protein: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fibra/dose (g)</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.fiber}
+                        onChange={(e) => setModuleForm({ ...moduleForm, fiber: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Água Livre (mL)</Label>
+                      <Input
+                        type="number"
+                        value={moduleForm.freeWater}
+                        onChange={(e) => setModuleForm({ ...moduleForm, freeWater: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleSaveModule} className="w-full mt-4">
+                    {editingModule ? 'Salvar Alterações' : 'Criar Módulo'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="flex items-center space-x-2 mb-4">
@@ -79,124 +561,166 @@ const Formulas = () => {
 
         <Tabs defaultValue="formulas" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="formulas">Fórmulas Enterais</TabsTrigger>
-            <TabsTrigger value="modules">Módulos</TabsTrigger>
+            <TabsTrigger value="formulas">Fórmulas Enterais ({filteredFormulas.length})</TabsTrigger>
+            <TabsTrigger value="modules">Módulos ({filteredModules.length})</TabsTrigger>
           </TabsList>
 
-          {/* Tab Fórmulas - Visão Geral Simplificada */}
+          {/* Tab Fórmulas */}
           <TabsContent value="formulas">
             <Card>
               <CardHeader>
                 <CardTitle>Fórmulas Enterais</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Fórmula Enteral (Nome + Código)</TableHead>
-                        <TableHead className="text-center font-semibold">Unid. Faturamento</TableHead>
-                        <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
-                        <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
-                        <TableHead className="text-center font-semibold">% Proteínas</TableHead>
-                        <TableHead className="text-center font-semibold">% Carboidratos</TableHead>
-                        <TableHead className="text-center font-semibold">% Lipídeos</TableHead>
-                        <TableHead className="text-center font-semibold">Fibras/100ml</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredFormulas.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            Nenhuma fórmula encontrada
-                          </TableCell>
+                {formulasLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Carregando fórmulas...</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-semibold">Fórmula (Nome + Código)</TableHead>
+                          <TableHead className="text-center font-semibold">Unid.</TableHead>
+                          <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
+                          <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
+                          <TableHead className="text-center font-semibold">% Proteínas</TableHead>
+                          <TableHead className="text-center font-semibold">% Carbs</TableHead>
+                          <TableHead className="text-center font-semibold">% Lipídeos</TableHead>
+                          <TableHead className="text-center font-semibold">Fibras/100ml</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ) : (
-                        filteredFormulas.map((f) => (
-                          <TableRow key={f.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">
-                              {f.name} <span className="text-xs text-muted-foreground">({f.code || '-'})</span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                                {f.billingUnit === 'ml' ? 'mL' : f.billingUnit === 'g' ? 'g' : f.billingUnit === 'unit' ? 'Unid' : 'mL'}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {f.billingPrice ? f.billingPrice.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell className="text-center font-medium">
-                              {f.composition.density?.toFixed(2) || (f.composition.calories / 100).toFixed(2)} kcal/ml
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {f.composition.proteinPct ? `${f.composition.proteinPct}%` : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {f.composition.carbohydratesPct ? `${f.composition.carbohydratesPct}%` : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {f.composition.fatPct ? `${f.composition.fatPct}%` : '-'}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {f.composition.fiber ? `${f.composition.fiber}g` : '-'}
+                      </TableHeader>
+                      <TableBody>
+                        {filteredFormulas.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                              Nenhuma fórmula encontrada
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        ) : (
+                          filteredFormulas.map((f) => (
+                            <TableRow key={f.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">
+                                {f.name} <span className="text-xs text-muted-foreground">({f.code || '-'})</span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+                                  {f.billingUnit === 'ml' ? 'mL' : f.billingUnit === 'g' ? 'g' : 'Unid'}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {f.billingPrice ? f.billingPrice.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-center font-medium">
+                                {f.density?.toFixed(2) || (f.caloriesPerUnit / 100).toFixed(2)} kcal/ml
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {f.proteinPct ? `${f.proteinPct}%` : '-'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {f.carbPct ? `${f.carbPct}%` : '-'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {f.fatPct ? `${f.fatPct}%` : '-'}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {f.fiberPerUnit ? `${f.fiberPerUnit}g` : '-'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="ghost" size="icon" onClick={() => handleEditFormula(f)}>
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive"
+                                    onClick={() => f.id && handleDeleteFormula(f.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Tab Módulos - Visão Geral Simplificada */}
+          {/* Tab Módulos */}
           <TabsContent value="modules">
             <Card>
               <CardHeader>
                 <CardTitle>Módulos para Nutrição Enteral</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="font-semibold">Módulo (Nome)</TableHead>
-                        <TableHead className="text-center font-semibold">Unid. Faturamento</TableHead>
-                        <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
-                        <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
-                        <TableHead className="text-center font-semibold">Proteína/dose</TableHead>
-                        <TableHead className="text-center font-semibold">Kcal/dose</TableHead>
-                        <TableHead className="text-center font-semibold">Fibras/dose</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredModules.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                            Nenhum módulo encontrado
-                          </TableCell>
+                {modulesLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Carregando módulos...</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="font-semibold">Módulo (Nome)</TableHead>
+                          <TableHead className="text-center font-semibold">Unid.</TableHead>
+                          <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
+                          <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
+                          <TableHead className="text-center font-semibold">Proteína/dose</TableHead>
+                          <TableHead className="text-center font-semibold">Kcal/dose</TableHead>
+                          <TableHead className="text-center font-semibold">Fibras/dose</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
-                      ) : (
-                        filteredModules.map((m) => (
-                          <TableRow key={m.id} className="hover:bg-muted/30">
-                            <TableCell className="font-medium">{m.name}</TableCell>
-                            <TableCell className="text-center">
-                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
-                                g
-                              </span>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredModules.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                              Nenhum módulo encontrado
                             </TableCell>
-                            <TableCell className="text-center">-</TableCell>
-                            <TableCell className="text-center font-medium">{m.density.toFixed(2)} kcal/g</TableCell>
-                            <TableCell className="text-center">{m.protein}g</TableCell>
-                            <TableCell className="text-center">{m.calories} kcal</TableCell>
-                            <TableCell className="text-center">{m.fiber}g</TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        ) : (
+                          filteredModules.map((m) => (
+                            <TableRow key={m.id} className="hover:bg-muted/30">
+                              <TableCell className="font-medium">{m.name}</TableCell>
+                              <TableCell className="text-center">
+                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                                  {m.billingUnit || 'g'}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {m.billingPrice ? m.billingPrice.toFixed(2) : '-'}
+                              </TableCell>
+                              <TableCell className="text-center font-medium">{m.density?.toFixed(2) || '-'} kcal/g</TableCell>
+                              <TableCell className="text-center">{m.protein || '-'}g</TableCell>
+                              <TableCell className="text-center">{m.calories || '-'} kcal</TableCell>
+                              <TableCell className="text-center">{m.fiber || '-'}g</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="ghost" size="icon" onClick={() => handleEditModule(m)}>
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive"
+                                    onClick={() => m.id && handleDeleteModule(m.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

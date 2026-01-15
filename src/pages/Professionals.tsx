@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,114 +21,68 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Plus, Search, UserCog, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import BottomNav from "@/components/BottomNav";
-import { supabase } from "@/lib/supabase";
-
-interface Professional {
-    id: string;
-    name: string;
-    role: 'manager' | 'nutritionist' | 'technician';
-    registration_number: string;
-    cpf: string;
-    crn?: string;
-    managing_unit?: string;
-}
+import Header from "@/components/Header";
+import { useProfessionals } from "@/hooks/useDatabase";
+import { Professional } from "@/lib/database";
 
 const Professionals = () => {
-    const [professionals, setProfessionals] = useState<Professional[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { professionals, isLoading, createProfessional, updateProfessional, deleteProfessional } = useProfessionals();
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
     const [currentProfessional, setCurrentProfessional] = useState<Partial<Professional>>({});
 
-    useEffect(() => {
-        fetchProfessionals();
-    }, []);
-
-    const fetchProfessionals = async () => {
-        setIsLoading(true);
-        try {
-            // Check if Supabase is configured
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                // Mock data if no backend
-                setProfessionals([
-                    { id: '1', name: 'Ana Silva', role: 'nutritionist', registration_number: '12345', cpf: '111.222.333-44', crn: 'CRN-1234' },
-                    { id: '2', name: 'Carlos Souza', role: 'technician', registration_number: '67890', cpf: '555.666.777-88' },
-                ]);
-                setIsLoading(false);
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from('professionals')
-                .select('*')
-                .order('name');
-
-            if (error) throw error;
-            setProfessionals(data || []);
-        } catch (error) {
-            console.error('Error fetching professionals:', error);
-            toast.error("Erro ao carregar profissionais");
-        } finally {
-            setIsLoading(false);
-        }
+    const resetForm = () => {
+        setCurrentProfessional({});
+        setEditingProfessional(null);
     };
 
     const handleSave = async () => {
-        if (!currentProfessional.name || !currentProfessional.role || !currentProfessional.registration_number) {
+        if (!currentProfessional.name || !currentProfessional.role || !currentProfessional.registrationNumber) {
             toast.error("Preencha os campos obrigatórios");
             return;
         }
 
         try {
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                // Mock save
-                if (currentProfessional.id) {
-                    setProfessionals(professionals.map(p => p.id === currentProfessional.id ? { ...p, ...currentProfessional } as Professional : p));
-                } else {
-                    setProfessionals([...professionals, { ...currentProfessional, id: Date.now().toString() } as Professional]);
-                }
-                toast.success("Profissional salvo (Mock)");
-                setIsDialogOpen(false);
-                return;
-            }
+            const professionalData = {
+                name: currentProfessional.name!,
+                role: currentProfessional.role!,
+                registrationNumber: currentProfessional.registrationNumber!,
+                cpf: currentProfessional.cpf,
+                crn: currentProfessional.crn,
+                cpe: currentProfessional.cpe,
+                managingUnit: currentProfessional.managingUnit,
+                isActive: true,
+            };
 
-            if (currentProfessional.id) {
-                const { error } = await supabase
-                    .from('professionals')
-                    .update(currentProfessional)
-                    .eq('id', currentProfessional.id);
-                if (error) throw error;
+            if (editingProfessional?.id) {
+                await updateProfessional(editingProfessional.id, professionalData);
+                toast.success("Profissional atualizado com sucesso!");
             } else {
-                const { error } = await supabase
-                    .from('professionals')
-                    .insert([currentProfessional]);
-                if (error) throw error;
+                await createProfessional(professionalData);
+                toast.success("Profissional cadastrado com sucesso!");
             }
 
-            toast.success("Profissional salvo com sucesso!");
             setIsDialogOpen(false);
-            fetchProfessionals();
+            resetForm();
         } catch (error) {
             console.error('Error saving professional:', error);
             toast.error("Erro ao salvar profissional");
         }
     };
 
+    const handleEdit = (professional: Professional) => {
+        setEditingProfessional(professional);
+        setCurrentProfessional({ ...professional });
+        setIsDialogOpen(true);
+    };
+
     const handleDelete = async (id: string) => {
         if (!confirm("Tem certeza que deseja excluir este profissional?")) return;
 
         try {
-            if (!import.meta.env.VITE_SUPABASE_URL) {
-                setProfessionals(professionals.filter(p => p.id !== id));
-                toast.success("Profissional excluído (Mock)");
-                return;
-            }
-
-            const { error } = await supabase.from('professionals').delete().eq('id', id);
-            if (error) throw error;
-
+            await deleteProfessional(id);
             toast.success("Profissional excluído com sucesso!");
-            fetchProfessionals();
         } catch (error) {
             console.error('Error deleting professional:', error);
             toast.error("Erro ao excluir profissional");
@@ -137,27 +91,31 @@ const Professionals = () => {
 
     const filteredProfessionals = professionals.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.registration_number.includes(searchTerm)
+        p.registrationNumber.includes(searchTerm)
     );
 
     return (
         <div className="min-h-screen bg-background pb-20">
+            <Header />
             <div className="container py-6 space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Profissionais</h1>
-                        <p className="text-muted-foreground">Gerencie a equipe da unidade</p>
+                        <p className="text-muted-foreground">Gerencie a equipe da unidade - Dados Locais</p>
                     </div>
-                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                        setIsDialogOpen(open);
+                        if (!open) resetForm();
+                    }}>
                         <DialogTrigger asChild>
-                            <Button onClick={() => setCurrentProfessional({})}>
+                            <Button onClick={() => resetForm()}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 Novo Profissional
                             </Button>
                         </DialogTrigger>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>{currentProfessional.id ? 'Editar' : 'Novo'} Profissional</DialogTitle>
+                                <DialogTitle>{editingProfessional ? 'Editar' : 'Novo'} Profissional</DialogTitle>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <div className="grid gap-2">
@@ -165,6 +123,7 @@ const Professionals = () => {
                                     <Input
                                         value={currentProfessional.name || ''}
                                         onChange={e => setCurrentProfessional({ ...currentProfessional, name: e.target.value })}
+                                        placeholder="Nome completo"
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
@@ -172,7 +131,9 @@ const Professionals = () => {
                                         <Label>Função *</Label>
                                         <Select
                                             value={currentProfessional.role}
-                                            onValueChange={(val: any) => setCurrentProfessional({ ...currentProfessional, role: val })}
+                                            onValueChange={(val: 'manager' | 'nutritionist' | 'technician') =>
+                                                setCurrentProfessional({ ...currentProfessional, role: val })
+                                            }
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Selecione" />
@@ -187,8 +148,9 @@ const Professionals = () => {
                                     <div className="grid gap-2">
                                         <Label>Matrícula *</Label>
                                         <Input
-                                            value={currentProfessional.registration_number || ''}
-                                            onChange={e => setCurrentProfessional({ ...currentProfessional, registration_number: e.target.value })}
+                                            value={currentProfessional.registrationNumber || ''}
+                                            onChange={e => setCurrentProfessional({ ...currentProfessional, registrationNumber: e.target.value })}
+                                            placeholder="Número de matrícula"
                                         />
                                     </div>
                                 </div>
@@ -198,6 +160,7 @@ const Professionals = () => {
                                         <Input
                                             value={currentProfessional.cpf || ''}
                                             onChange={e => setCurrentProfessional({ ...currentProfessional, cpf: e.target.value })}
+                                            placeholder="000.000.000-00"
                                         />
                                     </div>
                                     <div className="grid gap-2">
@@ -205,10 +168,31 @@ const Professionals = () => {
                                         <Input
                                             value={currentProfessional.crn || ''}
                                             onChange={e => setCurrentProfessional({ ...currentProfessional, crn: e.target.value })}
+                                            placeholder="CRN-0000"
                                         />
                                     </div>
                                 </div>
-                                <Button onClick={handleSave} className="w-full mt-4">Salvar</Button>
+                                {currentProfessional.role === 'manager' && (
+                                    <div className="grid gap-2">
+                                        <Label>CPE (Código do Gestor)</Label>
+                                        <Input
+                                            value={currentProfessional.cpe || ''}
+                                            onChange={e => setCurrentProfessional({ ...currentProfessional, cpe: e.target.value })}
+                                            placeholder="Código CPE"
+                                        />
+                                    </div>
+                                )}
+                                <div className="grid gap-2">
+                                    <Label>Unidade de Trabalho</Label>
+                                    <Input
+                                        value={currentProfessional.managingUnit || ''}
+                                        onChange={e => setCurrentProfessional({ ...currentProfessional, managingUnit: e.target.value })}
+                                        placeholder="Ex: UTI Adulto"
+                                    />
+                                </div>
+                                <Button onClick={handleSave} className="w-full mt-4">
+                                    {editingProfessional ? 'Salvar Alterações' : 'Cadastrar Profissional'}
+                                </Button>
                             </div>
                         </DialogContent>
                     </Dialog>
@@ -233,17 +217,19 @@ const Professionals = () => {
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Função</TableHead>
                                     <TableHead>Matrícula</TableHead>
+                                    <TableHead>CRN</TableHead>
+                                    <TableHead>Unidade</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : filteredProfessionals.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                             Nenhum profissional encontrado
                                         </TableCell>
                                     </TableRow>
@@ -257,19 +243,28 @@ const Professionals = () => {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                {professional.role === 'manager' ? 'Gestor' :
-                                                    professional.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'}
+                                                <span className={`px-2 py-1 rounded text-xs font-medium ${professional.role === 'manager' ? 'bg-purple-100 text-purple-800' :
+                                                        professional.role === 'nutritionist' ? 'bg-green-100 text-green-800' :
+                                                            'bg-blue-100 text-blue-800'
+                                                    }`}>
+                                                    {professional.role === 'manager' ? 'Gestor' :
+                                                        professional.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'}
+                                                </span>
                                             </TableCell>
-                                            <TableCell>{professional.registration_number}</TableCell>
+                                            <TableCell>{professional.registrationNumber}</TableCell>
+                                            <TableCell>{professional.crn || '-'}</TableCell>
+                                            <TableCell>{professional.managingUnit || '-'}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
-                                                    <Button variant="ghost" size="icon" onClick={() => {
-                                                        setCurrentProfessional(professional);
-                                                        setIsDialogOpen(true);
-                                                    }}>
+                                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(professional)}>
                                                         <Edit className="h-4 w-4" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(professional.id)}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="text-destructive"
+                                                        onClick={() => professional.id && handleDelete(professional.id)}
+                                                    >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>

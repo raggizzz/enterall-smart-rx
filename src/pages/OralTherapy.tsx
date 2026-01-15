@@ -1,0 +1,681 @@
+/**
+ * OralTherapy Page
+ * Página para prescrição de Dieta Oral / Terapia Nutricional Via Oral
+ */
+
+import { useState, useEffect, useMemo } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    UtensilsCrossed,
+    Mic,
+    Plus,
+    Trash2,
+    Save,
+    Calculator,
+    ArrowLeft
+} from "lucide-react";
+import { toast } from "sonner";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import Header from "@/components/Header";
+import BottomNav from "@/components/BottomNav";
+import {
+    OralTherapy as OralTherapyType,
+    OralSupplementSchedule,
+    OralModuleSchedule,
+    Patient,
+    Formula,
+    Module
+} from "@/lib/database";
+import { usePatients, useFormulas, useModules } from "@/hooks/useDatabase";
+
+const MEAL_SCHEDULES = [
+    { key: 'breakfast', label: 'Desjejum' },
+    { key: 'midMorning', label: 'Colação' },
+    { key: 'lunch', label: 'Almoço' },
+    { key: 'afternoon', label: 'Merenda' },
+    { key: 'dinner', label: 'Jantar' },
+    { key: 'supper', label: 'Ceia' },
+];
+
+export default function OralTherapyPage() {
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const patientId = searchParams.get('patient');
+
+    const { patients } = usePatients();
+    const { formulas } = useFormulas();
+    const { modules } = useModules();
+
+    const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+
+    // Form state
+    const [dietConsistency, setDietConsistency] = useState('');
+    const [dietCharacteristics, setDietCharacteristics] = useState('');
+    const [mealsPerDay, setMealsPerDay] = useState<number>(6);
+
+    // Fonoaudiologia
+    const [speechTherapy, setSpeechTherapy] = useState(false);
+    const [needsThickener, setNeedsThickener] = useState(false);
+    const [safeConsistency, setSafeConsistency] = useState('');
+
+    // Estimativas
+    const [estimatedVET, setEstimatedVET] = useState<number>(0);
+    const [estimatedProtein, setEstimatedProtein] = useState<number>(0);
+
+    // Terapia nutricional oral
+    const [hasOralTherapy, setHasOralTherapy] = useState(false);
+    const [supplements, setSupplements] = useState<OralSupplementSchedule[]>([]);
+    const [oralModules, setOralModules] = useState<OralModuleSchedule[]>([]);
+    const [observations, setObservations] = useState('');
+
+    // Load patient
+    useEffect(() => {
+        if (patientId && patients.length > 0) {
+            const patient = patients.find(p => p.id === patientId);
+            if (patient) {
+                setSelectedPatient(patient);
+            }
+        }
+    }, [patientId, patients]);
+
+    // Get oral supplements (formulas marked as supplements)
+    const availableSupplements = useMemo(() => {
+        return formulas.filter(f =>
+            f.type === 'standard' || f.type === 'high-protein' || f.type === 'high-calorie'
+        );
+    }, [formulas]);
+
+    // Calculate totals from supplements and modules
+    const oralTotals = useMemo(() => {
+        let kcal = estimatedVET;
+        let protein = estimatedProtein;
+
+        supplements.forEach(sup => {
+            const formula = formulas.find(f => f.id === sup.supplementId);
+            if (!formula) return;
+
+            // Count selected meals
+            const timesPerDay = Object.values(sup.schedules).filter(v => v === true).length;
+            // Assume 200ml per serving for supplements
+            const volumePerServing = 200;
+            const factor = (volumePerServing * timesPerDay) / 100;
+
+            kcal += (formula.caloriesPerUnit || 0) * factor;
+            protein += (formula.proteinPerUnit || 0) * factor;
+        });
+
+        oralModules.forEach(om => {
+            const module = modules.find(m => m.id === om.moduleId);
+            if (!module) return;
+
+            const timesPerDay = Object.values(om.schedules).filter(v => v === true).length;
+
+            kcal += (module.calories || 0) * timesPerDay;
+            protein += (module.protein || 0) * timesPerDay;
+        });
+
+        return {
+            kcal,
+            protein,
+            kcalPerKg: selectedPatient?.weight ? kcal / selectedPatient.weight : 0,
+            proteinPerKg: selectedPatient?.weight ? protein / selectedPatient.weight : 0,
+        };
+    }, [estimatedVET, estimatedProtein, supplements, oralModules, formulas, modules, selectedPatient]);
+
+    // Add supplement
+    const addSupplement = () => {
+        if (supplements.length >= 3) {
+            toast.error("Máximo de 3 suplementos");
+            return;
+        }
+        setSupplements([
+            ...supplements,
+            { supplementId: '', supplementName: '', schedules: {} }
+        ]);
+    };
+
+    // Remove supplement
+    const removeSupplement = (index: number) => {
+        setSupplements(supplements.filter((_, i) => i !== index));
+    };
+
+    // Update supplement
+    const updateSupplement = (index: number, field: string, value: any) => {
+        const updated = [...supplements];
+        if (field === 'supplementId') {
+            const formula = formulas.find(f => f.id === value);
+            updated[index] = {
+                ...updated[index],
+                supplementId: value,
+                supplementName: formula?.name || ''
+            };
+        } else if (field.startsWith('schedule_')) {
+            const scheduleKey = field.replace('schedule_', '');
+            updated[index] = {
+                ...updated[index],
+                schedules: {
+                    ...updated[index].schedules,
+                    [scheduleKey]: value
+                }
+            };
+        } else if (field === 'other') {
+            updated[index] = {
+                ...updated[index],
+                schedules: {
+                    ...updated[index].schedules,
+                    other: value
+                }
+            };
+        }
+        setSupplements(updated);
+    };
+
+    // Add module
+    const addModule = () => {
+        if (oralModules.length >= 3) {
+            toast.error("Máximo de 3 módulos");
+            return;
+        }
+        setOralModules([
+            ...oralModules,
+            { moduleId: '', moduleName: '', schedules: {} }
+        ]);
+    };
+
+    // Remove module
+    const removeModule = (index: number) => {
+        setOralModules(oralModules.filter((_, i) => i !== index));
+    };
+
+    // Update module
+    const updateModule = (index: number, field: string, value: any) => {
+        const updated = [...oralModules];
+        if (field === 'moduleId') {
+            const module = modules.find(m => m.id === value);
+            updated[index] = {
+                ...updated[index],
+                moduleId: value,
+                moduleName: module?.name || ''
+            };
+        } else if (field.startsWith('schedule_')) {
+            const scheduleKey = field.replace('schedule_', '');
+            updated[index] = {
+                ...updated[index],
+                schedules: {
+                    ...updated[index].schedules,
+                    [scheduleKey]: value
+                }
+            };
+        } else if (field === 'other') {
+            updated[index] = {
+                ...updated[index],
+                schedules: {
+                    ...updated[index].schedules,
+                    other: value
+                }
+            };
+        }
+        setOralModules(updated);
+    };
+
+    const handleSave = async () => {
+        if (!selectedPatient) {
+            toast.error("Selecione um paciente");
+            return;
+        }
+
+        // Here you would save the oral therapy data
+        // For now, just show success
+        toast.success("Prescrição de dieta oral salva!");
+        navigate('/patients');
+    };
+
+    if (!patientId) {
+        return (
+            <div className="min-h-screen bg-background pb-20">
+                <Header />
+                <div className="container py-6">
+                    <Card>
+                        <CardContent className="py-12 text-center">
+                            <p className="text-muted-foreground mb-4">Selecione um paciente para prescrever dieta oral</p>
+                            <Button onClick={() => navigate('/patients')}>
+                                <ArrowLeft className="h-4 w-4 mr-2" />
+                                Ir para Pacientes
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+                <BottomNav />
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-background pb-20">
+            <Header />
+            <div className="container py-6 space-y-6">
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                    <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div>
+                        <h1 className="text-2xl font-bold">Dieta Oral / TNO</h1>
+                        <p className="text-muted-foreground">
+                            {selectedPatient?.name} - Prontuário: {selectedPatient?.record}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Total Via Oral - Sempre Visível */}
+                <Card className="border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-orange-700">
+                            <Calculator className="h-5 w-5" />
+                            Total Ofertado Via Oral
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                <div className="text-3xl font-bold text-orange-600">
+                                    {oralTotals.kcal.toFixed(0)}
+                                </div>
+                                <div className="text-sm text-muted-foreground">kcal/dia</div>
+                                {oralTotals.kcalPerKg > 0 && (
+                                    <div className="text-lg font-semibold text-orange-700 mt-1">
+                                        {oralTotals.kcalPerKg.toFixed(1)} kcal/kg
+                                    </div>
+                                )}
+                            </div>
+                            <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                                <div className="text-3xl font-bold text-blue-600">
+                                    {oralTotals.protein.toFixed(1)}
+                                </div>
+                                <div className="text-sm text-muted-foreground">g proteínas/dia</div>
+                                {oralTotals.proteinPerKg > 0 && (
+                                    <div className="text-lg font-semibold text-blue-700 mt-1">
+                                        {oralTotals.proteinPerKg.toFixed(2)} g/kg
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Dados da Dieta */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <UtensilsCrossed className="h-5 w-5" />
+                            Dados da Dieta Oral
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Consistência da dieta</Label>
+                                <Input
+                                    value={dietConsistency}
+                                    onChange={(e) => setDietConsistency(e.target.value)}
+                                    placeholder="Ex: Branda, Pastosa, Líquida"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Quantidade de refeições por dia</Label>
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    max="12"
+                                    value={mealsPerDay}
+                                    onChange={(e) => setMealsPerDay(parseInt(e.target.value) || 6)}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Características</Label>
+                            <Textarea
+                                value={dietCharacteristics}
+                                onChange={(e) => setDietCharacteristics(e.target.value)}
+                                placeholder="Ex: Hipossódica, Hipoglicídica, Rica em fibras..."
+                                rows={2}
+                            />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Acompanhamento Fonoaudiológico */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Mic className="h-5 w-5" />
+                            Acompanhamento Fonoaudiológico
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center gap-4">
+                            <Label>Acompanhamento fonoaudiológico?</Label>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="speechNo"
+                                    checked={!speechTherapy}
+                                    onCheckedChange={() => setSpeechTherapy(false)}
+                                />
+                                <Label htmlFor="speechNo" className="font-normal">Não</Label>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    id="speechYes"
+                                    checked={speechTherapy}
+                                    onCheckedChange={() => setSpeechTherapy(true)}
+                                />
+                                <Label htmlFor="speechYes" className="font-normal">Sim</Label>
+                            </div>
+                        </div>
+
+                        {speechTherapy && (
+                            <div className="pl-4 border-l-2 border-blue-200 space-y-4">
+                                <div className="flex items-center gap-4">
+                                    <Label>Necessidade de espessante alimentar?</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox
+                                            checked={!needsThickener}
+                                            onCheckedChange={() => setNeedsThickener(false)}
+                                        />
+                                        <span className="text-sm">Não</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Checkbox
+                                            checked={needsThickener}
+                                            onCheckedChange={() => setNeedsThickener(true)}
+                                        />
+                                        <span className="text-sm">Sim</span>
+                                    </div>
+                                </div>
+
+                                {needsThickener && (
+                                    <div className="space-y-2">
+                                        <Label>Consistência segura</Label>
+                                        <Input
+                                            value={safeConsistency}
+                                            onChange={(e) => setSafeConsistency(e.target.value)}
+                                            placeholder="Ex: Néctar, Mel, Pudim"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Estimativas */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Estimativas da Dieta</CardTitle>
+                        <CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Valor energético total estimado (kcal)</Label>
+                                <Input
+                                    type="number"
+                                    value={estimatedVET || ''}
+                                    onChange={(e) => setEstimatedVET(parseInt(e.target.value) || 0)}
+                                    placeholder="Ex: 1500"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Quantidade de proteínas (g/dia)</Label>
+                                <Input
+                                    type="number"
+                                    value={estimatedProtein || ''}
+                                    onChange={(e) => setEstimatedProtein(parseInt(e.target.value) || 0)}
+                                    placeholder="Ex: 60"
+                                />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Terapia Nutricional Oral */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Terapia Nutricional Via Oral</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center gap-4">
+                            <Label>Terapia nutricional via oral?</Label>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    checked={!hasOralTherapy}
+                                    onCheckedChange={() => setHasOralTherapy(false)}
+                                />
+                                <span className="text-sm">Não</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    checked={hasOralTherapy}
+                                    onCheckedChange={() => setHasOralTherapy(true)}
+                                />
+                                <span className="text-sm">Sim</span>
+                            </div>
+                        </div>
+
+                        {hasOralTherapy && (
+                            <div className="space-y-6 pt-4">
+                                {/* Suplementos */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-lg font-semibold">Suplementos</Label>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={addSupplement}
+                                            disabled={supplements.length >= 3}
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" />
+                                            Adicionar ({supplements.length}/3)
+                                        </Button>
+                                    </div>
+
+                                    {supplements.map((sup, index) => (
+                                        <Card key={index} className="border-dashed">
+                                            <CardContent className="pt-4 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <Badge>Suplemento {index + 1}</Badge>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => removeSupplement(index)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+
+                                                <Select
+                                                    value={sup.supplementId}
+                                                    onValueChange={(val) => updateSupplement(index, 'supplementId', val)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Selecione o suplemento" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {availableSupplements.map(f => (
+                                                            <SelectItem key={f.id} value={f.id!}>
+                                                                {f.name} - {f.caloriesPerUnit}kcal/100ml
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm">Horários</Label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {MEAL_SCHEDULES.map(meal => (
+                                                            <div key={meal.key} className="flex items-center gap-1">
+                                                                <Checkbox
+                                                                    checked={sup.schedules[meal.key as keyof typeof sup.schedules] === true}
+                                                                    onCheckedChange={(checked) =>
+                                                                        updateSupplement(index, `schedule_${meal.key}`, !!checked)
+                                                                    }
+                                                                />
+                                                                <span className="text-sm">{meal.label}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <Checkbox
+                                                            checked={!!sup.schedules.other}
+                                                            onCheckedChange={(checked) =>
+                                                                updateSupplement(index, 'other', checked ? '' : undefined)
+                                                            }
+                                                        />
+                                                        <span className="text-sm">Outro:</span>
+                                                        {sup.schedules.other !== undefined && (
+                                                            <Input
+                                                                value={sup.schedules.other || ''}
+                                                                onChange={(e) => updateSupplement(index, 'other', e.target.value)}
+                                                                placeholder="Ex: 22h"
+                                                                className="w-40"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+
+                                <Separator />
+
+                                {/* Módulos */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-lg font-semibold">Módulos</Label>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={addModule}
+                                            disabled={oralModules.length >= 3}
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" />
+                                            Adicionar ({oralModules.length}/3)
+                                        </Button>
+                                    </div>
+
+                                    {oralModules.map((om, index) => (
+                                        <Card key={index} className="border-dashed">
+                                            <CardContent className="pt-4 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <Badge variant="secondary">Módulo {index + 1}</Badge>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => removeModule(index)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+
+                                                <Select
+                                                    value={om.moduleId}
+                                                    onValueChange={(val) => updateModule(index, 'moduleId', val)}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Selecione o módulo" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {modules.map(m => (
+                                                            <SelectItem key={m.id} value={m.id!}>
+                                                                {m.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm">Horários</Label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {MEAL_SCHEDULES.map(meal => (
+                                                            <div key={meal.key} className="flex items-center gap-1">
+                                                                <Checkbox
+                                                                    checked={om.schedules[meal.key as keyof typeof om.schedules] === true}
+                                                                    onCheckedChange={(checked) =>
+                                                                        updateModule(index, `schedule_${meal.key}`, !!checked)
+                                                                    }
+                                                                />
+                                                                <span className="text-sm">{meal.label}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <Checkbox
+                                                            checked={!!om.schedules.other}
+                                                            onCheckedChange={(checked) =>
+                                                                updateModule(index, 'other', checked ? '' : undefined)
+                                                            }
+                                                        />
+                                                        <span className="text-sm">Outro:</span>
+                                                        {om.schedules.other !== undefined && (
+                                                            <Input
+                                                                value={om.schedules.other || ''}
+                                                                onChange={(e) => updateModule(index, 'other', e.target.value)}
+                                                                placeholder="Ex: 22h"
+                                                                className="w-40"
+                                                            />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+
+                                <Separator />
+
+                                {/* Observações */}
+                                <div className="space-y-2">
+                                    <Label>Observações</Label>
+                                    <Textarea
+                                        value={observations}
+                                        onChange={(e) => setObservations(e.target.value)}
+                                        placeholder="Preferências, alergias alimentares, aceitação..."
+                                        rows={4}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Salvar */}
+                <Button onClick={handleSave} className="w-full" size="lg">
+                    <Save className="h-4 w-4 mr-2" />
+                    Salvar Prescrição de Dieta Oral
+                </Button>
+            </div>
+            <BottomNav />
+        </div>
+    );
+}

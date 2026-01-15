@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import DatabaseProvider from "@/components/DatabaseProvider";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -18,6 +19,10 @@ import Billing from "./pages/Billing";
 import Labels from "./pages/Labels";
 import OralMap from "./pages/OralMap";
 import DietPrescription from "./pages/DietPrescription";
+import Settings from "./pages/Settings";
+import OralTherapy from "./pages/OralTherapy";
+import ParenteralTherapy from "./pages/ParenteralTherapy";
+import PatientMonitoringPage from "./pages/PatientMonitoringPage";
 import NotFound from "./pages/NotFound";
 
 
@@ -28,27 +33,33 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/patients" element={<Patients />} />
-          <Route path="/prescription" element={<PrescriptionNew />} />
-          <Route path="/prescription-new" element={<PrescriptionNew />} />
-          <Route path="/ai-recommendations" element={<AIRecommendations />} />
-          <Route path="/formulas" element={<Formulas />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/professionals" element={<Professionals />} />
-          <Route path="/supplies" element={<Supplies />} />
-          <Route path="/billing" element={<Billing />} />
-          <Route path="/labels" element={<Labels />} />
-          <Route path="/oral-map" element={<OralMap />} />
-          <Route path="/diet-prescription" element={<DietPrescription />} />
-          <Route path="/select-route" element={<Route />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <DatabaseProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Login />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/patients" element={<Patients />} />
+            <Route path="/prescription" element={<PrescriptionNew />} />
+            <Route path="/prescription-new" element={<PrescriptionNew />} />
+            <Route path="/ai-recommendations" element={<AIRecommendations />} />
+            <Route path="/formulas" element={<Formulas />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/professionals" element={<Professionals />} />
+            <Route path="/supplies" element={<Supplies />} />
+            <Route path="/billing" element={<Billing />} />
+            <Route path="/labels" element={<Labels />} />
+            <Route path="/oral-map" element={<OralMap />} />
+            <Route path="/diet-prescription" element={<DietPrescription />} />
+            <Route path="/oral-therapy" element={<OralTherapy />} />
+            <Route path="/parenteral-therapy" element={<ParenteralTherapy />} />
+            <Route path="/patient-monitoring" element={<PatientMonitoringPage />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/select-route" element={<Route />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </DatabaseProvider>
     </TooltipProvider>
   </QueryClientProvider>
 

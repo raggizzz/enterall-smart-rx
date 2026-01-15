@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User } from "lucide-react";
+import { ptBR } from "date-fns/locale";
+import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import LabelPreview from "@/components/LabelPreview";
+import { usePrescriptions, usePatients, useClinics, useSettings } from "@/hooks/useDatabase";
 
 // Horários disponíveis das dietas
 const SCHEDULE_TIMES = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00"];
@@ -24,70 +24,47 @@ const Labels = () => {
     const [selectedTimes, setSelectedTimes] = useState<string[]>([...SCHEDULE_TIMES]);
     const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
 
-    // Mock data - pacientes com prescrições
-    const prescriptions = [
-        {
-            id: "1",
-            patientName: "Maria Silva",
-            bed: "01",
-            dob: "15/03/1965",
-            clinic: "uti-adulto",
-            formulaName: "Nutrison Energy 1.5",
-            totalVolume: 1000,
-            infusionRate: "83 ml/h",
-            route: "SNE",
-            manipulationDate: format(new Date(), "dd/MM/yyyy"),
-            validity: format(new Date(), "dd/MM/yyyy") + " 23:59",
-            conservation: "Refrigerar 2-8°C",
-            rtName: "Maria Santos",
-            rtCrn: "1234-5",
-            lot: "NE" + format(new Date(), "ddMMyyyy"),
-            systemType: "open" as const,
-            times: ["06:00", "09:00", "12:00", "18:00"]
-        },
-        {
-            id: "2",
-            patientName: "João Santos",
-            bed: "02",
-            dob: "20/05/1978",
-            clinic: "uti-adulto",
-            formulaName: "Fresubin HP 2.0",
-            totalVolume: 1200,
-            infusionRate: "100 ml/h",
-            route: "GTT",
-            manipulationDate: format(new Date(), "dd/MM/yyyy"),
-            validity: format(new Date(), "dd/MM/yyyy") + " 23:59",
-            conservation: "Refrigerar 2-8°C",
-            rtName: "Maria Santos",
-            rtCrn: "1234-5",
-            lot: "FH" + format(new Date(), "ddMMyyyy"),
-            systemType: "closed" as const,
-            times: ["09:00", "15:00", "21:00"]
-        },
-        {
-            id: "3",
-            patientName: "Ana Costa",
-            bed: "03",
-            dob: "10/08/2020",
-            clinic: "uti-pediatrica",
-            formulaName: "Infatrini",
-            totalVolume: 500,
-            infusionRate: "42 ml/h",
-            route: "SNE",
-            manipulationDate: format(new Date(), "dd/MM/yyyy"),
-            validity: format(new Date(), "dd/MM/yyyy") + " 23:59",
-            conservation: "Refrigerar 2-8°C",
-            rtName: "Maria Santos",
-            rtCrn: "1234-5",
-            lot: "INF" + format(new Date(), "ddMMyyyy"),
-            systemType: "open" as const,
-            times: ["06:00", "12:00", "18:00", "00:00"]
-        }
-    ];
+    const { prescriptions, isLoading: prescriptionsLoading } = usePrescriptions();
+    const { patients } = usePatients();
+    const { clinics } = useClinics();
+    const { settings } = useSettings();
 
-    // Filtrar prescrições
-    const filteredPrescriptions = prescriptions.filter(p => {
-        const matchClinic = clinic === "all" || p.clinic === clinic;
+    // Transform prescriptions to label data format
+    const labelData = useMemo(() => {
+        return prescriptions
+            .filter(p => p.status === 'active')
+            .map(prescription => {
+                const patient = patients.find(pt => pt.id === prescription.patientId);
+
+                // Get all schedules from formulas
+                const allSchedules = prescription.formulas?.flatMap(f => f.schedules || []) || [];
+                const uniqueSchedules = [...new Set(allSchedules)];
+
+                return {
+                    id: prescription.id || '',
+                    patientName: prescription.patientName || patient?.name || 'Paciente',
+                    bed: prescription.patientBed || patient?.bed || '-',
+                    dob: patient?.dob ? format(new Date(patient.dob), 'dd/MM/yyyy') : '-',
+                    clinic: prescription.patientWard || patient?.ward || 'UTI',
+                    formulaName: prescription.formulas?.[0]?.formulaName || 'Fórmula Enteral',
+                    totalVolume: prescription.totalVolume || 1000,
+                    infusionRate: prescription.totalVolume ? `${Math.round(prescription.totalVolume / 12)} ml/h` : '83 ml/h',
+                    route: prescription.feedingRoute || 'SNE',
+                    manipulationDate: format(new Date(), "dd/MM/yyyy"),
+                    validity: format(new Date(), "dd/MM/yyyy") + " 23:59",
+                    conservation: settings?.labelSettings?.defaultConservation || "Refrigerar 2-8°C",
+                    rtName: settings?.defaultSignatures?.rtName || "RT Nutrição",
+                    rtCrn: settings?.defaultSignatures?.rtCrn || "CRN-0000",
+                    lot: "LOT" + format(new Date(), "ddMMyyyy"),
+                    systemType: prescription.systemType as 'open' | 'closed',
+                    times: uniqueSchedules.length > 0 ? uniqueSchedules : ["06:00", "12:00", "18:00"]
+                };
+            });
+    }, [prescriptions, patients, settings]);
+
+    // Filter prescriptions
+    const filteredPrescriptions = labelData.filter(p => {
+        const matchClinic = clinic === "all" || p.clinic.toLowerCase().includes(clinic.toLowerCase());
         const matchPatient = p.patientName.toLowerCase().includes(patientSearch.toLowerCase());
         const matchTimes = p.times.some(t => selectedTimes.includes(t));
         return matchClinic && matchPatient && matchTimes;
@@ -129,7 +106,10 @@ const Labels = () => {
                             <Tag className="h-6 w-6" />
                             Impressão de Rótulos/Etiquetas
                         </h1>
-                        <p className="text-muted-foreground">Geração de etiquetas para nutrição enteral</p>
+                        <p className="text-muted-foreground flex items-center gap-2">
+                            <Database className="h-4 w-4" />
+                            Geração de etiquetas baseada em prescrições do banco local
+                        </p>
                     </div>
                     <div className="flex gap-2">
                         <Button
@@ -163,6 +143,9 @@ const Labels = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">Todas as Unidades</SelectItem>
+                                        {clinics.map(c => (
+                                            <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                                        ))}
                                         <SelectItem value="uti-adulto">UTI Adulto</SelectItem>
                                         <SelectItem value="uti-pediatrica">UTI Pediátrica</SelectItem>
                                         <SelectItem value="enfermaria">Enfermaria</SelectItem>
@@ -197,11 +180,11 @@ const Labels = () => {
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                                             <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {date ? format(date, "dd/MM/yyyy") : <span>Selecione</span>}
+                                            {date ? format(date, "dd/MM/yyyy", { locale: ptBR }) : <span>Selecione</span>}
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0">
-                                        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                                        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus locale={ptBR} />
                                     </PopoverContent>
                                 </Popover>
                             </div>
@@ -225,8 +208,8 @@ const Labels = () => {
                                         key={time}
                                         onClick={() => toggleTime(time)}
                                         className={`px-3 py-2 rounded-lg text-center cursor-pointer transition-all border-2 ${selectedTimes.includes(time)
-                                                ? 'bg-primary text-primary-foreground border-primary'
-                                                : 'bg-muted/50 border-muted hover:border-primary/50'
+                                            ? 'bg-primary text-primary-foreground border-primary'
+                                            : 'bg-muted/50 border-muted hover:border-primary/50'
                                             }`}
                                     >
                                         <span className="text-sm font-medium">{time}</span>
@@ -243,7 +226,12 @@ const Labels = () => {
                         <div className="flex justify-between items-center">
                             <div>
                                 <CardTitle>Etiquetas Disponíveis</CardTitle>
-                                <CardDescription>{filteredPrescriptions.length} etiqueta(s) encontrada(s)</CardDescription>
+                                <CardDescription>
+                                    {prescriptionsLoading
+                                        ? 'Carregando prescrições...'
+                                        : `${filteredPrescriptions.length} etiqueta(s) encontrada(s)`
+                                    }
+                                </CardDescription>
                             </div>
                             <div className="flex gap-2">
                                 <Button variant="outline" size="sm" onClick={selectAllLabels}>
@@ -256,26 +244,33 @@ const Labels = () => {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {filteredPrescriptions.length === 0 ? (
-                            <p className="text-center py-8 text-muted-foreground">
-                                Nenhuma etiqueta encontrada para os filtros selecionados
-                            </p>
+                        {prescriptionsLoading ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                Carregando prescrições do banco de dados...
+                            </div>
+                        ) : filteredPrescriptions.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <p>Nenhuma etiqueta encontrada para os filtros selecionados</p>
+                                <p className="text-sm mt-2">
+                                    Crie prescrições ativas na página de Prescrições para gerar etiquetas.
+                                </p>
+                            </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {filteredPrescriptions.map(prescription => (
                                     <div
                                         key={prescription.id}
                                         className={`relative cursor-pointer transition-all ${selectedLabels.includes(prescription.id)
-                                                ? 'ring-2 ring-primary ring-offset-2'
-                                                : ''
+                                            ? 'ring-2 ring-primary ring-offset-2'
+                                            : ''
                                             }`}
                                         onClick={() => toggleLabel(prescription.id)}
                                     >
                                         {/* Checkbox overlay */}
                                         <div className="absolute top-2 right-2 z-10">
                                             <div className={`w-6 h-6 rounded-full flex items-center justify-center ${selectedLabels.includes(prescription.id)
-                                                    ? 'bg-primary text-white'
-                                                    : 'bg-white border-2 border-gray-300'
+                                                ? 'bg-primary text-white'
+                                                : 'bg-white border-2 border-gray-300'
                                                 }`}>
                                                 {selectedLabels.includes(prescription.id) && (
                                                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

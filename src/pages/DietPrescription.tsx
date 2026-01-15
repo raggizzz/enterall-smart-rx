@@ -10,22 +10,12 @@ import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ArrowLeft, Check, ChevronDown, ChevronRight, Droplet, Plus, Trash2, Utensils, Syringe, Calculator } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-
-// Tipos
-interface Patient {
-    id: string;
-    name: string;
-    weight: number;
-    height: number;
-    record: string;
-    dob: string;
-    bed: string;
-    ward: string;
-}
+import { usePatients } from "@/hooks/useDatabase";
+import { Patient } from "@/lib/database";
 
 interface FormulaEntry {
     id: string;
@@ -51,15 +41,14 @@ interface HydrationEntry {
 // Horários disponíveis
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 
-// Mock patients
-const mockPatients: Patient[] = [
-    { id: "1", name: "Antonio Pereira", weight: 75, height: 172, record: "2024001", dob: "10/01/1978", bed: "Leito 01", ward: "UTI-ADULTO" },
-    { id: "2", name: "Alicia Gomes", weight: 62, height: 165, record: "2024002", dob: "06/11/1981", bed: "Leito 02", ward: "UTI-ADULTO" },
-    { id: "3", name: "Renata Fortes", weight: 68, height: 160, record: "2024003", dob: "10/05/1980", bed: "Leito 03", ward: "UTI-ADULTO" },
-];
-
 const DietPrescription = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const patientIdFromUrl = searchParams.get('patient');
+
+    // Usar pacientes do banco de dados
+    const { patients, isLoading: patientsLoading } = usePatients();
+
     const availableFormulas = getAllFormulas();
     const availableModules = getAllModules();
 
@@ -80,7 +69,15 @@ const DietPrescription = () => {
     const [systemType, setSystemType] = useState<"open" | "closed" | "">("");
 
     // Sistema Fechado
-    const [closedFormula, setClosedFormula] = useState({ formulaId: "", infusionMode: "" as "pump" | "gravity" | "", rate: "", duration: "", bagVolume: "", bagTimes: [] as string[] });
+    const [closedFormula, setClosedFormula] = useState({
+        formulaId: "",
+        infusionMode: "" as "pump" | "gravity" | "",
+        rate: "",
+        duration: "",
+        bagVolume: "",
+        bagTimes: [] as string[],
+        equipmentVolume: "" // Volume de equipo (pediatria) - apenas fórmula líquida em bomba
+    });
 
     // Sistema Aberto
     const [openInfusionMode, setOpenInfusionMode] = useState<"pump" | "gravity" | "bolus" | "">("");
@@ -95,6 +92,18 @@ const DietPrescription = () => {
 
     // Resumo expandido
     const [showDetails, setShowDetails] = useState(false);
+
+    // Carregar paciente da URL se vier de outra página
+    useEffect(() => {
+        if (patientIdFromUrl && patients.length > 0) {
+            const patient = patients.find(p => p.id === patientIdFromUrl);
+            if (patient) {
+                setSelectedPatient(patient);
+                setCompletedSteps([1]);
+                setCurrentStep(2);
+            }
+        }
+    }, [patientIdFromUrl, patients]);
 
     // Funções de navegação
     const completeStep = (step: number) => {
@@ -190,19 +199,30 @@ const DietPrescription = () => {
 
         const rate = parseFloat(closedFormula.rate) || 0;
         const duration = parseFloat(closedFormula.duration) || 0;
-        let totalVolume = 0;
+        const equipVolume = parseFloat(closedFormula.equipmentVolume) || 0;
+
+        let totalVolumeForPatient = 0; // Volume que vai para o paciente (nutricional)
 
         if (closedFormula.infusionMode === "pump") {
-            totalVolume = rate * duration;
+            totalVolumeForPatient = rate * duration;
         } else if (closedFormula.infusionMode === "gravity") {
-            totalVolume = (rate / 20) * 60 * duration;
+            totalVolumeForPatient = (rate / 20) * 60 * duration;
         }
+
+        // Volume total a requisitar = Volume do paciente + Volume de equipo
+        const totalVolumeToRequest = totalVolumeForPatient + equipVolume;
 
         const formula = availableFormulas.find(f => f.id === closedFormula.formulaId);
         const bagSize = formula?.presentations[0] || 1000;
-        const numBags = Math.ceil(totalVolume / bagSize);
+        const numBags = Math.ceil(totalVolumeToRequest / bagSize);
 
-        return { totalVolume: Math.round(totalVolume), bagSize, numBags };
+        return {
+            totalVolumeForPatient: Math.round(totalVolumeForPatient), // Para cálculos nutricionais
+            totalVolumeToRequest: Math.round(totalVolumeToRequest), // Para requisição de materiais
+            equipmentVolume: Math.round(equipVolume),
+            bagSize,
+            numBags
+        };
     }, [closedFormula, systemType, availableFormulas]);
 
     // Handlers
@@ -302,6 +322,60 @@ const DietPrescription = () => {
                         {feedingRoutes.enteral && systemType && <StepIndicator step={6} title="Módulos (Opcional)" isActive={currentStep === 6} isCompleted={completedSteps.includes(6)} />}
                         {feedingRoutes.enteral && systemType && <StepIndicator step={7} title="Hidratação" isActive={currentStep === 7} isCompleted={completedSteps.includes(7)} />}
                         <StepIndicator step={8} title="Resumo" isActive={currentStep === 8} isCompleted={completedSteps.includes(8)} />
+
+                        {/* RESUMO NUTRICIONAL SEMPRE VISÍVEL */}
+                        {selectedPatient && currentStep > 1 && (
+                            <Card className="mt-4 border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10">
+                                <CardHeader className="pb-2 pt-3 px-3">
+                                    <CardTitle className="text-sm flex items-center gap-2 text-primary">
+                                        <Calculator className="h-4 w-4" />
+                                        Resumo em Tempo Real
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="pt-0 px-3 pb-3 space-y-2">
+                                    <div className="text-xs text-muted-foreground mb-2">
+                                        <strong>{selectedPatient.name}</strong>
+                                        <br />Peso: {selectedPatient.weight}kg
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-white rounded p-2 text-center shadow-sm">
+                                            <div className="text-lg font-bold text-orange-600">
+                                                {nutritionSummary.vet}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">kcal</div>
+                                            <div className="text-xs font-semibold text-orange-700">
+                                                {nutritionSummary.vetPerKg} kcal/kg
+                                            </div>
+                                        </div>
+                                        <div className="bg-white rounded p-2 text-center shadow-sm">
+                                            <div className="text-lg font-bold text-blue-600">
+                                                {nutritionSummary.protein}g
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">proteínas</div>
+                                            <div className="text-xs font-semibold text-blue-700">
+                                                {nutritionSummary.proteinPerKg} g/kg
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-white rounded p-2 text-center shadow-sm">
+                                            <div className="text-sm font-bold text-cyan-600">
+                                                {nutritionSummary.freeWater}ml
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">água livre</div>
+                                        </div>
+                                        <div className="bg-white rounded p-2 text-center shadow-sm">
+                                            <div className="text-sm font-bold text-green-600">
+                                                {nutritionSummary.residues}g
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">resíduos</div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     {/* Main Content */}
@@ -317,27 +391,36 @@ const DietPrescription = () => {
                                     <CardDescription>Escolha o paciente para iniciar a prescrição</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {mockPatients.map(patient => (
-                                            <Card key={patient.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedPatient?.id === patient.id ? "ring-2 ring-primary bg-primary/5" : ""}`} onClick={() => setSelectedPatient(patient)}>
-                                                <CardContent className="p-4">
-                                                    <div className="flex items-start justify-between">
-                                                        <div>
-                                                            <p className="font-semibold">{patient.name}</p>
-                                                            <p className="text-sm text-muted-foreground">Prontuário: {patient.record}</p>
-                                                            <p className="text-sm text-muted-foreground">{patient.bed} - {patient.ward}</p>
+                                    {patientsLoading ? (
+                                        <p className="text-center text-muted-foreground py-8">Carregando pacientes...</p>
+                                    ) : patients.filter(p => p.status === 'active').length === 0 ? (
+                                        <div className="text-center py-8">
+                                            <p className="text-muted-foreground mb-4">Nenhum paciente ativo cadastrado</p>
+                                            <Button onClick={() => navigate('/patients?action=add')}>Cadastrar Paciente</Button>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {patients.filter(p => p.status === 'active').map(patient => (
+                                                <Card key={patient.id} className={`cursor-pointer transition-all hover:shadow-md ${selectedPatient?.id === patient.id ? "ring-2 ring-primary bg-primary/5" : ""}`} onClick={() => setSelectedPatient(patient)}>
+                                                    <CardContent className="p-4">
+                                                        <div className="flex items-start justify-between">
+                                                            <div>
+                                                                <p className="font-semibold">{patient.name}</p>
+                                                                <p className="text-sm text-muted-foreground">Prontuário: {patient.record}</p>
+                                                                <p className="text-sm text-muted-foreground">{patient.bed || 'Sem leito'} - {patient.ward || '-'}</p>
+                                                            </div>
+                                                            {selectedPatient?.id === patient.id && <Check className="h-5 w-5 text-primary" />}
                                                         </div>
-                                                        {selectedPatient?.id === patient.id && <Check className="h-5 w-5 text-primary" />}
-                                                    </div>
-                                                    <Separator className="my-2" />
-                                                    <div className="grid grid-cols-2 gap-2 text-sm">
-                                                        <div><span className="text-muted-foreground">Peso:</span> {patient.weight} kg</div>
-                                                        <div><span className="text-muted-foreground">Altura:</span> {patient.height} cm</div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        ))}
-                                    </div>
+                                                        <Separator className="my-2" />
+                                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                                            <div><span className="text-muted-foreground">Peso:</span> {patient.weight || '-'} kg</div>
+                                                            <div><span className="text-muted-foreground">Altura:</span> {patient.height || '-'} cm</div>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    )}
                                     <div className="flex justify-end">
                                         <Button onClick={() => completeStep(1)} disabled={!canProceed(1)}>
                                             Próximo <ChevronRight className="ml-2 h-4 w-4" />
@@ -509,24 +592,88 @@ const DietPrescription = () => {
                                             <div className="space-y-2">
                                                 <Label>Velocidade de Infusão *</Label>
                                                 <div className="flex items-center gap-2">
-                                                    <Input type="number" value={closedFormula.rate} onChange={(e) => setClosedFormula({ ...closedFormula, rate: e.target.value })} placeholder={closedFormula.infusionMode === "pump" ? "Ex: 50" : "Ex: 20"} />
+                                                    <Input
+                                                        type="number"
+                                                        min="1"
+                                                        max={closedFormula.infusionMode === "pump" ? 300 : 100}
+                                                        value={closedFormula.rate}
+                                                        onChange={(e) => {
+                                                            const max = closedFormula.infusionMode === "pump" ? 300 : 100;
+                                                            const value = Math.min(parseFloat(e.target.value) || 0, max);
+                                                            setClosedFormula({ ...closedFormula, rate: value.toString() });
+                                                        }}
+                                                        placeholder={closedFormula.infusionMode === "pump" ? "Ex: 50" : "Ex: 20"}
+                                                    />
                                                     <span className="text-sm font-medium whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span>
                                                 </div>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Máx: {closedFormula.infusionMode === "pump" ? "300 ml/h" : "100 gotas/min"}
+                                                </p>
                                             </div>
                                             <div className="space-y-2">
                                                 <Label>Tempo de Infusão *</Label>
                                                 <div className="flex items-center gap-2">
-                                                    <Input type="number" value={closedFormula.duration} onChange={(e) => setClosedFormula({ ...closedFormula, duration: e.target.value })} placeholder="Ex: 22" />
+                                                    <Input
+                                                        type="number"
+                                                        min="1"
+                                                        max="24"
+                                                        value={closedFormula.duration}
+                                                        onChange={(e) => {
+                                                            const value = Math.min(parseFloat(e.target.value) || 0, 24);
+                                                            setClosedFormula({ ...closedFormula, duration: value.toString() });
+                                                        }}
+                                                        placeholder="Ex: 22"
+                                                    />
                                                     <span className="text-sm font-medium">horas/dia</span>
                                                 </div>
+                                                <p className="text-xs text-muted-foreground">Máx: 24 horas</p>
                                             </div>
                                         </div>
                                     )}
 
+                                    {/* Volume de Equipo - Apenas para fórmula líquida em bomba (pediatria) */}
+                                    {closedFormula.infusionMode === "pump" && closedFormula.formulaId && (() => {
+                                        const formula = availableFormulas.find(f => f.id === closedFormula.formulaId);
+                                        // Só mostra se a fórmula é líquida
+                                        if (formula?.presentationForm === "liquido") {
+                                            return (
+                                                <div className="p-4 border border-purple-200 bg-purple-50/50 rounded-lg space-y-2">
+                                                    <Label className="flex items-center gap-2 text-purple-700">
+                                                        💧 Volume de Equipo (Pediatria)
+                                                    </Label>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Volume do equipo para desconto no cálculo (não é descontado do paciente)
+                                                    </p>
+                                                    <div className="flex items-center gap-2 max-w-xs">
+                                                        <Input
+                                                            type="number"
+                                                            value={closedFormula.equipmentVolume}
+                                                            onChange={(e) => setClosedFormula({ ...closedFormula, equipmentVolume: e.target.value })}
+                                                            placeholder="Ex: 15"
+                                                        />
+                                                        <span className="text-sm font-medium">ml</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
+
                                     {/* Cálculo Automático */}
                                     {bagCalculation && (
                                         <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
-                                            <p className="font-semibold text-blue-800">Volume prescrito para 24 horas: {bagCalculation.totalVolume} ml</p>
+                                            <p className="font-semibold text-blue-800">
+                                                Volume para o paciente (24h): {bagCalculation.totalVolumeForPatient} ml
+                                            </p>
+                                            {bagCalculation.equipmentVolume > 0 && (
+                                                <p className="text-blue-700">
+                                                    Volume de equipo: +{bagCalculation.equipmentVolume} ml
+                                                </p>
+                                            )}
+                                            <p className="text-blue-700">
+                                                <strong>Volume total a requisitar: {bagCalculation.totalVolumeToRequest} ml</strong>
+                                            </p>
+                                            <hr className="border-blue-200" />
                                             <p className="text-blue-700">A fórmula solicitada possui {bagCalculation.bagSize} ml em cada bolsa</p>
                                             <p className="font-medium text-blue-800">Enviar: {bagCalculation.numBags} bolsa(s)</p>
                                         </div>

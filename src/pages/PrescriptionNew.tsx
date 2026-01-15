@@ -14,17 +14,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-
-interface Patient {
-  id: string;
-  name: string;
-  weight: number;
-  height: number;
-  record: string;
-  dob: string;
-  bed: string;
-  ward: string;
-}
+import { usePatients } from "@/hooks/useDatabase";
+import { Patient } from "@/lib/database";
 
 interface FormulaEntry {
   id: string;
@@ -49,16 +40,13 @@ interface HydrationEntry {
 
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 
-const mockPatients: Patient[] = [
-  { id: "1", name: "Antonio Pereira", weight: 75, height: 172, record: "2024001", dob: "10/01/1978", bed: "Leito 01", ward: "UTI-ADULTO" },
-  { id: "2", name: "Alicia Gomes", weight: 62, height: 165, record: "2024002", dob: "06/11/1981", bed: "Leito 02", ward: "UTI-ADULTO" },
-  { id: "3", name: "Renata Fortes", weight: 68, height: 160, record: "2024003", dob: "10/05/1980", bed: "Leito 03", ward: "UTI-ADULTO" },
-];
-
 const PrescriptionNew = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get("patient");
+
+  // Usar pacientes do banco de dados
+  const { patients, isLoading: patientsLoading } = usePatients();
 
   const availableFormulas = getAllFormulas();
   const availableModules = getAllModules();
@@ -104,15 +92,15 @@ const PrescriptionNew = () => {
 
   // Load patient from URL
   useEffect(() => {
-    if (patientId) {
-      const patient = mockPatients.find(p => p.id === patientId);
+    if (patientId && patients.length > 0) {
+      const patient = patients.find(p => p.id === patientId);
       if (patient) {
         setSelectedPatient(patient);
         setCompletedSteps([1]);
         setCurrentStep(2);
       }
     }
-  }, [patientId]);
+  }, [patientId, patients]);
 
   const completeStep = (step: number) => {
     if (!completedSteps.includes(step)) setCompletedSteps([...completedSteps, step]);
@@ -271,6 +259,81 @@ const PrescriptionNew = () => {
             {((feedingRoutes.enteral && systemType) || currentStep >= 6) && <StepIndicator step={6} title="Módulos (Opcional)" isActive={currentStep === 6} isCompleted={completedSteps.includes(6)} />}
             {((feedingRoutes.enteral && systemType) || currentStep >= 7) && <StepIndicator step={7} title="Hidratação" isActive={currentStep === 7} isCompleted={completedSteps.includes(7)} />}
             <StepIndicator step={8} title="Resumo" isActive={currentStep === 8} isCompleted={completedSteps.includes(8)} />
+
+            {/* RESUMO NUTRICIONAL SEMPRE VISÍVEL */}
+            {selectedPatient && currentStep > 1 && (
+              <Card className="mt-4 border-2 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10">
+                <CardHeader className="pb-2 pt-3 px-3">
+                  <CardTitle className="text-sm flex items-center gap-2 text-primary">
+                    <Calculator className="h-4 w-4" />
+                    Resumo em Tempo Real
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 px-3 pb-3 space-y-2">
+                  <div className="text-xs text-muted-foreground mb-2">
+                    <strong>{selectedPatient.name}</strong>
+                    <br />Peso: {selectedPatient.weight || '-'}kg
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded p-2 text-center shadow-sm">
+                      <div className="text-lg font-bold text-orange-600">
+                        {nutritionSummary.vet}
+                      </div>
+                      <div className="text-xs text-muted-foreground">kcal</div>
+                      <div className="text-xs font-semibold text-orange-700">
+                        {nutritionSummary.vetPerKg} kcal/kg
+                      </div>
+                    </div>
+                    <div className="bg-white rounded p-2 text-center shadow-sm">
+                      <div className="text-lg font-bold text-blue-600">
+                        {nutritionSummary.protein}g
+                      </div>
+                      <div className="text-xs text-muted-foreground">proteínas</div>
+                      <div className="text-xs font-semibold text-blue-700">
+                        {nutritionSummary.proteinPerKg} g/kg
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded p-2 text-center shadow-sm">
+                      <div className="text-sm font-bold text-cyan-600">
+                        {nutritionSummary.freeWater}ml
+                      </div>
+                      <div className="text-xs text-muted-foreground">água livre</div>
+                    </div>
+                    <div className="bg-white rounded p-2 text-center shadow-sm">
+                      <div className="text-sm font-bold text-green-600">
+                        0g
+                      </div>
+                      <div className="text-xs text-muted-foreground">resíduos</div>
+                    </div>
+                  </div>
+
+                  {/* Info das vias selecionadas */}
+                  <div className="pt-2 border-t mt-2">
+                    <div className="text-xs text-muted-foreground">
+                      <strong>Vias:</strong>{' '}
+                      {feedingRoutes.oral && <span className="text-green-600">Oral </span>}
+                      {feedingRoutes.enteral && <span className="text-purple-600">Enteral </span>}
+                      {feedingRoutes.parenteral && <span className="text-orange-600">Parenteral</span>}
+                      {!feedingRoutes.oral && !feedingRoutes.enteral && !feedingRoutes.parenteral && '-'}
+                    </div>
+                    {enteralAccess && (
+                      <div className="text-xs text-muted-foreground">
+                        <strong>Acesso:</strong> {enteralAccess}
+                      </div>
+                    )}
+                    {systemType && (
+                      <div className="text-xs text-muted-foreground">
+                        <strong>Sistema:</strong> {systemType === 'closed' ? 'Fechado' : 'Aberto'}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Main Content */}
@@ -280,17 +343,26 @@ const PrescriptionNew = () => {
               <Card>
                 <CardHeader><CardTitle>1. Selecionar Paciente</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {mockPatients.map(p => (
-                      <Card key={p.id} className={`cursor-pointer hover:shadow-md ${selectedPatient?.id === p.id ? "ring-2 ring-primary bg-primary/5" : ""}`} onClick={() => setSelectedPatient(p)}>
-                        <CardContent className="p-4">
-                          <div className="flex justify-between"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-muted-foreground">{p.record} - {p.bed}</p></div>{selectedPatient?.id === p.id && <Check className="h-5 w-5 text-primary" />}</div>
-                          <Separator className="my-2" />
-                          <div className="grid grid-cols-2 gap-2 text-sm"><div>Peso: {p.weight}kg</div><div>Altura: {p.height}cm</div></div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                  {patientsLoading ? (
+                    <p className="text-center text-muted-foreground py-8">Carregando pacientes...</p>
+                  ) : patients.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-4">Nenhum paciente cadastrado</p>
+                      <Button onClick={() => navigate('/patients?action=add')}>Cadastrar Paciente</Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {patients.filter(p => p.status === 'active').map(p => (
+                        <Card key={p.id} className={`cursor-pointer hover:shadow-md ${selectedPatient?.id === p.id ? "ring-2 ring-primary bg-primary/5" : ""}`} onClick={() => setSelectedPatient(p)}>
+                          <CardContent className="p-4">
+                            <div className="flex justify-between"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-muted-foreground">{p.record} - {p.bed || 'Sem leito'}</p></div>{selectedPatient?.id === p.id && <Check className="h-5 w-5 text-primary" />}</div>
+                            <Separator className="my-2" />
+                            <div className="grid grid-cols-2 gap-2 text-sm"><div>Peso: {p.weight || '-'}kg</div><div>Altura: {p.height || '-'}cm</div></div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-end"><Button onClick={() => completeStep(1)} disabled={!canProceed(1)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
@@ -312,12 +384,22 @@ const PrescriptionNew = () => {
                     <Button variant="outline" onClick={() => setCurrentStep(1)}>Voltar</Button>
                     <Button onClick={() => {
                       if (!completedSteps.includes(2)) setCompletedSteps([...completedSteps, 2]);
+
+                      // Lógica de navegação baseada nas vias selecionadas
                       if (feedingRoutes.enteral) {
+                        // Se tem enteral, continua no wizard
                         setCurrentStep(3);
-                      } else {
-                        // Oral ou Parenteral sem Enteral - por enquanto vai pro resumo
-                        toast.info("Fluxo detalhado para Oral/Parenteral em desenvolvimento. Avançando para resumo.");
-                        setCurrentStep(8);
+                      } else if (feedingRoutes.oral && !feedingRoutes.parenteral) {
+                        // Apenas Oral → vai para página de Oral
+                        navigate(`/oral-therapy?patient=${selectedPatient?.id}`);
+                      } else if (feedingRoutes.parenteral && !feedingRoutes.oral) {
+                        // Apenas Parenteral → vai para página de Parenteral
+                        navigate(`/parenteral-therapy?patient=${selectedPatient?.id}`);
+                      } else if (feedingRoutes.oral && feedingRoutes.parenteral) {
+                        // Oral + Parenteral (sem enteral)
+                        toast.info("Para prescrição combinada Oral + Parenteral, configure cada uma separadamente.");
+                        // Vai para Oral primeiro
+                        navigate(`/oral-therapy?patient=${selectedPatient?.id}`);
                       }
                     }} disabled={!canProceed(2)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
                   </div>
