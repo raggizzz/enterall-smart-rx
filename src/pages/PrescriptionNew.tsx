@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-import { usePatients } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions } from "@/hooks/useDatabase";
 import { Patient } from "@/lib/database";
 
 interface FormulaEntry {
@@ -45,8 +45,10 @@ const PrescriptionNew = () => {
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get("patient");
 
-  // Usar pacientes do banco de dados
+  // Usar pacientes e prescrições do banco de dados
   const { patients, isLoading: patientsLoading } = usePatients();
+  const { createPrescription } = usePrescriptions();
+  const [isSaving, setIsSaving] = useState(false);
 
   const availableFormulas = getAllFormulas();
   const availableModules = getAllModules();
@@ -225,7 +227,65 @@ const PrescriptionNew = () => {
     setClosedFormula({ ...closedFormula, bagQuantities: newQuantities });
   };
 
-  const handleSave = () => { toast.success("Prescrição salva com sucesso!"); navigate("/dashboard"); };
+  const handleSave = async () => {
+    if (!selectedPatient) {
+      toast.error("Nenhum paciente selecionado");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Montar objeto da prescrição
+      const prescriptionData = {
+        patientId: selectedPatient.id!,
+        patientName: selectedPatient.name,
+        patientRecord: selectedPatient.record,
+        patientBed: selectedPatient.bed,
+        patientWard: selectedPatient.ward,
+        therapyType: feedingRoutes.enteral ? 'enteral' as const : feedingRoutes.oral ? 'oral' as const : 'parenteral' as const,
+        systemType: (systemType || 'open') as 'open' | 'closed',
+        feedingRoute: enteralAccess || undefined,
+        infusionMode: (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) as 'pump' | 'gravity' | 'bolus' | undefined,
+        infusionRateMlH: systemType === 'closed' ? parseFloat(closedFormula.rate) || undefined : undefined,
+        infusionHoursPerDay: systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : undefined,
+        formulas: systemType === 'closed' && closedFormula.formulaId ? [{
+          formulaId: closedFormula.formulaId,
+          formulaName: availableFormulas.find(f => f.id === closedFormula.formulaId)?.name || '',
+          volume: parseFloat(closedFormula.rate) * parseFloat(closedFormula.duration) || 0,
+          timesPerDay: Object.keys(closedFormula.bagQuantities).length || 1,
+          schedules: Object.keys(closedFormula.bagQuantities)
+        }] : openFormulas.filter(f => f.formulaId).map(f => ({
+          formulaId: f.formulaId,
+          formulaName: availableFormulas.find(af => af.id === f.formulaId)?.name || '',
+          volume: parseFloat(f.volume) || 0,
+          timesPerDay: f.times.length,
+          schedules: f.times
+        })),
+        modules: modules.filter(m => m.moduleId).map(m => ({
+          moduleId: m.moduleId,
+          moduleName: availableModules.find(am => am.id === m.moduleId)?.name || '',
+          amount: parseFloat(m.quantity) || 0,
+          timesPerDay: m.times.length
+        })),
+        hydrationVolume: parseFloat(hydration.volume) || undefined,
+        hydrationSchedules: hydration.times.length > 0 ? hydration.times : undefined,
+        totalCalories: nutritionSummary.vet,
+        totalProtein: nutritionSummary.protein,
+        totalFreeWater: nutritionSummary.freeWater,
+        status: 'active' as const,
+        startDate: new Date().toISOString().split('T')[0]
+      };
+
+      await createPrescription(prescriptionData);
+      toast.success("Prescrição salva com sucesso!");
+      navigate("/dashboard");
+    } catch (error) {
+      console.error('Erro ao salvar prescrição:', error);
+      toast.error("Erro ao salvar prescrição. Verifique a conexão.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const StepIndicator = ({ step, title, isActive, isCompleted }: { step: number; title: string; isActive: boolean; isCompleted: boolean }) => (
     <div className={`flex items-center gap-3 p-3 rounded-lg transition-all cursor-pointer ${isActive ? "bg-primary/10 border-2 border-primary" : isCompleted ? "bg-green-50 border border-green-200" : "bg-muted/50"}`} onClick={() => isCompleted && setCurrentStep(step)}>
@@ -556,7 +616,7 @@ const PrescriptionNew = () => {
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">0g</p><p className="text-xs font-medium mt-1">Resíduos Recicláveis</p></div>
                   </div>
                   <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p><p><strong>Sistema:</strong> {systemType === "closed" ? "Fechado" : systemType === "open" ? "Aberto" : "-"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Fórmula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusão:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{modules.length > 0 && <p><strong>Módulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}</CollapsibleContent></Collapsible>
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(feedingRoutes.enteral ? 7 : 2)}>Voltar</Button><Button onClick={handleSave} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />Salvar Prescrição</Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(feedingRoutes.enteral ? 7 : 2)}>Voltar</Button><Button onClick={handleSave} disabled={isSaving} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />{isSaving ? "Salvando..." : "Salvar Prescrição"}</Button></div>
                 </CardContent>
               </Card>
             )}
