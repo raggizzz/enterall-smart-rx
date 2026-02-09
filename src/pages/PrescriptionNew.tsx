@@ -366,12 +366,27 @@ const PrescriptionNew = () => {
       toast.error("Nenhum paciente selecionado");
       return;
     }
+    if (!selectedPatient.id) {
+      toast.error("Paciente sem identificador no banco");
+      return;
+    }
+
+    const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+    const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
+    const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
+
+    if (!resolvedHospitalId) {
+      toast.error("Hospital da sessao nao identificado. Refaça o login.");
+      return;
+    }
 
     setIsSaving(true);
     try {
       // Montar objeto da prescricao
       const prescriptionData = {
-        patientId: selectedPatient.id!,
+        hospitalId: resolvedHospitalId,
+        professionalId: sessionProfessionalId,
+        patientId: selectedPatient.id,
         patientName: selectedPatient.name,
         patientRecord: selectedPatient.record,
         patientBed: selectedPatient.bed,
@@ -422,7 +437,11 @@ const PrescriptionNew = () => {
       navigate("/dashboard");
     } catch (error) {
       console.error('Erro ao salvar prescricao:', error);
-      toast.error("Erro ao salvar prescricao. Verifique a conexao.");
+      const message =
+        typeof error === "object" && error && "message" in error
+          ? String((error as { message?: string }).message)
+          : "Verifique a conexao e as migracoes do banco";
+      toast.error(`Erro ao salvar prescricao: ${message}`);
     } finally {
       setIsSaving(false);
     }

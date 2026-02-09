@@ -83,7 +83,7 @@ const Login = () => {
     });
 
     if (user) {
-      if (!user.isActive) {
+      if (user.isActive === false) {
         toast.error("Usuario inativo. Contate o gestor.");
         return;
       }

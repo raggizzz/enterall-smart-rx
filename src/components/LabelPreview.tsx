@@ -1,104 +1,68 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import logo from "@/assets/logoenmeta.png";
+﻿import logo from "@/assets/logoenmeta.png";
 
-interface LabelData {
+export interface LabelData {
+    id: string;
+    clinic: string;
+    templateTitle: string;
     patientName: string;
     bed: string;
+    record: string;
     dob: string;
-    formulaName: string;
-    totalVolume: number;
-    infusionRate: string;
+    scheduleTime?: string;
+    infusionRate?: string;
     route: string;
+    formulaText?: string;
+    compositionText?: string;
+    volumeText?: string;
     manipulationDate: string;
-    validity: string;
-    conservation: string;
+    manipulationTime?: string;
+    validityText: string;
+    controlText?: string;
+    conservationText?: string;
     rtName: string;
     rtCrn: string;
-    lot: string;
-    systemType: 'open' | 'closed';
 }
 
 const LabelPreview = ({ data }: { data: LabelData }) => {
     return (
-        <div className="w-[400px] border-2 border-black p-4 bg-white text-black font-sans text-sm">
-            <div className="flex items-center gap-2 border-b-2 border-black pb-2 mb-2">
-                <img src={logo} alt="ENMeta" className="h-8 w-auto" />
-                <div className="flex-1 text-center font-bold text-lg">NUTRI??O ENTERAL</div>
+        <article className="w-[63.5mm] h-[46.6mm] border border-black bg-white text-black p-[2.2mm] overflow-hidden text-[10px] leading-[1.1] font-sans print:shadow-none shadow-sm">
+            <header className="flex items-start justify-between mb-[1.3mm]">
+                <div className="flex items-center gap-[1.2mm] min-w-0">
+                    <img src={logo} alt="ENMeta" className="h-[5mm] w-auto shrink-0" />
+                    <p className="font-semibold uppercase tracking-tight truncate">{data.templateTitle}</p>
+                </div>
+                {data.scheduleTime && (
+                    <span className="border border-black px-[1.1mm] py-[0.3mm] text-[9px] font-bold leading-none shrink-0">
+                        {data.scheduleTime}
+                    </span>
+                )}
+            </header>
+
+            <div className="space-y-[0.7mm]">
+                <p className="font-bold">Leito: {data.bed} Paciente: {data.patientName}</p>
+                <p className="font-bold">Registro: {data.record}</p>
+                <p>Data de nasc: {data.dob}</p>
+
+                {data.infusionRate && <p className="font-bold">Velocidade de infusao: {data.infusionRate}</p>}
+                <p className="font-bold">Via: {data.route}</p>
+
+                {data.formulaText && <p>Formula: {data.formulaText}</p>}
+                {data.compositionText && <p>Composicao: {data.compositionText}</p>}
+                {data.volumeText && <p>Volume: {data.volumeText}</p>}
+
+                <p>
+                    Data manip: {data.manipulationDate}
+                    {data.manipulationTime ? ` Horario manip: ${data.manipulationTime}` : ""}
+                </p>
+
+                <p>{data.validityText}</p>
+                {data.controlText && <p>Controle: {data.controlText}</p>}
+                {data.conservationText && <p>{data.conservationText}</p>}
+                <p>Resp tecnico: {data.rtName} ({data.rtCrn})</p>
             </div>
-
-            <div className="space-y-2">
-                <div className="grid grid-cols-[100px_1fr] gap-2">
-                    <span className="font-bold">NOME:</span>
-                    <span className="uppercase">{data.patientName}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="grid grid-cols-[50px_1fr] gap-2">
-                        <span className="font-bold">LEITO:</span>
-                        <span>{data.bed}</span>
-                    </div>
-                    <div className="grid grid-cols-[50px_1fr] gap-2">
-                        <span className="font-bold">NASC:</span>
-                        <span>{data.dob}</span>
-                    </div>
-                </div>
-
-                <Separator className="bg-black my-2" />
-
-                <div className="grid grid-cols-[100px_1fr] gap-2">
-                    <span className="font-bold">DIETA:</span>
-                    <span className="uppercase font-bold">{data.formulaName}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <span className="font-bold block">VOLUME TOTAL:</span>
-                        <span className="text-lg">{data.totalVolume} ml</span>
-                    </div>
-                    <div>
-                        <span className="font-bold block">VELOCIDADE:</span>
-                        <span>{data.infusionRate}</span>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-[100px_1fr] gap-2">
-                    <span className="font-bold">VIA ADM:</span>
-                    <span className="uppercase">{data.route}</span>
-                </div>
-
-                <Separator className="bg-black my-2" />
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <span className="font-bold block">MANIPULAÇÃO:</span>
-                        <span>{data.manipulationDate}</span>
-                    </div>
-                    <div>
-                        <span className="font-bold block">VALIDADE:</span>
-                        <span className="font-bold text-red-600">{data.validity}</span>
-                    </div>
-                </div>
-
-                <div>
-                    <span className="font-bold block">CONSERVAÇÃO:</span>
-                    <span>{data.conservation}</span>
-                </div>
-
-                <Separator className="bg-black my-2" />
-
-                <div className="grid grid-cols-[50px_1fr] gap-2">
-                    <span className="font-bold">RT:</span>
-                    <span>{data.rtName} - CRN: {data.rtCrn}</span>
-                </div>
-
-                <div className="grid grid-cols-[50px_1fr] gap-2">
-                    <span className="font-bold">LOTE:</span>
-                    <span>{data.lot}</span>
-                </div>
-            </div>
-        </div>
+        </article>
     );
 };
 
 export default LabelPreview;
+

@@ -16,7 +16,6 @@ import {
     Calculator,
     ArrowLeft,
     Save,
-    Activity,
     AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
@@ -58,18 +57,6 @@ export default function ParenteralTherapyPage() {
             }
         }
     }, [patientId, patients]);
-
-    // Calculate TIG (Taxa de Infusao de Glicose)
-    // Formula: (glicose_g/kg/dia * 1000) / 60 / tempo_infusao
-    // Resultado em mg/kg/min
-    const tig = useMemo(() => {
-        if (!selectedPatient?.weight || !infusionTime || !glucoseG) return 0;
-
-        const glucosePerKg = glucoseG / selectedPatient.weight;
-        const tigValue = (glucosePerKg * 1000) / 60 / infusionTime;
-
-        return tigValue;
-    }, [glucoseG, selectedPatient?.weight, infusionTime]);
 
     // Calculate per kg values
     const perKgValues = useMemo(() => {
@@ -191,23 +178,6 @@ export default function ParenteralTherapyPage() {
                             </div>
                         </div>
 
-                        {/* TIG */}
-                        <div className="p-4 rounded-lg border-2 bg-blue-50 border-blue-200">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Activity className="h-5 w-5" />
-                                    <span className="font-semibold">Taxa de Infusao de Glicose (TIG)</span>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-2xl font-bold">
-                                        {tig.toFixed(2)} <span className="text-sm font-normal">mg/kg/min</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-2">
-                                A TIG varia com perfil clinico e faixa etaria.
-                            </p>
-                        </div>
                     </CardContent>
                 </Card>
 
@@ -260,7 +230,7 @@ export default function ParenteralTherapyPage() {
                     <CardHeader>
                         <CardTitle>Tempo de Infusao da Bolsa</CardTitle>
                         <CardDescription>
-                            Usado para calculo da TIG (Taxa de Infusao de Glicose)
+                            Defina o tempo total de infusao da bolsa
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

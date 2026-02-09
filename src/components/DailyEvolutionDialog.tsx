@@ -60,6 +60,12 @@ export function DailyEvolutionDialog({
             toast.error("Paciente invalido para evolucao");
             return;
         }
+        const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+        const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
+        if (!sessionHospitalId) {
+            toast.error("Hospital da sessao nao identificado. Refaça o login.");
+            return;
+        }
 
         if (!infusedVolume) {
             toast.error("Informe o volume infundido");
@@ -73,6 +79,8 @@ export function DailyEvolutionDialog({
                 : intercurrences;
 
             await createEvolution({
+                hospitalId: sessionHospitalId,
+                professionalId: sessionProfessionalId,
                 patientId,
                 prescriptionId,
                 date: new Date().toISOString().slice(0, 10),
@@ -88,7 +96,11 @@ export function DailyEvolutionDialog({
             setNotes("");
         } catch (error) {
             console.error("Erro ao salvar evolucao:", error);
-            toast.error("Erro ao salvar evolucao");
+            const message =
+                typeof error === "object" && error && "message" in error
+                    ? String((error as { message?: string }).message)
+                    : "Verifique a conexao e as migracoes do banco";
+            toast.error(`Erro ao salvar evolucao: ${message}`);
         } finally {
             setIsSaving(false);
         }

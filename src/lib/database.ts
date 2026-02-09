@@ -1482,28 +1482,47 @@ export const appToolsService = {
             .order('category')
             .order('name');
 
-        let data: Record<string, unknown>[] | null = null;
-        let error: SupabaseLikeError | null = null;
+        let data: Record<string, unknown>[] = [];
 
-        if (hospitalId) {
-            const scopedResult = await buildBaseQuery().or(`hospital_id.eq.${hospitalId},hospital_id.is.null`);
-            data = scopedResult.data;
-            error = scopedResult.error;
-
-            if (error && (isMissingColumnError(error, 'hospital_id') || error.code === 'PGRST100')) {
-                const fallbackResult = await buildBaseQuery();
-                data = fallbackResult.data;
-                error = fallbackResult.error;
-            }
-        } else {
+        if (!hospitalId) {
             const result = await buildBaseQuery();
-            data = result.data;
-            error = result.error;
+            if (result.error && isMissingTableError(result.error)) return [];
+            if (result.error) throw result.error;
+            return mapArrayToCamelCase<AppTool>(result.data || []);
         }
 
-        if (error && isMissingTableError(error)) return [];
-        if (error) throw error;
-        return mapArrayToCamelCase<AppTool>(data || []);
+        const scoped = await buildBaseQuery().eq('hospital_id', hospitalId);
+        if (scoped.error && isMissingTableError(scoped.error)) return [];
+
+        // Older schemas may not have hospital_id in app_tools yet.
+        if (scoped.error && (isMissingColumnError(scoped.error, 'hospital_id') || scoped.error.code === 'PGRST100')) {
+            const fallback = await buildBaseQuery();
+            if (fallback.error && isMissingTableError(fallback.error)) return [];
+            if (fallback.error) throw fallback.error;
+            return mapArrayToCamelCase<AppTool>(fallback.data || []);
+        }
+
+        if (scoped.error) throw scoped.error;
+
+        const globalRows = await buildBaseQuery().is('hospital_id', null);
+        if (globalRows.error && !isMissingColumnError(globalRows.error, 'hospital_id') && globalRows.error.code !== 'PGRST100') {
+            if (isMissingTableError(globalRows.error)) return [];
+            throw globalRows.error;
+        }
+
+        // Hospital rows override global rows by code.
+        const mergedByCode = new Map<string, Record<string, unknown>>();
+        for (const row of globalRows.data || []) {
+            const code = String((row as { code?: string }).code || '');
+            if (code) mergedByCode.set(code, row);
+        }
+        for (const row of scoped.data || []) {
+            const code = String((row as { code?: string }).code || '');
+            if (code) mergedByCode.set(code, row);
+        }
+
+        data = Array.from(mergedByCode.values());
+        return mapArrayToCamelCase<AppTool>(data);
     },
 };
 
@@ -1523,33 +1542,63 @@ export const settingsService = {
             return query;
         };
 
-        let { data, error } = await buildQuery().maybeSingle();
+        let { data, error } = await buildQuery();
 
         if (error && isMissingColumnError(error, 'hospital_id')) {
             const fallback = await supabase
                 .from('app_settings')
                 .select('*')
                 .order('updated_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
+                .limit(1);
             data = fallback.data;
             error = fallback.error;
         }
 
         if (error && isMissingTableError(error)) return undefined;
-        if (error && !isNoRowsError(error)) throw error;
-        return data ? mapToCamelCase<AppSettings>(data) : undefined;
+        if (error) throw error;
+
+        if (hospitalId && (!data || data.length === 0)) {
+            // Fallback to a global/default settings row when no hospital-specific config exists.
+            const globalResult = await supabase
+                .from('app_settings')
+                .select('*')
+                .is('hospital_id', null)
+                .order('updated_at', { ascending: false })
+                .limit(1);
+
+            if (!globalResult.error && globalResult.data && globalResult.data.length > 0) {
+                return mapToCamelCase<AppSettings>(globalResult.data[0]);
+            }
+        }
+
+        return data && data.length > 0 ? mapToCamelCase<AppSettings>(data[0]) : undefined;
     },
 
     async save(settings: Omit<AppSettings, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
-        const existing = await this.get();
         const payload = withHospitalPayload(settings as Record<string, unknown>);
+        const hospitalId = (payload.hospitalId as string | undefined) || getCurrentHospitalId() || undefined;
+        let existingId: string | undefined;
 
-        if (existing?.id) {
+        if (hospitalId) {
+            const existingByHospital = await supabase
+                .from('app_settings')
+                .select('id')
+                .eq('hospital_id', hospitalId)
+                .limit(1);
+
+            if (!existingByHospital.error && existingByHospital.data && existingByHospital.data.length > 0) {
+                existingId = existingByHospital.data[0].id as string;
+            }
+        } else {
+            const existing = await this.get();
+            existingId = existing?.id;
+        }
+
+        if (existingId) {
             const { error } = await supabase
                 .from('app_settings')
                 .update(mapToSnakeCase(payload))
-                .eq('id', existing.id);
+                .eq('id', existingId);
             if (error) throw error;
         } else {
             const { error } = await supabase

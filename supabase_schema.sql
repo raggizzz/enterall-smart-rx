@@ -85,7 +85,9 @@ create table if not exists professionals (
   crn text,
   password_hash text, -- In a real app, use Supabase Auth instead!
   managing_unit text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  is_active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- 5. Prescriptions Table

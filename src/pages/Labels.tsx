@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -8,14 +8,25 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database } from "lucide-react";
+import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database, ShieldCheck } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import LabelPreview from "@/components/LabelPreview";
-import { usePrescriptions, usePatients, useClinics, useSettings } from "@/hooks/useDatabase";
+import LabelPreview, { LabelData } from "@/components/LabelPreview";
+import { useClinics, useFormulas, usePatients, usePrescriptions, useSettings } from "@/hooks/useDatabase";
 
-// Horários disponíveis das dietas
-const SCHEDULE_TIMES = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00"];
+const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
+
+const toDateOnly = (date: Date): string => format(date, "dd/MM/yyyy", { locale: ptBR });
+
+const normalize = (value?: string | null): string => {
+    if (!value) return "-";
+    return value;
+};
+
+const truncate = (text: string, limit: number): string => {
+    if (text.length <= limit) return text;
+    return `${text.slice(0, limit - 3)}...`;
+};
 
 const Labels = () => {
     const [date, setDate] = useState<Date | undefined>(new Date());
@@ -28,68 +39,340 @@ const Labels = () => {
     const { patients } = usePatients();
     const { clinics } = useClinics();
     const { settings } = useSettings();
+    const { formulas } = useFormulas();
 
-    // Transform prescriptions to label data format
-    const labelData = useMemo(() => {
-        return prescriptions
-            .filter(p => p.status === 'active')
-            .map(prescription => {
-                const patient = patients.find(pt => pt.id === prescription.patientId);
+    const formulaMap = useMemo(() => {
+        const map = new Map<string, { type?: string; presentationForm?: string; name?: string }>();
+        formulas.forEach((formula) => {
+            if (formula.id) {
+                map.set(formula.id, {
+                    type: formula.type,
+                    presentationForm: formula.presentationForm,
+                    name: formula.name,
+                });
+            }
+        });
+        return map;
+    }, [formulas]);
 
-                // Get all schedules from formulas
-                const allSchedules = prescription.formulas?.flatMap(f => f.schedules || []) || [];
-                const uniqueSchedules = [...new Set(allSchedules)];
+    const clinicOptions = useMemo(() => {
+        const fromData = new Set<string>();
+        prescriptions.forEach((p) => {
+            if (p.patientWard) fromData.add(p.patientWard);
+        });
+        patients.forEach((p) => {
+            if (p.ward) fromData.add(p.ward);
+        });
+        clinics.forEach((c) => {
+            if (c.name) fromData.add(c.name);
+        });
 
-                return {
-                    id: prescription.id || '',
-                    patientName: prescription.patientName || patient?.name || 'Paciente',
-                    bed: prescription.patientBed || patient?.bed || '-',
-                    dob: patient?.dob ? format(new Date(patient.dob), 'dd/MM/yyyy') : '-',
-                    clinic: prescription.patientWard || patient?.ward || 'UTI',
-                    formulaName: prescription.formulas?.[0]?.formulaName || 'Fórmula Enteral',
-                    totalVolume: prescription.totalVolume || 1000,
-                    infusionRate: prescription.totalVolume ? `${Math.round(prescription.totalVolume / 12)} ml/h` : '83 ml/h',
-                    route: prescription.feedingRoute || 'SNE',
-                    manipulationDate: format(new Date(), "dd/MM/yyyy"),
-                    validity: format(new Date(), "dd/MM/yyyy") + " 23:59",
-                    conservation: settings?.labelSettings?.defaultConservation || "Refrigerar 2-8°C",
-                    rtName: settings?.defaultSignatures?.rtName || "RT Nutrição",
-                    rtCrn: settings?.defaultSignatures?.rtCrn || "CRN-0000",
-                    lot: "LOT" + format(new Date(), "ddMMyyyy"),
-                    systemType: prescription.systemType as 'open' | 'closed',
-                    times: uniqueSchedules.length > 0 ? uniqueSchedules : ["06:00", "12:00", "18:00"]
+        return Array.from(fromData).sort((a, b) => a.localeCompare(b));
+    }, [clinics, patients, prescriptions]);
+
+    const activeDate = useMemo(() => date || new Date(), [date]);
+    const activeDateText = useMemo(() => toDateOnly(activeDate), [activeDate]);
+
+    const labels = useMemo<LabelData[]>(() => {
+        const list: LabelData[] = [];
+
+        const rtName = settings?.defaultSignatures?.rtName || "RT nao cadastrado";
+        const rtCrn = settings?.defaultSignatures?.rtCrn || "CRN nao cadastrado";
+        const conservationDefault = settings?.labelSettings?.defaultConservation || "Conservar conforme protocolo da unidade.";
+
+        const getRate = (prescription: (typeof prescriptions)[number]): string | undefined => {
+            if (prescription.infusionRateMlH && prescription.infusionRateMlH > 0) {
+                return `${Math.round(prescription.infusionRateMlH)} ml/h`;
+            }
+            if (prescription.totalVolume && prescription.infusionHoursPerDay && prescription.infusionHoursPerDay > 0) {
+                return `${Math.round(prescription.totalVolume / prescription.infusionHoursPerDay)} ml/h`;
+            }
+            if (prescription.infusionMode === "gravity" && prescription.infusionDropsMin && prescription.infusionDropsMin > 0) {
+                return `${Math.round(prescription.infusionDropsMin)} gotas/min`;
+            }
+            return undefined;
+        };
+
+        const buildControl = (prescriptionId: string | undefined, time: string | undefined, suffix: string): string => {
+            const dateKey = format(activeDate, "yyyyMMdd");
+            const timeKey = (time || "0000").replace(":", "");
+            const idKey = (prescriptionId || "XXXX").replace(/-/g, "").slice(0, 6).toUpperCase();
+            return `${dateKey}-${timeKey}-${suffix}-${idKey}`;
+        };
+
+        prescriptions
+            .filter((prescription) => prescription.status === "active")
+            .forEach((prescription) => {
+                const patient = patients.find((p) => p.id === prescription.patientId);
+
+                const patientName = normalize(prescription.patientName || patient?.name);
+                const bed = normalize(prescription.patientBed || patient?.bed);
+                const record = normalize(prescription.patientRecord || patient?.record);
+                const dob = patient?.dob ? toDateOnly(new Date(patient.dob)) : "-";
+                const clinicName = normalize(prescription.patientWard || patient?.ward || "Sem setor");
+                const route = normalize(prescription.feedingRoute || (prescription.therapyType === "oral" ? "Oral" : "SNE"));
+                const infusionRate = getRate(prescription);
+
+                const formulaEntries = prescription.formulas || [];
+                const moduleEntries = prescription.modules || [];
+
+                const formulaSchedules = Array.from(
+                    new Set(formulaEntries.flatMap((formula) => formula.schedules || []))
+                );
+                const moduleSchedules = Array.from(
+                    new Set(moduleEntries.flatMap((module) => module.schedules || []))
+                );
+                const hydrationSchedules = Array.from(new Set(prescription.hydrationSchedules || []));
+
+                const baseSchedules =
+                    formulaSchedules.length > 0
+                        ? formulaSchedules
+                        : moduleSchedules.length > 0
+                            ? moduleSchedules
+                            : hydrationSchedules.length > 0
+                                ? hydrationSchedules
+                                : ["06:00"];
+
+                const formulaSummary = truncate(
+                    formulaEntries
+                        .map((formula) => {
+                            const volumeText = formula.volume ? ` ${Math.round(formula.volume)} ml` : "";
+                            return `${formula.formulaName}${volumeText}`;
+                        })
+                        .join("; "),
+                    90
+                );
+
+                const modulesSummary = truncate(
+                    moduleEntries
+                        .map((module) => `${module.moduleName} ${module.amount || 0}${module.unit || "g"}`)
+                        .join("; "),
+                    90
+                );
+
+                const hasPowderLike = formulaEntries.some((formula) => {
+                    const meta = formulaMap.get(formula.formulaId);
+                    const merged = `${meta?.name || ""} ${formula.formulaName}`.toLowerCase();
+                    const isInfant = meta?.type === "infant-formula" || merged.includes("infantil");
+                    const isPowder = meta?.presentationForm === "po" || merged.includes(" po") || merged.includes(" em po") || merged.includes("pó");
+                    return isInfant || isPowder;
+                });
+
+                const hasOralSupplement = formulaEntries.some((formula) => {
+                    const meta = formulaMap.get(formula.formulaId);
+                    const merged = `${meta?.name || ""} ${formula.formulaName}`.toLowerCase();
+                    return meta?.type === "oral-supplement" || merged.includes("suplement");
+                });
+
+                const hasDilution = (prescription.hydrationVolume || 0) > 0;
+
+                const pushLabel = (data: Omit<LabelData, "id">, key: string) => {
+                    const scheduleKey = data.scheduleTime || "00:00";
+                    list.push({
+                        ...data,
+                        id: `${prescription.id || "sem-id"}-${key}-${scheduleKey}`,
+                    });
                 };
-            });
-    }, [prescriptions, patients, settings]);
 
-    // Filter prescriptions
-    const filteredPrescriptions = labelData.filter(p => {
-        const matchClinic = clinic === "all" || p.clinic.toLowerCase().includes(clinic.toLowerCase());
-        const matchPatient = p.patientName.toLowerCase().includes(patientSearch.toLowerCase());
-        const matchTimes = p.times.some(t => selectedTimes.includes(t));
-        return matchClinic && matchPatient && matchTimes;
-    });
+                if (prescription.therapyType === "enteral") {
+                    if (prescription.systemType === "closed") {
+                        baseSchedules.forEach((time) => {
+                            pushLabel(
+                                {
+                                    clinic: clinicName,
+                                    templateTitle: "DIETA - Sistema fechado",
+                                    patientName,
+                                    bed,
+                                    record,
+                                    dob,
+                                    scheduleTime: time,
+                                    infusionRate,
+                                    route,
+                                    formulaText: formulaSummary || "Formula enteral",
+                                    compositionText: formulaSummary || undefined,
+                                    volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                    manipulationDate: activeDateText,
+                                    manipulationTime: time,
+                                    validityText: "Validade: 24h apos conexao com equipo, em temperatura ambiente.",
+                                    conservationText: "Conservacao: em temperatura ambiente.",
+                                    rtName,
+                                    rtCrn,
+                                },
+                                "enteral-closed"
+                            );
+                        });
+                    } else {
+                        const openTitle = hasPowderLike
+                            ? "DIETA - Sistema aberto po e formula infantil"
+                            : hasDilution
+                                ? "DIETA - Sistema aberto liquido com diluicao"
+                                : "DIETA - Sistema aberto liquido";
+
+                        baseSchedules.forEach((time) => {
+                            pushLabel(
+                                {
+                                    clinic: clinicName,
+                                    templateTitle: openTitle,
+                                    patientName,
+                                    bed,
+                                    record,
+                                    dob,
+                                    scheduleTime: time,
+                                    infusionRate,
+                                    route,
+                                    formulaText: formulaSummary || "Formula enteral",
+                                    compositionText: formulaSummary || undefined,
+                                    volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                    manipulationDate: activeDateText,
+                                    manipulationTime: time,
+                                    validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
+                                    controlText: `Numero sequencial: ${buildControl(prescription.id, time, "NE")}`,
+                                    conservationText: "Conservacao: em temperatura ambiente.",
+                                    rtName,
+                                    rtCrn,
+                                },
+                                "enteral-open"
+                            );
+                        });
+
+                        if (moduleEntries.length > 0 || (prescription.hydrationVolume || 0) > 0) {
+                            const waterSchedules = hydrationSchedules.length > 0 ? hydrationSchedules : baseSchedules;
+                            waterSchedules.forEach((time) => {
+                                pushLabel(
+                                    {
+                                        clinic: clinicName,
+                                        templateTitle: "AGUA COM MODULOS",
+                                        patientName,
+                                        bed,
+                                        record,
+                                        dob,
+                                        scheduleTime: time,
+                                        infusionRate,
+                                        route,
+                                        formulaText: undefined,
+                                        compositionText: modulesSummary || undefined,
+                                        volumeText: prescription.hydrationVolume
+                                            ? `${Math.round(prescription.hydrationVolume)} ml`
+                                            : undefined,
+                                        manipulationDate: activeDateText,
+                                        manipulationTime: time,
+                                        validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
+                                        controlText: `Numero sequencial: ${buildControl(prescription.id, time, "AG")}`,
+                                        conservationText: "Conservacao: em temperatura ambiente.",
+                                        rtName,
+                                        rtCrn,
+                                    },
+                                    "water-modules"
+                                );
+                            });
+                        }
+                    }
+                }
+
+                if (prescription.therapyType === "oral") {
+                    if (moduleEntries.length > 0) {
+                        const oralModuleSchedules = moduleSchedules.length > 0 ? moduleSchedules : ["06:00"];
+                        oralModuleSchedules.forEach((time) => {
+                            pushLabel(
+                                {
+                                    clinic: clinicName,
+                                    templateTitle: "MODULOS de via oral",
+                                    patientName,
+                                    bed,
+                                    record,
+                                    dob,
+                                    scheduleTime: time,
+                                    route: "Oral",
+                                    formulaText: undefined,
+                                    compositionText: modulesSummary || undefined,
+                                    manipulationDate: activeDateText,
+                                    manipulationTime: time,
+                                    validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
+                                    controlText: `Numero sequencial: ${buildControl(prescription.id, time, "MO")}`,
+                                    conservationText: conservationDefault,
+                                    rtName,
+                                    rtCrn,
+                                },
+                                "oral-modules"
+                            );
+                        });
+                    }
+
+                    if (formulaEntries.length > 0) {
+                        formulaEntries.forEach((formula, index) => {
+                            const meta = formulaMap.get(formula.formulaId);
+                            const merged = `${meta?.name || ""} ${formula.formulaName}`.toLowerCase();
+                            const isPowder = meta?.presentationForm === "po" || merged.includes(" po") || merged.includes(" em po") || merged.includes("pó");
+                            const isLiquidSupplement = hasOralSupplement && !isPowder;
+
+                            const formulaSchedulesList = formula.schedules?.length ? formula.schedules : ["06:00"];
+                            formulaSchedulesList.forEach((time) => {
+                                pushLabel(
+                                    {
+                                        clinic: clinicName,
+                                        templateTitle: isLiquidSupplement
+                                            ? "Suplementos via oral liquidos"
+                                            : isPowder
+                                                ? "DIETA - Suplementos via oral em po"
+                                                : "DIETA via oral",
+                                        patientName,
+                                        bed,
+                                        record,
+                                        dob,
+                                        scheduleTime: time,
+                                        route: "Oral",
+                                        formulaText: formula.formulaName,
+                                        compositionText: `${formula.formulaName}${formula.volume ? ` ${Math.round(formula.volume)} ml` : ""}`,
+                                        volumeText: formula.volume ? `${Math.round(formula.volume)} ml` : undefined,
+                                        manipulationDate: activeDateText,
+                                        manipulationTime: time,
+                                        validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
+                                        controlText: `Numero sequencial: ${buildControl(prescription.id, time, `OR${index + 1}`)}`,
+                                        conservationText: conservationDefault,
+                                        rtName,
+                                        rtCrn,
+                                    },
+                                    `oral-formula-${index + 1}`
+                                );
+                            });
+                        });
+                    }
+                }
+            });
+
+        return list;
+    }, [activeDate, activeDateText, formulaMap, patients, prescriptions, settings]);
+
+    const filteredLabels = useMemo(() => {
+        return labels.filter((label) => {
+            const matchClinic = clinic === "all" || label.clinic.toLowerCase() === clinic.toLowerCase();
+            const matchPatient = label.patientName.toLowerCase().includes(patientSearch.toLowerCase());
+            const matchTime = label.scheduleTime ? selectedTimes.includes(label.scheduleTime) : true;
+            return matchClinic && matchPatient && matchTime;
+        });
+    }, [clinic, labels, patientSearch, selectedTimes]);
+
+    useEffect(() => {
+        const filteredIds = new Set(filteredLabels.map((label) => label.id));
+        setSelectedLabels((prev) => prev.filter((id) => filteredIds.has(id)));
+    }, [filteredLabels]);
 
     const toggleTime = (time: string) => {
-        if (selectedTimes.includes(time)) {
-            setSelectedTimes(selectedTimes.filter(t => t !== time));
-        } else {
-            setSelectedTimes([...selectedTimes, time]);
-        }
+        setSelectedTimes((current) =>
+            current.includes(time) ? current.filter((item) => item !== time) : [...current, time]
+        );
     };
 
     const selectAllTimes = () => setSelectedTimes([...SCHEDULE_TIMES]);
     const clearAllTimes = () => setSelectedTimes([]);
 
     const toggleLabel = (id: string) => {
-        if (selectedLabels.includes(id)) {
-            setSelectedLabels(selectedLabels.filter(l => l !== id));
-        } else {
-            setSelectedLabels([...selectedLabels, id]);
-        }
+        setSelectedLabels((current) =>
+            current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+        );
     };
 
-    const selectAllLabels = () => setSelectedLabels(filteredPrescriptions.map(p => p.id));
+    const selectAllLabels = () => setSelectedLabels(filteredLabels.map((label) => label.id));
     const clearAllLabels = () => setSelectedLabels([]);
 
     const handlePrint = () => {
@@ -97,63 +380,63 @@ const Labels = () => {
     };
 
     return (
-        <div className="min-h-screen bg-background pb-20">
+        <div className="min-h-screen bg-gradient-to-b from-background via-secondary/30 to-background pb-20">
             <Header />
             <div className="container py-6 space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                             <Tag className="h-6 w-6" />
-                            Impressão de Rótulos/Etiquetas
+                            Etiquetas clinicas de nutricao
                         </h1>
                         <p className="text-muted-foreground flex items-center gap-2">
                             <Database className="h-4 w-4" />
-                            Geração de etiquetas baseada em prescrições da unidade
+                            Impressao alinhada ao padrao operacional e itens da RDC 502/2021
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={handlePrint}
-                            disabled={selectedLabels.length === 0}
-                        >
-                            <Printer className="h-4 w-4 mr-2" />
-                            Imprimir Selecionados ({selectedLabels.length})
-                        </Button>
-                    </div>
+                    <Button variant="outline" onClick={handlePrint} disabled={selectedLabels.length === 0}>
+                        <Printer className="h-4 w-4 mr-2" />
+                        Imprimir selecionadas ({selectedLabels.length})
+                    </Button>
                 </div>
 
-                {/* Filtros */}
-                <Card>
+                <Card className="border-primary/10 bg-card/90 backdrop-blur">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <ShieldCheck className="h-5 w-5 text-primary" />
+                            Campos obrigatorios da etiqueta
+                        </CardTitle>
+                        <CardDescription>
+                            Paciente, leito, registro, composicao, velocidade, via, data/hora de manipulacao, validade, controle sequencial e RT.
+                        </CardDescription>
+                    </CardHeader>
+                </Card>
+
+                <Card className="border-primary/10 bg-card/90 backdrop-blur">
                     <CardHeader>
                         <CardTitle>Filtros</CardTitle>
-                        <CardDescription>Selecione os critérios para gerar as etiquetas</CardDescription>
+                        <CardDescription>Selecione os criterios para gerar as etiquetas</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            {/* Clínica */}
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2">
                                     <Building className="h-4 w-4" />
-                                    Clínica/Unidade
+                                    Unidade / setor
                                 </Label>
                                 <Select value={clinic} onValueChange={setClinic}>
                                     <SelectTrigger>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">Todas as Unidades</SelectItem>
-                                        {clinics.map(c => (
-                                            <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+                                        <SelectItem value="all">Todos</SelectItem>
+                                        {clinicOptions.map((name) => (
+                                            <SelectItem key={name} value={name}>{name}</SelectItem>
                                         ))}
-                                        <SelectItem value="uti-adulto">UTI Adulto</SelectItem>
-                                        <SelectItem value="uti-pediatrica">UTI Pediátrica</SelectItem>
-                                        <SelectItem value="enfermaria">Enfermaria</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {/* Paciente */}
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2">
                                     <User className="h-4 w-4" />
@@ -165,16 +448,15 @@ const Labels = () => {
                                         placeholder="Buscar por nome..."
                                         className="pl-8"
                                         value={patientSearch}
-                                        onChange={e => setPatientSearch(e.target.value)}
+                                        onChange={(event) => setPatientSearch(event.target.value)}
                                     />
                                 </div>
                             </div>
 
-                            {/* Data */}
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2">
                                     <CalendarIcon className="h-4 w-4" />
-                                    Data
+                                    Data de manipulacao
                                 </Label>
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -190,12 +472,11 @@ const Labels = () => {
                             </div>
                         </div>
 
-                        {/* Seleção de Horários */}
                         <div className="border-t pt-4">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2">
                                     <Clock className="h-4 w-4 text-muted-foreground" />
-                                    <Label className="font-semibold">Horários das Dietas</Label>
+                                    <Label className="font-semibold">Horarios</Label>
                                 </div>
                                 <div className="flex gap-2">
                                     <Button variant="outline" size="sm" onClick={selectAllTimes}>Todos</Button>
@@ -203,108 +484,79 @@ const Labels = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                                {SCHEDULE_TIMES.map(time => (
-                                    <div
+                                {SCHEDULE_TIMES.map((time) => (
+                                    <button
                                         key={time}
+                                        type="button"
                                         onClick={() => toggleTime(time)}
-                                        className={`px-3 py-2 rounded-lg text-center cursor-pointer transition-all border-2 ${selectedTimes.includes(time)
-                                            ? 'bg-primary text-primary-foreground border-primary'
-                                            : 'bg-muted/50 border-muted hover:border-primary/50'
+                                        className={`px-3 py-2 rounded-lg text-center transition-all border-2 ${selectedTimes.includes(time)
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-muted/50 border-muted hover:border-primary/50"
                                             }`}
                                     >
                                         <span className="text-sm font-medium">{time}</span>
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Lista de Etiquetas */}
-                <Card>
+                <Card className="border-primary/10 bg-card/90 backdrop-blur">
                     <CardHeader>
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center gap-3">
                             <div>
-                                <CardTitle>Etiquetas Disponíveis</CardTitle>
+                                <CardTitle>Etiquetas disponiveis</CardTitle>
                                 <CardDescription>
                                     {prescriptionsLoading
-                                        ? 'Carregando prescrições...'
-                                        : `${filteredPrescriptions.length} etiqueta(s) encontrada(s)`
+                                        ? "Carregando prescricoes..."
+                                        : `${filteredLabels.length} etiqueta(s) pronta(s) para impressao`
                                     }
                                 </CardDescription>
                             </div>
                             <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={selectAllLabels}>
-                                    Selecionar Todas
-                                </Button>
-                                <Button variant="outline" size="sm" onClick={clearAllLabels}>
-                                    Limpar Seleção
-                                </Button>
+                                <Button variant="outline" size="sm" onClick={selectAllLabels}>Selecionar todas</Button>
+                                <Button variant="outline" size="sm" onClick={clearAllLabels}>Limpar selecao</Button>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent>
                         {prescriptionsLoading ? (
+                            <div className="text-center py-8 text-muted-foreground">Carregando prescricoes do banco...</div>
+                        ) : filteredLabels.length === 0 ? (
                             <div className="text-center py-8 text-muted-foreground">
-                                Carregando prescrições do banco de dados...
-                            </div>
-                        ) : filteredPrescriptions.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                                <p>Nenhuma etiqueta encontrada para os filtros selecionados</p>
-                                <p className="text-sm mt-2">
-                                    Crie prescrições ativas na página de Prescrições para gerar etiquetas.
-                                </p>
+                                Nenhuma etiqueta encontrada para os filtros selecionados.
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {filteredPrescriptions.map(prescription => (
-                                    <div
-                                        key={prescription.id}
-                                        className={`relative cursor-pointer transition-all ${selectedLabels.includes(prescription.id)
-                                            ? 'ring-2 ring-primary ring-offset-2'
-                                            : ''
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {filteredLabels.map((label) => (
+                                    <button
+                                        key={label.id}
+                                        type="button"
+                                        className={`relative text-left rounded-xl p-2 border transition-all ${selectedLabels.includes(label.id)
+                                            ? "border-primary ring-2 ring-primary/40"
+                                            : "border-border hover:border-primary/50"
                                             }`}
-                                        onClick={() => toggleLabel(prescription.id)}
+                                        onClick={() => toggleLabel(label.id)}
                                     >
-                                        {/* Checkbox overlay */}
-                                        <div className="absolute top-2 right-2 z-10">
-                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${selectedLabels.includes(prescription.id)
-                                                ? 'bg-primary text-white'
-                                                : 'bg-white border-2 border-gray-300'
-                                                }`}>
-                                                {selectedLabels.includes(prescription.id) && (
-                                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                )}
-                                            </div>
+                                        <div className="absolute top-2 right-2 h-5 w-5 rounded-full border text-[10px] font-bold flex items-center justify-center bg-background">
+                                            {selectedLabels.includes(label.id) ? "OK" : ""}
                                         </div>
-
-                                        {/* Horários da prescrição */}
-                                        <div className="absolute top-2 left-2 z-10 flex gap-1">
-                                            {prescription.times.filter(t => selectedTimes.includes(t)).map(t => (
-                                                <span key={t} className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-xs">{t}</span>
-                                            ))}
-                                        </div>
-
-                                        <div className="transform scale-[0.85] origin-top-left">
-                                            <LabelPreview data={prescription} />
-                                        </div>
-                                    </div>
+                                        <LabelPreview data={label} />
+                                    </button>
                                 ))}
                             </div>
                         )}
                     </CardContent>
                 </Card>
 
-                {/* Área de Impressão (oculta na tela, visível apenas na impressão) */}
-                <div className="print:block hidden">
-                    <div className="grid grid-cols-2 gap-4">
-                        {filteredPrescriptions
-                            .filter(p => selectedLabels.includes(p.id))
-                            .map(prescription => (
-                                <div key={prescription.id} className="page-break-inside-avoid">
-                                    <LabelPreview data={prescription} />
+                <div className="hidden print:block">
+                    <div className="print:grid print:grid-cols-3 print:gap-[3.2mm]">
+                        {filteredLabels
+                            .filter((label) => selectedLabels.includes(label.id))
+                            .map((label) => (
+                                <div key={label.id} className="break-inside-avoid mb-[3.2mm]">
+                                    <LabelPreview data={label} />
                                 </div>
                             ))}
                     </div>
@@ -316,6 +568,4 @@ const Labels = () => {
 };
 
 export default Labels;
-
-
 

@@ -2,27 +2,83 @@ import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Download, FileText, Users, TrendingUp } from "lucide-react";
+import { Download, Users, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    ReferenceLine,
+    Legend,
+} from 'recharts';
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { usePatients, useEvolutions } from "@/hooks/useDatabase";
+import { usePatients, useEvolutions, usePrescriptions } from "@/hooks/useDatabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import { can } from "@/lib/permissions";
+import type { Patient, Prescription } from "@/lib/database";
+
+type ChartRow = {
+    date: string;
+    enteralPct: number;
+    parenteralPct: number;
+    nonIntentionalPct: number;
+    totalPct: number;
+};
+
+const clampPercent = (value: number): number => Math.max(0, Math.min(value, 140));
+
+const buildDateRange = (startDate: string, endDate: string): string[] => {
+    const dates: string[] = [];
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+    const loop = new Date(start);
+
+    while (loop <= end) {
+        dates.push(loop.toISOString().split('T')[0]);
+        loop.setDate(loop.getDate() + 1);
+    }
+
+    return dates;
+};
+
+const formatLabelDate = (isoDate: string): string => {
+    const date = new Date(`${isoDate}T00:00:00`);
+    return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+};
+
+const calculateUnintentionalKcal = (patient?: Patient): number => {
+    const unintentional = patient?.unintentionalCalories;
+    if (!unintentional) return 0;
+
+    const propofol = (unintentional.propofolMlH || 0) * 1.1 * 24;
+    const glucose = (unintentional.glucoseGDay || 0) * 3.4;
+    const citrate = (unintentional.citrateGDay || 0) * 3;
+
+    return propofol + glucose + citrate;
+};
+
+const isPrescriptionActiveOn = (prescription: Prescription, day: string): boolean => {
+    return prescription.startDate <= day && (!prescription.endDate || prescription.endDate >= day);
+};
 
 const Reports = () => {
     const navigate = useNavigate();
     const { patients, isLoading } = usePatients();
+    const { evolutions } = useEvolutions();
+    const { prescriptions } = usePrescriptions();
     const [selectedPatient, setSelectedPatient] = useState("all");
     const role = useCurrentRole();
     const isManagerView = can(role, "manage_units") || can(role, "manage_wards");
 
-    // Filtrar pacientes ativos
     const activePatients = useMemo(() => {
-        return patients.filter(p => p.status === 'active');
+        return patients.filter((p) => p.status === 'active');
     }, [patients]);
 
     useEffect(() => {
@@ -31,21 +87,17 @@ const Reports = () => {
         }
     }, [isManagerView, selectedPatient, activePatients]);
 
-    // Calcular estatisticas gerais
     const statistics = useMemo(() => {
         const total = activePatients.length;
         const byType = {
-            oral: activePatients.filter(p => p.nutritionType === 'oral').length,
-            enteral: activePatients.filter(p => p.nutritionType === 'enteral').length,
-            parenteral: activePatients.filter(p => p.nutritionType === 'parenteral').length,
-            jejum: activePatients.filter(p => p.nutritionType === 'jejum').length,
+            oral: activePatients.filter((p) => p.nutritionType === 'oral').length,
+            enteral: activePatients.filter((p) => p.nutritionType === 'enteral').length,
+            parenteral: activePatients.filter((p) => p.nutritionType === 'parenteral').length,
+            jejum: activePatients.filter((p) => p.nutritionType === 'jejum').length,
         };
         return { total, byType };
     }, [activePatients]);
 
-    const { evolutions, isLoading: evolutionsLoading } = useEvolutions();
-
-    // Filtro de Data
     const today = new Date();
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(today.getDate() - 7);
@@ -56,60 +108,140 @@ const Reports = () => {
     const effectiveStartDate = forceLastSevenDays ? sevenDaysAgo.toISOString().split('T')[0] : startDate;
     const effectiveEndDate = forceLastSevenDays ? today.toISOString().split('T')[0] : endDate;
 
-    // Filtrar evolucoes por data e paciente
+    const daysInPeriod = useMemo(
+        () => buildDateRange(effectiveStartDate, effectiveEndDate),
+        [effectiveStartDate, effectiveEndDate]
+    );
+
+    const patientsById = useMemo(() => {
+        const map = new Map<string, Patient>();
+        patients.forEach((patient) => {
+            if (patient.id) map.set(patient.id, patient);
+        });
+        return map;
+    }, [patients]);
+
     const filteredEvolutions = useMemo(() => {
-        return evolutions.filter(evo => {
-            const evoDate = evo.date;
-            const matchesDate = evoDate >= effectiveStartDate && evoDate <= effectiveEndDate;
+        return evolutions.filter((evo) => {
+            const matchesDate = evo.date >= effectiveStartDate && evo.date <= effectiveEndDate;
             const matchesPatient = selectedPatient === 'all' || evo.patientId === selectedPatient;
             return matchesDate && matchesPatient;
         });
     }, [evolutions, effectiveStartDate, effectiveEndDate, selectedPatient]);
 
-    // Dados para o grafico agrupados por data
-    const historyData = useMemo(() => {
-        const grouped: Record<string, { date: string, volume: number, count: number, totalPct: number }> = {};
+    const filteredPrescriptions = useMemo(() => {
+        return prescriptions.filter((prescription) => {
+            const matchesPatient = selectedPatient === 'all' || prescription.patientId === selectedPatient;
+            const matchesPeriod = prescription.startDate <= effectiveEndDate
+                && (!prescription.endDate || prescription.endDate >= effectiveStartDate);
+            return matchesPatient && matchesPeriod;
+        });
+    }, [prescriptions, selectedPatient, effectiveStartDate, effectiveEndDate]);
 
-        // Inicializar datas no intervalo
-        const start = new Date(effectiveStartDate);
-        const end = new Date(effectiveEndDate);
-        const loop = new Date(start);
+    const prescriptionsByPatient = useMemo(() => {
+        const map = new Map<string, Prescription[]>();
+        filteredPrescriptions.forEach((prescription) => {
+            const list = map.get(prescription.patientId) || [];
+            list.push(prescription);
+            map.set(prescription.patientId, list);
+        });
+        return map;
+    }, [filteredPrescriptions]);
 
-        while (loop <= end) {
-            const dayStr = loop.toISOString().split('T')[0];
-            const displayDate = `${loop.getDate().toString().padStart(2, '0')}/${(loop.getMonth() + 1).toString().padStart(2, '0')}`;
-            grouped[dayStr] = { date: displayDate, volume: 0, count: 0, totalPct: 0 };
-            loop.setDate(loop.getDate() + 1);
-        }
+    const historyData = useMemo<ChartRow[]>(() => {
+        const grouped: Record<string, { enteral: number; parenteral: number; nonIntentional: number; count: number }> = {};
 
-        filteredEvolutions.forEach(evo => {
-            const dayStr = evo.date;
-            if (grouped[dayStr]) {
-                grouped[dayStr].volume += evo.volumeInfused || 0;
-                grouped[dayStr].totalPct += evo.metaReached || 0;
-                grouped[dayStr].count += 1;
-            }
+        daysInPeriod.forEach((day) => {
+            grouped[day] = { enteral: 0, parenteral: 0, nonIntentional: 0, count: 0 };
         });
 
-        return Object.values(grouped).map(item => ({
-            date: item.date,
-            volume: item.volume,
-            percentage: item.count > 0 ? Math.round(item.totalPct / item.count) : 0
-        }));
-    }, [filteredEvolutions, effectiveStartDate, effectiveEndDate]);
+        filteredEvolutions.forEach((evo) => {
+            if (!grouped[evo.date]) return;
 
-    // Calcular resumo do periodo filtrado
+            const patient = patientsById.get(evo.patientId);
+            const patientPrescriptions = prescriptionsByPatient
+                .get(evo.patientId)
+                ?.filter((prescription) => isPrescriptionActiveOn(prescription, evo.date)) || [];
+
+            const targetKcal = (() => {
+                const prescriptionWithTarget = patientPrescriptions.find((prescription) => (prescription.totalCalories || 0) > 0);
+                if (prescriptionWithTarget?.totalCalories) return prescriptionWithTarget.totalCalories;
+                if (patient?.weight) return patient.weight * 25;
+                return 0;
+            })();
+
+            const parenteralKcal = patientPrescriptions
+                .filter((prescription) => prescription.therapyType === 'parenteral')
+                .reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0);
+
+            const nonIntentionalKcal = calculateUnintentionalKcal(patient);
+
+            const enteralPct = clampPercent(evo.metaReached || 0);
+            const parenteralPct = targetKcal > 0 ? clampPercent((parenteralKcal / targetKcal) * 100) : 0;
+            const nonIntentionalPct = targetKcal > 0 ? clampPercent((nonIntentionalKcal / targetKcal) * 100) : 0;
+
+            grouped[evo.date].enteral += enteralPct;
+            grouped[evo.date].parenteral += parenteralPct;
+            grouped[evo.date].nonIntentional += nonIntentionalPct;
+            grouped[evo.date].count += 1;
+        });
+
+        return daysInPeriod.map((day) => {
+            const entry = grouped[day];
+            const divisor = entry.count || 1;
+            const enteralPct = entry.count > 0 ? Number((entry.enteral / divisor).toFixed(1)) : 0;
+            const parenteralPct = entry.count > 0 ? Number((entry.parenteral / divisor).toFixed(1)) : 0;
+            const nonIntentionalPct = entry.count > 0 ? Number((entry.nonIntentional / divisor).toFixed(1)) : 0;
+            return {
+                date: formatLabelDate(day),
+                enteralPct,
+                parenteralPct,
+                nonIntentionalPct,
+                totalPct: Number((enteralPct + parenteralPct + nonIntentionalPct).toFixed(1)),
+            };
+        });
+    }, [daysInPeriod, filteredEvolutions, patientsById, prescriptionsByPatient]);
+
     const summary = useMemo(() => {
         const totalEvolutions = filteredEvolutions.length;
-        if (totalEvolutions === 0) return { avgPercentage: "0.0", daysOnGoal: 0, daysBelow: 0, totalVolume: 0 };
+        if (totalEvolutions === 0) {
+            return { avgPercentage: "0.0", daysOnGoal: 0, daysBelow: 0 };
+        }
 
-        const avgPercentage = filteredEvolutions.reduce((sum, d) => sum + (d.metaReached || 0), 0) / totalEvolutions;
-        const daysOnGoal = filteredEvolutions.filter(d => (d.metaReached || 0) >= 80).length;
-        const daysBelow = filteredEvolutions.filter(d => (d.metaReached || 0) < 80).length;
-        const totalVolume = filteredEvolutions.reduce((sum, d) => sum + (d.volumeInfused || 0), 0);
+        const avgPercentage = filteredEvolutions.reduce((sum, evolution) => sum + (evolution.metaReached || 0), 0) / totalEvolutions;
+        const daysOnGoal = filteredEvolutions.filter((evolution) => (evolution.metaReached || 0) >= 80).length;
+        const daysBelow = filteredEvolutions.filter((evolution) => (evolution.metaReached || 0) < 80).length;
 
-        return { avgPercentage: avgPercentage.toFixed(1), daysOnGoal, daysBelow, totalVolume };
+        return {
+            avgPercentage: avgPercentage.toFixed(1),
+            daysOnGoal,
+            daysBelow,
+        };
     }, [filteredEvolutions]);
+
+    const routeDistribution = useMemo(() => {
+        const oral = new Set<string>();
+        const enteral = new Set<string>();
+        const parenteral = new Set<string>();
+
+        daysInPeriod.forEach((day) => {
+            filteredPrescriptions.forEach((prescription) => {
+                if (!isPrescriptionActiveOn(prescription, day)) return;
+                if (!prescription.patientId) return;
+
+                const key = `${day}:${prescription.patientId}`;
+                if (prescription.therapyType === 'oral') oral.add(key);
+                if (prescription.therapyType === 'enteral') enteral.add(key);
+                if (prescription.therapyType === 'parenteral') parenteral.add(key);
+            });
+        });
+
+        return {
+            oral: oral.size,
+            enteral: enteral.size,
+            parenteral: parenteral.size,
+        };
+    }, [daysInPeriod, filteredPrescriptions]);
 
     return (
         <div className="min-h-screen bg-background pb-20">
@@ -129,8 +261,8 @@ const Reports = () => {
                             </SelectTrigger>
                             <SelectContent>
                                 {isManagerView && <SelectItem value="all">Conjunto</SelectItem>}
-                                {activePatients.map(p => (
-                                    <SelectItem key={p.id} value={p.id || ''}>{p.name}</SelectItem>
+                                {activePatients.map((patient) => (
+                                    <SelectItem key={patient.id} value={patient.id || ''}>{patient.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -142,7 +274,7 @@ const Reports = () => {
                             <Input
                                 type="date"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={(event) => setStartDate(event.target.value)}
                                 className="w-[140px]"
                                 disabled={forceLastSevenDays}
                             />
@@ -152,7 +284,7 @@ const Reports = () => {
                             <Input
                                 type="date"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(event) => setEndDate(event.target.value)}
                                 className="w-[140px]"
                                 disabled={forceLastSevenDays}
                             />
@@ -163,6 +295,7 @@ const Reports = () => {
                         </Button>
                     </div>
                 </div>
+
                 {forceLastSevenDays && (
                     <p className="text-xs text-muted-foreground">
                         No modo conjunto, o grafico considera automaticamente os ultimos 7 dias.
@@ -188,7 +321,6 @@ const Reports = () => {
                     </Card>
                 ) : (
                     <>
-                        {/* Estatisticas Rapidas */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <Card>
                                 <CardContent className="pt-6">
@@ -225,33 +357,36 @@ const Reports = () => {
                         </div>
 
                         <div className="grid gap-6 md:grid-cols-2">
-                            {/* Chart Card */}
                             <Card className="md:col-span-2">
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
                                         <TrendingUp className="h-5 w-5" />
-                                        Infusao da TNE (%)
+                                        Acompanhamento da TN / Meta (kcal)
                                     </CardTitle>
-                                    <CardDescription>Volume infundido em relacao ao volume prescrito</CardDescription>
+                                    <CardDescription>
+                                        Somatorio proporcional de NE infundida, NP infundida e calorias nao intencionais em relacao a meta
+                                    </CardDescription>
                                 </CardHeader>
-                                <CardContent className="h-[300px]">
+                                <CardContent className="h-[320px]">
                                     <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={historyData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                        <BarChart data={historyData} margin={{ top: 20, right: 20, left: 8, bottom: 8 }}>
                                             <CartesianGrid strokeDasharray="3 3" />
                                             <XAxis dataKey="date" />
-                                            <YAxis unit="%" />
-                                            <Tooltip />
+                                            <YAxis unit="%" domain={[0, 140]} />
+                                            <Tooltip formatter={(value: number) => `${value}%`} />
+                                            <Legend />
                                             <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" label="Meta" />
-                                            <Bar dataKey="percentage" fill="#3b82f6" name="% Atingido" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relacao a meta" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relacao a meta" />
+                                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal nao intencionais em relacao a meta" />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </CardContent>
                             </Card>
 
-                            {/* Details Card */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Resumo do Periodo</CardTitle>
+                                    <CardTitle>Resumo no periodo</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
@@ -260,42 +395,38 @@ const Reports = () => {
                                             <span className="font-bold text-lg">{summary.avgPercentage}%</span>
                                         </div>
                                         <div className="flex justify-between items-center border-b pb-2">
-                                            <span className="text-muted-foreground">Infusao {">"}80% prescrito</span>
+                                            <span className="text-muted-foreground">Infusao {'>'}80% prescrito</span>
                                             <span className="font-bold text-lg text-green-600">{summary.daysOnGoal}</span>
                                         </div>
                                         <div className="flex justify-between items-center border-b pb-2">
                                             <span className="text-muted-foreground">Infusao {'<'}80% prescrito</span>
                                             <span className="font-bold text-lg text-red-600">{summary.daysBelow}</span>
-                                        </div></div>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
 
-                            {/* Type Distribution */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Vias de Terapia Nutricional</CardTitle>
+                                    <CardDescription>Pacientes-dia no periodo selecionado</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-3">
                                             <div className="h-3 w-3 rounded-full bg-green-500" />
                                             <span className="flex-1">Dieta Oral</span>
-                                            <span className="font-medium">{statistics.byType.oral} pacientes</span>
+                                            <span className="font-medium">{routeDistribution.oral} pacientes-dia</span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <div className="h-3 w-3 rounded-full bg-purple-500" />
                                             <span className="flex-1">Terapia Nutricional Enteral</span>
-                                            <span className="font-medium">{statistics.byType.enteral} pacientes</span>
+                                            <span className="font-medium">{routeDistribution.enteral} pacientes-dia</span>
                                         </div>
                                         <div className="flex items-center gap-3">
                                             <div className="h-3 w-3 rounded-full bg-orange-500" />
                                             <span className="flex-1">Terapia Nutricional Parenteral</span>
-                                            <span className="font-medium">{statistics.byType.parenteral} pacientes</span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-3 w-3 rounded-full bg-red-500" />
-                                            <span className="flex-1">Jejum</span>
-                                            <span className="font-medium">{statistics.byType.jejum} pacientes</span>
+                                            <span className="font-medium">{routeDistribution.parenteral} pacientes-dia</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -311,5 +442,3 @@ const Reports = () => {
 };
 
 export default Reports;
-
-

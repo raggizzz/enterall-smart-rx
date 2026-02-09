@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+
 import { Progress } from "@/components/ui/progress";
 import {
     Collapsible,
@@ -24,7 +24,6 @@ import {
     TrendingUp,
     AlertCircle,
     Syringe,
-    Activity,
     ChevronDown,
     Save,
     Calculator
@@ -154,67 +153,6 @@ export const PatientMonitoring = ({
 
     return (
         <div className="space-y-6">
-            {/* Aporte Nutricional Total - SEMPRE VISÍVEL */}
-            <Card className="border-2 border-green-300 bg-gradient-to-r from-green-50 to-emerald-50">
-                <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-green-700">
-                        <Calculator className="h-5 w-5" />
-                        Aporte Nutricional Total
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                        <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                            <div className="text-3xl font-bold text-green-600">
-                                {totalNutrition.totalKcal.toFixed(0)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">kcal</div>
-                            {patient.weight && (
-                                <div className="text-lg font-semibold text-green-700 mt-1">
-                                    {totalNutrition.kcalPerKg.toFixed(1)} kcal/kg
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                            <div className="text-3xl font-bold text-blue-600">
-                                {totalNutrition.totalProtein.toFixed(1)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">g proteínas</div>
-                            {patient.weight && (
-                                <div className="text-lg font-semibold text-blue-700 mt-1">
-                                    {totalNutrition.proteinPerKg.toFixed(2)} g/kg
-                                    {bmi && bmi > 30 && idealWeight && (
-                                        <span className="text-xs block text-muted-foreground">
-                                            ({totalNutrition.proteinPerKgIdeal.toFixed(2)} g/kg PI)
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Detalhamento por via */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                        <div className="p-2 bg-white rounded border">
-                            <div className="font-semibold text-orange-600">Via Oral</div>
-                            <div>{oralKcal} kcal / {oralProtein}g</div>
-                        </div>
-                        <div className="p-2 bg-white rounded border">
-                            <div className="font-semibold text-blue-600">TNE</div>
-                            <div>{enteralKcal} kcal / {enteralProtein}g</div>
-                        </div>
-                        <div className="p-2 bg-white rounded border">
-                            <div className="font-semibold text-purple-600">TNP</div>
-                            <div>{parenteralKcal} kcal / {parenteralProtein}g</div>
-                        </div>
-                        <div className="p-2 bg-white rounded border">
-                            <div className="font-semibold text-gray-600">Não Intencional</div>
-                            <div>{unintentionalKcal.total.toFixed(0)} kcal</div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
             {/* Metas para TNE */}
             <Card>
                 <CardHeader>
@@ -552,6 +490,67 @@ export const PatientMonitoring = ({
                             <Badge variant="secondary" className="text-lg">
                                 {unintentionalKcal.total.toFixed(0)} kcal/dia
                             </Badge>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Aporte Nutricional Total */}
+            <Card className="border-2 border-green-300 bg-gradient-to-r from-green-50 to-emerald-50">
+                <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-green-700">
+                        <Calculator className="h-5 w-5" />
+                        Aporte Nutricional Total
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                            <div className="text-3xl font-bold text-green-600">
+                                {totalNutrition.totalKcal.toFixed(0)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">kcal</div>
+                            {patient.weight && (
+                                <div className="text-lg font-semibold text-green-700 mt-1">
+                                    {totalNutrition.kcalPerKg.toFixed(1)} kcal/kg
+                                </div>
+                            )}
+                        </div>
+                        <div className="text-center p-4 bg-white rounded-lg shadow-sm">
+                            <div className="text-3xl font-bold text-blue-600">
+                                {totalNutrition.totalProtein.toFixed(1)}
+                            </div>
+                            <div className="text-sm text-muted-foreground">g proteínas</div>
+                            {patient.weight && (
+                                <div className="text-lg font-semibold text-blue-700 mt-1">
+                                    {totalNutrition.proteinPerKg.toFixed(2)} g/kg
+                                    {bmi && bmi > 30 && idealWeight && (
+                                        <span className="text-xs block text-muted-foreground">
+                                            ({totalNutrition.proteinPerKgIdeal.toFixed(2)} g/kg PI)
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Detalhamento por via */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        <div className="p-2 bg-white rounded border">
+                            <div className="font-semibold text-orange-600">Via Oral</div>
+                            <div>{oralKcal} kcal / {oralProtein}g</div>
+                        </div>
+                        <div className="p-2 bg-white rounded border">
+                            <div className="font-semibold text-blue-600">TNE</div>
+                            <div>{enteralKcal} kcal / {enteralProtein}g</div>
+                        </div>
+                        <div className="p-2 bg-white rounded border">
+                            <div className="font-semibold text-purple-600">TNP</div>
+                            <div>{parenteralKcal} kcal / {parenteralProtein}g</div>
+                        </div>
+                        <div className="p-2 bg-white rounded border">
+                            <div className="font-semibold text-gray-600">Não Intencional</div>
+                            <div>{unintentionalKcal.total.toFixed(0)} kcal</div>
                         </div>
                     </div>
                 </CardContent>

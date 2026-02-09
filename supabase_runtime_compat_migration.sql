@@ -95,6 +95,16 @@ alter table if exists app_tools add column if not exists hospital_id uuid refere
 create index if not exists idx_app_tools_hospital_id on app_tools(hospital_id);
 
 -- ------------------------------------------------------------
+-- professionals: active flag/update compatibility
+-- ------------------------------------------------------------
+alter table if exists professionals add column if not exists is_active boolean default true;
+alter table if exists professionals add column if not exists updated_at timestamp with time zone default timezone('utc'::text, now()) not null;
+
+update professionals
+set is_active = coalesce(is_active, true),
+    updated_at = coalesce(updated_at, timezone('utc'::text, now()));
+
+-- ------------------------------------------------------------
 -- professionals role compatibility
 -- ------------------------------------------------------------
 do $$
@@ -109,4 +119,3 @@ begin
       check (role in ('manager', 'general_manager', 'local_manager', 'nutritionist', 'technician'));
   end if;
 end $$;
-

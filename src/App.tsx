@@ -18,7 +18,6 @@ import Supplies from "./pages/Supplies";
 import Billing from "./pages/Billing";
 import Labels from "./pages/Labels";
 import OralMap from "./pages/OralMap";
-import DietPrescription from "./pages/DietPrescription";
 import Settings from "./pages/Settings";
 import OralTherapy from "./pages/OralTherapy";
 import ParenteralTherapy from "./pages/ParenteralTherapy";
@@ -68,7 +67,7 @@ const App = () => (
             <Route path="/billing" element={<ProtectedRoute><Billing /></ProtectedRoute>} />
             <Route path="/labels" element={<ProtectedRoute><Labels /></ProtectedRoute>} />
             <Route path="/oral-map" element={<ProtectedRoute><OralMap /></ProtectedRoute>} />
-            <Route path="/diet-prescription" element={<ProtectedRoute><DietPrescription /></ProtectedRoute>} />
+            <Route path="/diet-prescription" element={<ProtectedRoute><Navigate to="/prescription-new" replace /></ProtectedRoute>} />
             <Route path="/oral-therapy" element={<ProtectedRoute><OralTherapy /></ProtectedRoute>} />
             <Route path="/parenteral-therapy" element={<ProtectedRoute><ParenteralTherapy /></ProtectedRoute>} />
             <Route path="/patient-monitoring" element={<ProtectedRoute><PatientMonitoringPage /></ProtectedRoute>} />

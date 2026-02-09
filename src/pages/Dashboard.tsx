@@ -301,22 +301,22 @@ const Dashboard = () => {
                       </SelectItem>
                     ))}
                     {wards.length === 0 && (
-                      <div className="p-2 text-sm text-muted-foreground text-center">Nenhum setor cadastrado</div>
+                      <SelectItem value="no-ward-available" disabled>Nenhum setor cadastrado</SelectItem>
                     )}
                   </SelectContent>
                 </Select>
               </div>
 
               <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
-                <DialogTrigger asChild>
-                  <div className="space-y-2" title="Busque por nome, data de nascimento ou prontuario.">
-                    <Label className="text-sm font-medium">Buscar Paciente</Label>
+                <div className="space-y-2" title="Busque por nome, data de nascimento ou prontuario.">
+                  <Label className="text-sm font-medium">Buscar Paciente</Label>
+                  <DialogTrigger asChild>
                     <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2" title="Abrir busca detalhada de paciente">
                       <Search className="h-6 w-6" />
                       <span>Buscar Paciente</span>
                     </Button>
-                  </div>
-                </DialogTrigger>
+                  </DialogTrigger>
+                </div>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Buscar Paciente</DialogTitle>
