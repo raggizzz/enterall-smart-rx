@@ -1,6 +1,6 @@
 /**
  * ParenteralTherapy Page
- * Página para prescrição de Terapia Nutricional Parenteral
+ * Pagina para prescricao de Terapia Nutricional Parenteral
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -43,6 +43,12 @@ export default function ParenteralTherapyPage() {
     const [glucoseG, setGlucoseG] = useState<number>(0);
     const [observations, setObservations] = useState('');
 
+
+    // VET automatico conforme gramas dos macronutrientes
+    useEffect(() => {
+        const nextVet = (aminoacidsG * 4) + (lipidsG * 9) + (glucoseG * 3.4);
+        setVetKcal(nextVet);
+    }, [aminoacidsG, lipidsG, glucoseG]);
     // Load patient
     useEffect(() => {
         if (patientId && patients.length > 0) {
@@ -53,8 +59,8 @@ export default function ParenteralTherapyPage() {
         }
     }, [patientId, patients]);
 
-    // Calculate TIG (Taxa de Infusão de Glicose)
-    // Fórmula: (glicose_g/kg/dia * 1000) / 60 / tempo_infusao
+    // Calculate TIG (Taxa de Infusao de Glicose)
+    // Formula: (glicose_g/kg/dia * 1000) / 60 / tempo_infusao
     // Resultado em mg/kg/min
     const tig = useMemo(() => {
         if (!selectedPatient?.weight || !infusionTime || !glucoseG) return 0;
@@ -78,28 +84,13 @@ export default function ParenteralTherapyPage() {
         };
     }, [vetKcal, aminoacidsG, lipidsG, glucoseG, selectedPatient?.weight]);
 
-    // TIG safety check
-    const tigStatus = useMemo(() => {
-        if (tig === 0) return 'idle';
-        if (tig < 2) return 'low';
-        if (tig <= 4) return 'normal';
-        if (tig <= 6) return 'high';
-        return 'critical';
-    }, [tig]);
-
     const handleSave = async () => {
         if (!selectedPatient) {
             toast.error("Selecione um paciente");
             return;
         }
 
-        if (tigStatus === 'critical') {
-            toast.error("TIG muito elevada! Revise a prescrição.");
-            return;
-        }
-
-        // Here you would save the parenteral therapy data
-        toast.success("Prescrição de nutrição parenteral salva!");
+        toast.success("Prescricao de nutricao parenteral salva!");
         navigate('/patients');
     };
 
@@ -110,7 +101,7 @@ export default function ParenteralTherapyPage() {
                 <div className="container py-6">
                     <Card>
                         <CardContent className="py-12 text-center">
-                            <p className="text-muted-foreground mb-4">Selecione um paciente para prescrever nutrição parenteral</p>
+                            <p className="text-muted-foreground mb-4">Selecione um paciente para prescrever nutricao parenteral</p>
                             <Button onClick={() => navigate('/patients')}>
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Ir para Pacientes
@@ -138,18 +129,18 @@ export default function ParenteralTherapyPage() {
                             Terapia Nutricional Parenteral
                         </h1>
                         <p className="text-muted-foreground">
-                            {selectedPatient?.name} - Prontuário: {selectedPatient?.record}
+                            {selectedPatient?.name} - Prontuario: {selectedPatient?.record}
                             {selectedPatient?.weight && ` - Peso: ${selectedPatient.weight}kg`}
                         </p>
                     </div>
                 </div>
 
-                {/* Resumo - Sempre Visível */}
+                {/* Resumo - Sempre Visivel */}
                 <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-violet-50">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-purple-700">
                             <Calculator className="h-5 w-5" />
-                            Resumo da Prescrição
+                            Resumo da Prescricao
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -169,7 +160,7 @@ export default function ParenteralTherapyPage() {
                                 <div className="text-2xl font-bold text-blue-600">
                                     {aminoacidsG.toFixed(1)}
                                 </div>
-                                <div className="text-xs text-muted-foreground">g aminoácidos/dia</div>
+                                <div className="text-xs text-muted-foreground">g aminoacidos/dia</div>
                                 {perKgValues.aminoacids > 0 && (
                                     <div className="text-sm font-semibold text-blue-700">
                                         {perKgValues.aminoacids.toFixed(2)} g/kg
@@ -180,7 +171,7 @@ export default function ParenteralTherapyPage() {
                                 <div className="text-2xl font-bold text-amber-600">
                                     {lipidsG.toFixed(1)}
                                 </div>
-                                <div className="text-xs text-muted-foreground">g lipídeos/dia</div>
+                                <div className="text-xs text-muted-foreground">g lipideos/dia</div>
                                 {perKgValues.lipids > 0 && (
                                     <div className="text-sm font-semibold text-amber-700">
                                         {perKgValues.lipids.toFixed(2)} g/kg
@@ -201,40 +192,20 @@ export default function ParenteralTherapyPage() {
                         </div>
 
                         {/* TIG */}
-                        <div className={`p-4 rounded-lg border-2 ${tigStatus === 'normal' ? 'bg-green-50 border-green-300' :
-                                tigStatus === 'high' ? 'bg-amber-50 border-amber-300' :
-                                    tigStatus === 'critical' ? 'bg-red-50 border-red-300' :
-                                        tigStatus === 'low' ? 'bg-blue-50 border-blue-300' :
-                                            'bg-gray-50 border-gray-200'
-                            }`}>
+                        <div className="p-4 rounded-lg border-2 bg-blue-50 border-blue-200">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Activity className="h-5 w-5" />
-                                    <span className="font-semibold">Taxa de Infusão de Glicose (TIG)</span>
+                                    <span className="font-semibold">Taxa de Infusao de Glicose (TIG)</span>
                                 </div>
                                 <div className="text-right">
                                     <div className="text-2xl font-bold">
                                         {tig.toFixed(2)} <span className="text-sm font-normal">mg/kg/min</span>
                                     </div>
-                                    {tigStatus === 'critical' && (
-                                        <div className="flex items-center gap-1 text-red-600 text-sm">
-                                            <AlertCircle className="h-4 w-4" />
-                                            TIG muito elevada!
-                                        </div>
-                                    )}
-                                    {tigStatus === 'high' && (
-                                        <div className="text-amber-600 text-sm">TIG elevada - monitorar</div>
-                                    )}
-                                    {tigStatus === 'normal' && (
-                                        <div className="text-green-600 text-sm">TIG adequada ✓</div>
-                                    )}
-                                    {tigStatus === 'low' && (
-                                        <div className="text-blue-600 text-sm">TIG baixa</div>
-                                    )}
                                 </div>
                             </div>
                             <p className="text-xs text-muted-foreground mt-2">
-                                Fórmula: (glicose g/kg/dia × 1000) ÷ 60 ÷ tempo de infusão
+                                A TIG varia com perfil clinico e faixa etaria.
                             </p>
                         </div>
                     </CardContent>
@@ -260,7 +231,7 @@ export default function ParenteralTherapyPage() {
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="peripheral" id="peripheral" />
                                 <Label htmlFor="peripheral" className="cursor-pointer">
-                                    <Badge variant="secondary">Periférico</Badge>
+                                    <Badge variant="secondary">Periferico</Badge>
                                 </Label>
                             </div>
                             <div className="flex items-center space-x-2">
@@ -276,7 +247,7 @@ export default function ParenteralTherapyPage() {
                                 <div className="flex items-center gap-2 text-amber-700">
                                     <AlertCircle className="h-4 w-4" />
                                     <span className="text-sm font-medium">
-                                        Atenção: Acesso periférico limita osmolaridade da solução
+                                        Atencao: Acesso periferico limita osmolaridade da solucao
                                     </span>
                                 </div>
                             </div>
@@ -284,12 +255,12 @@ export default function ParenteralTherapyPage() {
                     </CardContent>
                 </Card>
 
-                {/* Tempo de Infusão */}
+                {/* Tempo de Infusao */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Tempo de Infusão da Bolsa</CardTitle>
+                        <CardTitle>Tempo de Infusao da Bolsa</CardTitle>
                         <CardDescription>
-                            Usado para cálculo da TIG (Taxa de Infusão de Glicose)
+                            Usado para calculo da TIG (Taxa de Infusao de Glicose)
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -304,19 +275,19 @@ export default function ParenteralTherapyPage() {
                             />
                             <span className="text-lg">horas</span>
                             {infusionTime === 24 && (
-                                <Badge variant="secondary">Infusão contínua</Badge>
+                                <Badge variant="secondary">Infusao continua</Badge>
                             )}
                             {infusionTime < 24 && infusionTime > 0 && (
-                                <Badge variant="outline">Infusão cíclica</Badge>
+                                <Badge variant="outline">Infusao ciclica</Badge>
                             )}
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Composição */}
+                {/* Composicao */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Composição da NP</CardTitle>
+                        <CardTitle>Composicao da NP</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -324,10 +295,13 @@ export default function ParenteralTherapyPage() {
                                 <Label>VET (kcal/dia)</Label>
                                 <Input
                                     type="number"
-                                    value={vetKcal || ''}
-                                    onChange={(e) => setVetKcal(parseFloat(e.target.value) || 0)}
-                                    placeholder="Ex: 1500"
+                                    value={vetKcal ? vetKcal.toFixed(0) : ''}
+                                    readOnly
+                                    placeholder="Calculado automaticamente"
                                 />
+                                <p className="text-xs text-muted-foreground">
+                                    Calculo automatico: aminoacidos x 4 + lipideos x 9 + glicose x 3.4
+                                </p>
                                 {selectedPatient?.weight && (
                                     <p className="text-xs text-muted-foreground">
                                         = {perKgValues.kcal.toFixed(1)} kcal/kg
@@ -335,7 +309,7 @@ export default function ParenteralTherapyPage() {
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <Label>Aminoácidos (g/dia)</Label>
+                                <Label>Aminoacidos (g/dia)</Label>
                                 <Input
                                     type="number"
                                     step="0.1"
@@ -350,7 +324,7 @@ export default function ParenteralTherapyPage() {
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <Label>Lipídeos (g/dia)</Label>
+                                <Label>Lipideos (g/dia)</Label>
                                 <Input
                                     type="number"
                                     step="0.1"
@@ -383,16 +357,16 @@ export default function ParenteralTherapyPage() {
                     </CardContent>
                 </Card>
 
-                {/* Observações */}
+                {/* Observacoes */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Observações</CardTitle>
+                        <CardTitle>Observacoes</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Textarea
                             value={observations}
                             onChange={(e) => setObservations(e.target.value)}
-                            placeholder="Anotações sobre a prescrição parenteral..."
+                            placeholder="Anotacoes sobre a prescricao parenteral..."
                             rows={4}
                         />
                     </CardContent>
@@ -403,13 +377,13 @@ export default function ParenteralTherapyPage() {
                     onClick={handleSave}
                     className="w-full"
                     size="lg"
-                    disabled={tigStatus === 'critical'}
                 >
                     <Save className="h-4 w-4 mr-2" />
-                    Salvar Prescrição Parenteral
+                    Salvar Prescricao Parenteral
                 </Button>
             </div>
             <BottomNav />
         </div>
     );
 }
+

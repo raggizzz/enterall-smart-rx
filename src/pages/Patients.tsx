@@ -57,6 +57,8 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { usePatients, useClinics, useHospitals, useWards } from "@/hooks/useDatabase";
 import { Patient } from "@/lib/database";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 
 const Patients = () => {
   const navigate = useNavigate();
@@ -98,6 +100,10 @@ const Patients = () => {
   const { hospitals } = useHospitals();
   // Fetch wards based on selected hospital in the form
   const { wards } = useWards(newPatient.hospitalId);
+  const role = useCurrentRole();
+  const canMovePatients = can(role, "move_patients");
+  const isEditing = Boolean(editingPatient);
+  const disableWardFields = isEditing && !canMovePatients;
 
   useEffect(() => {
     // If we are editing, we might have a hospitalId. 
@@ -140,13 +146,13 @@ const Patients = () => {
 
   const handleAddPatient = async () => {
     if (!newPatient.name || !newPatient.dob || !newPatient.record) {
-      toast.error("Preencha todos os campos obrigatórios");
+      toast.error("Preencha todos os campos obrigatorios");
       return;
     }
 
     try {
       if (editingPatient?.id) {
-        await updatePatient(editingPatient.id, {
+        const updateData = {
           name: newPatient.name,
           dob: newPatient.dob,
           record: newPatient.record,
@@ -158,7 +164,14 @@ const Patients = () => {
           observation: newPatient.notes,
           gender: newPatient.gender,
           nutritionType: newPatient.nutritionType,
-        });
+        };
+
+        if (!canMovePatients) {
+          updateData.ward = editingPatient.ward;
+          updateData.hospitalId = editingPatient.hospitalId;
+        }
+
+        await updatePatient(editingPatient.id, updateData);
         toast.success("Paciente atualizado com sucesso!");
       } else {
         await createPatient({
@@ -215,7 +228,7 @@ const Patients = () => {
         status: newStatus,
         dischargeDate: new Date().toISOString(),
       });
-      toast.success(newStatus === 'discharged' ? "Alta registrada com sucesso" : "Óbito registrado com sucesso");
+      toast.success(newStatus === 'discharged' ? "Alta registrada com sucesso" : "Obito registrado com sucesso");
       setStatusDialogData({ ...statusDialogData, open: false });
     } catch (error) {
       console.error("Error updating status:", error);
@@ -300,7 +313,7 @@ const Patients = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="record">Número de Prontuário *</Label>
+                    <Label htmlFor="record">Numero de Prontuario *</Label>
                     <Input
                       id="record"
                       value={newPatient.record}
@@ -309,41 +322,23 @@ const Patients = () => {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="gender">Sexo</Label>
-                    <Select
-                      value={newPatient.gender}
-                      onValueChange={(val: "male" | "female") => setNewPatient({ ...newPatient, gender: val })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="male">Masculino</SelectItem>
-                        <SelectItem value="female">Feminino</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="nutritionType">Via Nutricional</Label>
-                    <Select
-                      value={newPatient.nutritionType}
-                      onValueChange={(val: "enteral" | "parenteral" | "oral" | "jejum") =>
-                        setNewPatient({ ...newPatient, nutritionType: val })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="enteral">Enteral</SelectItem>
-                        <SelectItem value="parenteral">Parenteral</SelectItem>
-                        <SelectItem value="oral">Oral</SelectItem>
-                        <SelectItem value="jejum">Jejum</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Sexo</Label>
+                  <Select
+                    value={newPatient.gender}
+                    onValueChange={(val: "male" | "female") => setNewPatient({ ...newPatient, gender: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="male">Masculino</SelectItem>
+                      <SelectItem value="female">Feminino</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Via nutricional sera definida na prescricao, nao no cadastro inicial.
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -356,13 +351,14 @@ const Patients = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="hospital">Hospital / Clínica</Label>
+                    <Label htmlFor="hospital">Unidade</Label>
                     <Select
                       value={newPatient.hospitalId}
                       onValueChange={(val) => setNewPatient({ ...newPatient, hospitalId: val, ward: "" })}
+                      disabled={disableWardFields}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione o hospital" />
+                        <SelectValue placeholder="Selecione a unidade" />
                       </SelectTrigger>
                       <SelectContent>
                         {hospitals.map(h => (
@@ -374,28 +370,26 @@ const Patients = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ward">Ala/Unidade</Label>
+                    <Label htmlFor="ward">Ala/Setor</Label>
                     <Select
                       value={newPatient.ward}
                       onValueChange={(val) => setNewPatient({ ...newPatient, ward: val })}
-                      disabled={!newPatient.hospitalId && hospitals.length > 0}
+                      disabled={disableWardFields || (!newPatient.hospitalId && hospitals.length > 0)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione a unidade" />
+                        <SelectValue placeholder="Selecione o setor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* Show wards from selected hospital */}
                         {wards.map(ward => (
                           <SelectItem key={ward.id} value={ward.name}>{ward.name}</SelectItem>
                         ))}
-                        {/* Fallback/Legacy options if no hospital selected or strict mode off */}
                         {!newPatient.hospitalId && clinics.map(clinic => (
                           <SelectItem key={clinic.id} value={clinic.name}>{clinic.name}</SelectItem>
                         ))}
                         {wards.length === 0 && !newPatient.hospitalId && (
                           <>
                             <SelectItem value="UTI-ADULTO">UTI Adulto</SelectItem>
-                            <SelectItem value="UTI-PEDIATRICA">UTI Pediátrica</SelectItem>
+                            <SelectItem value="UTI-PEDIATRICA">UTI Pediatrica</SelectItem>
                             <SelectItem value="ENFERMARIA">Enfermaria</SelectItem>
                           </>
                         )}
@@ -426,12 +420,12 @@ const Patients = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Anotações</Label>
+                  <Label htmlFor="notes">Anotacoes</Label>
                   <Textarea
                     id="notes"
                     value={newPatient.notes}
                     onChange={(e) => setNewPatient({ ...newPatient, notes: e.target.value })}
-                    placeholder="Diagnóstico, observações, etc."
+                    placeholder="Diagnostico, observacoes, etc."
                     rows={4}
                   />
                 </div>
@@ -444,7 +438,7 @@ const Patients = () => {
                   Cancelar
                 </Button>
                 <Button onClick={handleAddPatient}>
-                  {editingPatient ? 'Salvar Alterações' : 'Cadastrar Paciente'}
+                  {editingPatient ? 'Salvar Alteracoes' : 'Cadastrar Paciente'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -469,13 +463,13 @@ const Patients = () => {
                     <SelectItem value="active">Pacientes Ativos</SelectItem>
                     <SelectItem value="all">Todos os Pacientes</SelectItem>
                     <SelectItem value="discharged">Pacientes com Alta</SelectItem>
-                    <SelectItem value="deceased">Óbitos</SelectItem>
+                    <SelectItem value="deceased">Obitos</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="relative flex-1 md:w-[300px]">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por nome, prontuário ou data..."
+                    placeholder="Buscar por nome, prontuario ou data..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -501,12 +495,12 @@ const Patients = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
-                    <TableHead>Prontuário</TableHead>
+                    <TableHead>Prontuario</TableHead>
                     <TableHead>Data Nasc.</TableHead>
                     <TableHead>Leito/Ala</TableHead>
                     <TableHead>Peso/Altura</TableHead>
                     <TableHead>Via Nutricional</TableHead>
-                    <TableHead>Ações</TableHead>
+                    <TableHead>Acoes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -525,7 +519,7 @@ const Patients = () => {
                           )}
                           {patient.status === 'deceased' && (
                             <Badge variant="outline" className="border-red-500 text-red-600 flex gap-1 items-center">
-                              <XCircle className="h-3 w-3" /> Óbito
+                              <XCircle className="h-3 w-3" /> Obito
                             </Badge>
                           )}
                         </div>
@@ -574,7 +568,7 @@ const Patients = () => {
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openStatusDialog(patient, 'deceased')}>
                                 <XCircle className="h-4 w-4 mr-2 text-red-600" />
-                                Registrar Óbito
+                                Registrar Obito
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleEditPatient(patient)}>
@@ -599,10 +593,10 @@ const Patients = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Registrar Óbito'}
+              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Registrar Obito'}
             </DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja {statusDialogData.newStatus === 'discharged' ? 'dar alta para' : 'registrar o óbito de'}
+              Tem certeza que deseja {statusDialogData.newStatus === 'discharged' ? 'dar alta para' : 'registrar o obito de'}
               <strong> {statusDialogData.patientName}</strong>?
             </DialogDescription>
           </DialogHeader>
@@ -616,7 +610,7 @@ const Patients = () => {
               onClick={confirmUpdateStatus}
               className={statusDialogData.newStatus === 'discharged' ? 'bg-green-600 hover:bg-green-700' : ''}
             >
-              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Confirmar Óbito'}
+              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Confirmar Obito'}
             </Button>
           </div>
         </DialogContent>
@@ -626,3 +620,4 @@ const Patients = () => {
 };
 
 export default Patients;
+

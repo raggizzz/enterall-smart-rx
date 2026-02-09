@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import logo from "@/assets/logoenmeta.png";
 
 interface LabelData {
     patientName: string;
@@ -21,8 +22,9 @@ interface LabelData {
 const LabelPreview = ({ data }: { data: LabelData }) => {
     return (
         <div className="w-[400px] border-2 border-black p-4 bg-white text-black font-sans text-sm">
-            <div className="text-center font-bold text-lg border-b-2 border-black pb-2 mb-2">
-                NUTRIÇÃO ENTERAL
+            <div className="flex items-center gap-2 border-b-2 border-black pb-2 mb-2">
+                <img src={logo} alt="ENMeta" className="h-8 w-auto" />
+                <div className="flex-1 text-center font-bold text-lg">NUTRI??O ENTERAL</div>
             </div>
 
             <div className="space-y-2">

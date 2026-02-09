@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,9 +24,13 @@ import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { useSupplies } from "@/hooks/useDatabase";
 import { Supply } from "@/lib/database";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 
 const Supplies = () => {
     const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
+    const role = useCurrentRole();
+    const canManageSupplies = can(role, "manage_supplies");
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingSupply, setEditingSupply] = useState<Supply | null>(null);
@@ -38,8 +42,13 @@ const Supplies = () => {
     };
 
     const handleSave = async () => {
+        if (!canManageSupplies) {
+            toast.error("Sem permissao para gerenciar insumos");
+            return;
+        }
+
         if (!currentSupply.name || !currentSupply.code || !currentSupply.type) {
-            toast.error("Preencha os campos obrigatórios");
+            toast.error("Preencha os campos obrigatÃ³rios");
             return;
         }
 
@@ -75,6 +84,11 @@ const Supplies = () => {
     };
 
     const handleEdit = (supply: Supply) => {
+        if (!canManageSupplies) {
+            toast.error("Sem permissao para editar insumos");
+            return;
+        }
+
         setEditingSupply(supply);
         setCurrentSupply({
             ...supply,
@@ -84,11 +98,16 @@ const Supplies = () => {
     };
 
     const handleDelete = async (id: string) => {
+        if (!canManageSupplies) {
+            toast.error("Sem permissao para excluir insumos");
+            return;
+        }
+
         if (!confirm("Tem certeza que deseja excluir este insumo?")) return;
 
         try {
             await deleteSupply(id);
-            toast.success("Insumo excluído com sucesso!");
+            toast.success("Insumo excluÃ­do com sucesso!");
         } catch (error) {
             console.error('Error deleting supply:', error);
             toast.error("Erro ao excluir insumo");
@@ -107,8 +126,9 @@ const Supplies = () => {
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Insumos</h1>
-                        <p className="text-muted-foreground">Gerencie frascos, equipos e outros materiais - Dados Locais</p>
+                        <p className="text-muted-foreground">Gerencie frascos, equipos e outros materiais da unidade selecionada</p>
                     </div>
+                    {canManageSupplies && (
                     <Dialog open={isDialogOpen} onOpenChange={(open) => {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
@@ -124,7 +144,7 @@ const Supplies = () => {
                                 <DialogTitle>{editingSupply ? 'Editar' : 'Novo'} Insumo</DialogTitle>
                             </DialogHeader>
                             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-                                {/* Tipo e Código */}
+                                {/* Tipo e CÃ³digo */}
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
                                         <Label>Tipo *</Label>
@@ -143,7 +163,7 @@ const Supplies = () => {
                                         </Select>
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label>Código *</Label>
+                                        <Label>CÃ³digo *</Label>
                                         <Input
                                             placeholder="Ex: FR100"
                                             value={currentSupply.code || ''}
@@ -156,7 +176,7 @@ const Supplies = () => {
                                 <div className="grid gap-2">
                                     <Label>Nome do Produto *</Label>
                                     <Input
-                                        placeholder="Ex: Frasco Descartável 100ml"
+                                        placeholder="Ex: Frasco DescartÃ¡vel 100ml"
                                         value={currentSupply.name || ''}
                                         onChange={e => setCurrentSupply({ ...currentSupply, name: e.target.value })}
                                     />
@@ -181,16 +201,16 @@ const Supplies = () => {
                                     </Select>
                                 </div>
 
-                                {/* Campos específicos para Frasco */}
+                                {/* Campos especÃ­ficos para Frasco */}
                                 {currentSupply.type === 'bottle' && (
                                     <div className="border rounded-lg p-4 bg-blue-50/50 space-y-4">
                                         <div className="flex items-center gap-2">
                                             <Package className="h-5 w-5 text-blue-600" />
-                                            <Label className="font-semibold text-blue-800">Dados do Frasco (para cálculo automático)</Label>
+                                            <Label className="font-semibold text-blue-800">Dados do Frasco (para cÃ¡lculo automÃ¡tico)</Label>
                                         </div>
                                         <p className="text-xs text-blue-700">
-                                            A capacidade do frasco será usada para calcular automaticamente o número de frascos
-                                            necessários com base no volume de dieta e água prescritos.
+                                            A capacidade do frasco serÃ¡ usada para calcular automaticamente o nÃºmero de frascos
+                                            necessÃ¡rios com base no volume de dieta e Ã¡gua prescritos.
                                         </p>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="grid gap-2">
@@ -203,7 +223,7 @@ const Supplies = () => {
                                                 />
                                             </div>
                                             <div className="grid gap-2">
-                                                <Label>Valor Unitário (R$) *</Label>
+                                                <Label>Valor UnitÃ¡rio (R$) *</Label>
                                                 <Input
                                                     type="number"
                                                     step="0.01"
@@ -228,7 +248,7 @@ const Supplies = () => {
                                             />
                                         </div>
                                         <div className="grid gap-2">
-                                            <Label>Valor Unitário (R$) *</Label>
+                                            <Label>Valor UnitÃ¡rio (R$) *</Label>
                                             <Input
                                                 type="number"
                                                 step="0.01"
@@ -240,12 +260,12 @@ const Supplies = () => {
                                     </div>
                                 )}
 
-                                {/* Seção de Resíduos */}
+                                {/* SeÃ§Ã£o de ResÃ­duos */}
                                 <div className="border-t pt-4 mt-2">
-                                    <Label className="mb-3 block font-semibold">Geração de Resíduos por Unidade (g)</Label>
+                                    <Label className="mb-3 block font-semibold">GeraÃ§Ã£o de ResÃ­duos por Unidade (g)</Label>
                                     <div className="grid grid-cols-4 gap-3">
                                         <div className="grid gap-1">
-                                            <Label className="text-xs">Plástico</Label>
+                                            <Label className="text-xs">PlÃ¡stico</Label>
                                             <Input
                                                 type="number"
                                                 className="h-9"
@@ -255,7 +275,7 @@ const Supplies = () => {
                                             />
                                         </div>
                                         <div className="grid gap-1">
-                                            <Label className="text-xs">Papel/Papelão</Label>
+                                            <Label className="text-xs">Papel/PapelÃ£o</Label>
                                             <Input
                                                 type="number"
                                                 className="h-9"
@@ -288,11 +308,12 @@ const Supplies = () => {
                                 </div>
 
                                 <Button onClick={handleSave} className="w-full mt-4">
-                                    {editingSupply ? 'Salvar Alterações' : 'Criar Insumo'}
+                                    {editingSupply ? 'Salvar AlteraÃ§Ãµes' : 'Criar Insumo'}
                                 </Button>
                             </div>
                         </DialogContent>
                     </Dialog>
+                    )}
                 </div>
 
                 <Card>
@@ -300,7 +321,7 @@ const Supplies = () => {
                         <div className="relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Buscar por nome ou código..."
+                                placeholder="Buscar por nome ou cÃ³digo..."
                                 className="pl-8"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -311,13 +332,13 @@ const Supplies = () => {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Código</TableHead>
+                                    <TableHead>CÃ³digo</TableHead>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Tipo</TableHead>
                                     <TableHead>Unid. Faturamento</TableHead>
                                     <TableHead>Capacidade</TableHead>
                                     <TableHead>Valor</TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
+                                    <TableHead className="text-right">AÃ§Ãµes</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -361,6 +382,7 @@ const Supplies = () => {
                                             </TableCell>
                                             <TableCell>R$ {supply.unitPrice?.toFixed(2) || '0.00'}</TableCell>
                                             <TableCell className="text-right">
+                                                {canManageSupplies && (
                                                 <div className="flex justify-end gap-2">
                                                     <Button variant="ghost" size="icon" onClick={() => handleEdit(supply)}>
                                                         <Edit className="h-4 w-4" />
@@ -374,6 +396,7 @@ const Supplies = () => {
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))
@@ -389,3 +412,4 @@ const Supplies = () => {
 };
 
 export default Supplies;
+

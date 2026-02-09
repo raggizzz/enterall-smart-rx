@@ -108,7 +108,7 @@ const Labels = () => {
                         </h1>
                         <p className="text-muted-foreground flex items-center gap-2">
                             <Database className="h-4 w-4" />
-                            Geração de etiquetas baseada em prescrições do banco local
+                            Geração de etiquetas baseada em prescrições da unidade
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -316,3 +316,6 @@ const Labels = () => {
 };
 
 export default Labels;
+
+
+

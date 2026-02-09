@@ -1,6 +1,6 @@
 /**
  * OralTherapy Page
- * Página para prescrição de Dieta Oral / Terapia Nutricional Via Oral
+ * Pagina para prescricao de Dieta Oral / Terapia Nutricional Via Oral
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -50,8 +50,8 @@ import { usePatients, useFormulas, useModules } from "@/hooks/useDatabase";
 
 const MEAL_SCHEDULES = [
     { key: 'breakfast', label: 'Desjejum' },
-    { key: 'midMorning', label: 'Colação' },
-    { key: 'lunch', label: 'Almoço' },
+    { key: 'midMorning', label: 'Colacao' },
+    { key: 'lunch', label: 'Almoco' },
     { key: 'afternoon', label: 'Merenda' },
     { key: 'dinner', label: 'Jantar' },
     { key: 'supper', label: 'Ceia' },
@@ -101,7 +101,11 @@ export default function OralTherapyPage() {
     // Get oral supplements (formulas marked as supplements)
     const availableSupplements = useMemo(() => {
         return formulas.filter(f =>
-            f.type === 'standard' || f.type === 'high-protein' || f.type === 'high-calorie'
+            f.type === 'standard' ||
+            f.type === 'high-protein' ||
+            f.type === 'high-calorie' ||
+            f.type === 'oral-supplement' ||
+            f.type === 'infant-formula'
         );
     }, [formulas]);
 
@@ -116,8 +120,7 @@ export default function OralTherapyPage() {
 
             // Count selected meals
             const timesPerDay = Object.values(sup.schedules).filter(v => v === true).length;
-            // Assume 200ml per serving for supplements
-            const volumePerServing = 200;
+            const volumePerServing = sup.amount || 200;
             const factor = (volumePerServing * timesPerDay) / 100;
 
             kcal += (formula.caloriesPerUnit || 0) * factor;
@@ -129,9 +132,11 @@ export default function OralTherapyPage() {
             if (!module) return;
 
             const timesPerDay = Object.values(om.schedules).filter(v => v === true).length;
+            const amount = om.amount || module.referenceAmount || 1;
+            const factor = module.referenceAmount ? (amount / module.referenceAmount) : amount;
 
-            kcal += (module.calories || 0) * timesPerDay;
-            protein += (module.protein || 0) * timesPerDay;
+            kcal += (module.calories || 0) * timesPerDay * factor;
+            protein += (module.protein || 0) * timesPerDay * factor;
         });
 
         return {
@@ -145,12 +150,12 @@ export default function OralTherapyPage() {
     // Add supplement
     const addSupplement = () => {
         if (supplements.length >= 3) {
-            toast.error("Máximo de 3 suplementos");
+            toast.error("Maximo de 3 suplementos");
             return;
         }
         setSupplements([
             ...supplements,
-            { supplementId: '', supplementName: '', schedules: {} }
+            { supplementId: '', supplementName: '', amount: 200, unit: 'ml', schedules: {} }
         ]);
     };
 
@@ -168,6 +173,16 @@ export default function OralTherapyPage() {
                 ...updated[index],
                 supplementId: value,
                 supplementName: formula?.name || ''
+            };
+        } else if (field === 'amount') {
+            updated[index] = {
+                ...updated[index],
+                amount: value ? parseFloat(value) : undefined
+            };
+        } else if (field === 'unit') {
+            updated[index] = {
+                ...updated[index],
+                unit: value
             };
         } else if (field.startsWith('schedule_')) {
             const scheduleKey = field.replace('schedule_', '');
@@ -193,12 +208,12 @@ export default function OralTherapyPage() {
     // Add module
     const addModule = () => {
         if (oralModules.length >= 3) {
-            toast.error("Máximo de 3 módulos");
+            toast.error("Maximo de 3 modulos");
             return;
         }
         setOralModules([
             ...oralModules,
-            { moduleId: '', moduleName: '', schedules: {} }
+            { moduleId: '', moduleName: '', amount: 1, unit: 'g', schedules: {} }
         ]);
     };
 
@@ -216,6 +231,16 @@ export default function OralTherapyPage() {
                 ...updated[index],
                 moduleId: value,
                 moduleName: module?.name || ''
+            };
+        } else if (field === 'amount') {
+            updated[index] = {
+                ...updated[index],
+                amount: value ? parseFloat(value) : undefined
+            };
+        } else if (field === 'unit') {
+            updated[index] = {
+                ...updated[index],
+                unit: value
             };
         } else if (field.startsWith('schedule_')) {
             const scheduleKey = field.replace('schedule_', '');
@@ -246,7 +271,7 @@ export default function OralTherapyPage() {
 
         // Here you would save the oral therapy data
         // For now, just show success
-        toast.success("Prescrição de dieta oral salva!");
+        toast.success("Prescricao de dieta oral salva!");
         navigate('/patients');
     };
 
@@ -282,12 +307,12 @@ export default function OralTherapyPage() {
                     <div>
                         <h1 className="text-2xl font-bold">Dieta Oral / TNO</h1>
                         <p className="text-muted-foreground">
-                            {selectedPatient?.name} - Prontuário: {selectedPatient?.record}
+                            {selectedPatient?.name} - Prontuario: {selectedPatient?.record}
                         </p>
                     </div>
                 </div>
 
-                {/* Total Via Oral - Sempre Visível */}
+                {/* Total Via Oral - Sempre Visivel */}
                 <Card className="border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-orange-700">
@@ -312,7 +337,7 @@ export default function OralTherapyPage() {
                                 <div className="text-3xl font-bold text-blue-600">
                                     {oralTotals.protein.toFixed(1)}
                                 </div>
-                                <div className="text-sm text-muted-foreground">g proteínas/dia</div>
+                                <div className="text-sm text-muted-foreground">g proteinas/dia</div>
                                 {oralTotals.proteinPerKg > 0 && (
                                     <div className="text-lg font-semibold text-blue-700 mt-1">
                                         {oralTotals.proteinPerKg.toFixed(2)} g/kg
@@ -334,15 +359,15 @@ export default function OralTherapyPage() {
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Consistência da dieta</Label>
+                                <Label>Consistencia da dieta</Label>
                                 <Input
                                     value={dietConsistency}
                                     onChange={(e) => setDietConsistency(e.target.value)}
-                                    placeholder="Ex: Branda, Pastosa, Líquida"
+                                    placeholder="Ex: Branda, Pastosa, Liquida"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Quantidade de refeições por dia</Label>
+                                <Label>Quantidade de refeicoes por dia</Label>
                                 <Input
                                     type="number"
                                     min="1"
@@ -353,35 +378,35 @@ export default function OralTherapyPage() {
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label>Características</Label>
+                            <Label>Caracteristicas</Label>
                             <Textarea
                                 value={dietCharacteristics}
                                 onChange={(e) => setDietCharacteristics(e.target.value)}
-                                placeholder="Ex: Hipossódica, Hipoglicídica, Rica em fibras..."
+                                placeholder="Ex: Hipossodica, Hipoglicidica, Rica em fibras..."
                                 rows={2}
                             />
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Acompanhamento Fonoaudiológico */}
+                {/* Acompanhamento Fonoaudiologico */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Mic className="h-5 w-5" />
-                            Acompanhamento Fonoaudiológico
+                            Acompanhamento Fonoaudiologico
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center gap-4">
-                            <Label>Acompanhamento fonoaudiológico?</Label>
+                            <Label>Acompanhamento fonoaudiologico?</Label>
                             <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="speechNo"
                                     checked={!speechTherapy}
                                     onCheckedChange={() => setSpeechTherapy(false)}
                                 />
-                                <Label htmlFor="speechNo" className="font-normal">Não</Label>
+                                <Label htmlFor="speechNo" className="font-normal">Nao</Label>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Checkbox
@@ -396,13 +421,13 @@ export default function OralTherapyPage() {
                         {speechTherapy && (
                             <div className="pl-4 border-l-2 border-blue-200 space-y-4">
                                 <div className="flex items-center gap-4">
-                                    <Label>Necessidade de espessante alimentar?</Label>
+                                    <Label>Agua com espessante?</Label>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
                                             checked={!needsThickener}
                                             onCheckedChange={() => setNeedsThickener(false)}
                                         />
-                                        <span className="text-sm">Não</span>
+                                        <span className="text-sm">Nao</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -415,11 +440,11 @@ export default function OralTherapyPage() {
 
                                 {needsThickener && (
                                     <div className="space-y-2">
-                                        <Label>Consistência segura</Label>
+                                        <Label>Consistencia segura para agua</Label>
                                         <Input
                                             value={safeConsistency}
                                             onChange={(e) => setSafeConsistency(e.target.value)}
-                                            placeholder="Ex: Néctar, Mel, Pudim"
+                                            placeholder="Ex: Nectar, Mel, Pudim"
                                         />
                                     </div>
                                 )}
@@ -432,12 +457,12 @@ export default function OralTherapyPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Estimativas da Dieta</CardTitle>
-                        <CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription>
+                        <CardDescription>Valor estimado da alimentacao oral (sem suplementos)</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Valor energético total estimado (kcal)</Label>
+                                <Label>Valor energetico total estimado (kcal)</Label>
                                 <Input
                                     type="number"
                                     value={estimatedVET || ''}
@@ -446,7 +471,7 @@ export default function OralTherapyPage() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Quantidade de proteínas (g/dia)</Label>
+                                <Label>Quantidade de proteinas (g/dia)</Label>
                                 <Input
                                     type="number"
                                     value={estimatedProtein || ''}
@@ -471,7 +496,7 @@ export default function OralTherapyPage() {
                                     checked={!hasOralTherapy}
                                     onCheckedChange={() => setHasOralTherapy(false)}
                                 />
-                                <span className="text-sm">Não</span>
+                                <span className="text-sm">Nao</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Checkbox
@@ -487,7 +512,7 @@ export default function OralTherapyPage() {
                                 {/* Suplementos */}
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <Label className="text-lg font-semibold">Suplementos</Label>
+                                        <Label className="text-lg font-semibold">Suplementos via oral</Label>
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -528,9 +553,32 @@ export default function OralTherapyPage() {
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-sm">Quantidade por oferta</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={sup.amount || ''}
+                                                            onChange={(e) => updateSupplement(index, 'amount', e.target.value)}
+                                                            placeholder="Ex: 200"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-sm">Unidade</Label>
+                                                        <Select value={sup.unit || 'ml'} onValueChange={(val) => updateSupplement(index, 'unit', val)}>
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="ml">ml</SelectItem>
+                                                                <SelectItem value="g">g</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm">Horários</Label>
+                                                    <Label className="text-sm">Horarios</Label>
                                                     <div className="flex flex-wrap gap-2">
                                                         {MEAL_SCHEDULES.map(meal => (
                                                             <div key={meal.key} className="flex items-center gap-1">
@@ -569,10 +617,10 @@ export default function OralTherapyPage() {
 
                                 <Separator />
 
-                                {/* Módulos */}
+                                {/* Modulos */}
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
-                                        <Label className="text-lg font-semibold">Módulos</Label>
+                                        <Label className="text-lg font-semibold">Modulos via oral</Label>
                                         <Button
                                             variant="outline"
                                             size="sm"
@@ -588,7 +636,7 @@ export default function OralTherapyPage() {
                                         <Card key={index} className="border-dashed">
                                             <CardContent className="pt-4 space-y-4">
                                                 <div className="flex items-center justify-between">
-                                                    <Badge variant="secondary">Módulo {index + 1}</Badge>
+                                                    <Badge variant="secondary">Modulo {index + 1}</Badge>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -603,7 +651,7 @@ export default function OralTherapyPage() {
                                                     onValueChange={(val) => updateModule(index, 'moduleId', val)}
                                                 >
                                                     <SelectTrigger>
-                                                        <SelectValue placeholder="Selecione o módulo" />
+                                                        <SelectValue placeholder="Selecione o modulo" />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         {modules.map(m => (
@@ -613,9 +661,32 @@ export default function OralTherapyPage() {
                                                         ))}
                                                     </SelectContent>
                                                 </Select>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1">
+                                                        <Label className="text-sm">Quantidade por oferta</Label>
+                                                        <Input
+                                                            type="number"
+                                                            value={om.amount || ''}
+                                                            onChange={(e) => updateModule(index, 'amount', e.target.value)}
+                                                            placeholder="Ex: 10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label className="text-sm">Unidade</Label>
+                                                        <Select value={om.unit || 'g'} onValueChange={(val) => updateModule(index, 'unit', val)}>
+                                                            <SelectTrigger>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="g">g</SelectItem>
+                                                                <SelectItem value="ml">ml</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
 
                                                 <div className="space-y-2">
-                                                    <Label className="text-sm">Horários</Label>
+                                                    <Label className="text-sm">Horarios</Label>
                                                     <div className="flex flex-wrap gap-2">
                                                         {MEAL_SCHEDULES.map(meal => (
                                                             <div key={meal.key} className="flex items-center gap-1">
@@ -654,13 +725,13 @@ export default function OralTherapyPage() {
 
                                 <Separator />
 
-                                {/* Observações */}
+                                {/* Observacoes */}
                                 <div className="space-y-2">
-                                    <Label>Observações</Label>
+                                    <Label>Observacoes</Label>
                                     <Textarea
                                         value={observations}
                                         onChange={(e) => setObservations(e.target.value)}
-                                        placeholder="Preferências, alergias alimentares, aceitação..."
+                                        placeholder="Preferencias, alergias alimentares, aceitacao..."
                                         rows={4}
                                     />
                                 </div>
@@ -672,10 +743,12 @@ export default function OralTherapyPage() {
                 {/* Salvar */}
                 <Button onClick={handleSave} className="w-full" size="lg">
                     <Save className="h-4 w-4 mr-2" />
-                    Salvar Prescrição de Dieta Oral
+                    Salvar Prescricao de Dieta Oral
                 </Button>
             </div>
             <BottomNav />
         </div>
     );
 }
+
+

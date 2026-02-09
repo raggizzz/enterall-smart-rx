@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -10,18 +10,28 @@ import Header from "@/components/Header";
 import { usePatients, useEvolutions } from "@/hooks/useDatabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
+import { can } from "@/lib/permissions";
 
 const Reports = () => {
     const navigate = useNavigate();
     const { patients, isLoading } = usePatients();
     const [selectedPatient, setSelectedPatient] = useState("all");
+    const role = useCurrentRole();
+    const isManagerView = can(role, "manage_units") || can(role, "manage_wards");
 
     // Filtrar pacientes ativos
     const activePatients = useMemo(() => {
         return patients.filter(p => p.status === 'active');
     }, [patients]);
 
-    // Calcular estatísticas gerais
+    useEffect(() => {
+        if (!isManagerView && selectedPatient === "all" && activePatients.length > 0) {
+            setSelectedPatient(activePatients[0].id || "all");
+        }
+    }, [isManagerView, selectedPatient, activePatients]);
+
+    // Calcular estatisticas gerais
     const statistics = useMemo(() => {
         const total = activePatients.length;
         const byType = {
@@ -42,24 +52,27 @@ const Reports = () => {
 
     const [startDate, setStartDate] = useState(sevenDaysAgo.toISOString().split('T')[0]);
     const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+    const forceLastSevenDays = isManagerView && selectedPatient === "all";
+    const effectiveStartDate = forceLastSevenDays ? sevenDaysAgo.toISOString().split('T')[0] : startDate;
+    const effectiveEndDate = forceLastSevenDays ? today.toISOString().split('T')[0] : endDate;
 
-    // Filtrar evoluções por data e paciente
+    // Filtrar evolucoes por data e paciente
     const filteredEvolutions = useMemo(() => {
         return evolutions.filter(evo => {
             const evoDate = evo.date;
-            const matchesDate = evoDate >= startDate && evoDate <= endDate;
+            const matchesDate = evoDate >= effectiveStartDate && evoDate <= effectiveEndDate;
             const matchesPatient = selectedPatient === 'all' || evo.patientId === selectedPatient;
             return matchesDate && matchesPatient;
         });
-    }, [evolutions, startDate, endDate, selectedPatient]);
+    }, [evolutions, effectiveStartDate, effectiveEndDate, selectedPatient]);
 
-    // Dados para o gráfico agrupados por data
+    // Dados para o grafico agrupados por data
     const historyData = useMemo(() => {
         const grouped: Record<string, { date: string, volume: number, count: number, totalPct: number }> = {};
 
         // Inicializar datas no intervalo
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        const start = new Date(effectiveStartDate);
+        const end = new Date(effectiveEndDate);
         const loop = new Date(start);
 
         while (loop <= end) {
@@ -83,16 +96,16 @@ const Reports = () => {
             volume: item.volume,
             percentage: item.count > 0 ? Math.round(item.totalPct / item.count) : 0
         }));
-    }, [filteredEvolutions, startDate, endDate]);
+    }, [filteredEvolutions, effectiveStartDate, effectiveEndDate]);
 
-    // Calcular resumo do período filtrado
+    // Calcular resumo do periodo filtrado
     const summary = useMemo(() => {
         const totalEvolutions = filteredEvolutions.length;
         if (totalEvolutions === 0) return { avgPercentage: "0.0", daysOnGoal: 0, daysBelow: 0, totalVolume: 0 };
 
         const avgPercentage = filteredEvolutions.reduce((sum, d) => sum + (d.metaReached || 0), 0) / totalEvolutions;
-        const daysOnGoal = filteredEvolutions.filter(d => (d.metaReached || 0) >= 90).length;
-        const daysBelow = filteredEvolutions.filter(d => (d.metaReached || 0) < 70).length;
+        const daysOnGoal = filteredEvolutions.filter(d => (d.metaReached || 0) >= 80).length;
+        const daysBelow = filteredEvolutions.filter(d => (d.metaReached || 0) < 80).length;
         const totalVolume = filteredEvolutions.reduce((sum, d) => sum + (d.volumeInfused || 0), 0);
 
         return { avgPercentage: avgPercentage.toFixed(1), daysOnGoal, daysBelow, totalVolume };
@@ -105,8 +118,8 @@ const Reports = () => {
             <div className="container px-4 py-6 space-y-6">
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                     <div>
-                        <h1 className="text-2xl font-bold">Relatórios</h1>
-                        <p className="text-muted-foreground">Acompanhamento da meta nutricional</p>
+                        <h1 className="text-2xl font-bold">Relatorios</h1>
+                        <p className="text-muted-foreground">Acompanhamento da terapia nutricional</p>
                     </div>
 
                     <div className="flex gap-2 w-full md:w-auto">
@@ -115,7 +128,7 @@ const Reports = () => {
                                 <SelectValue placeholder="Selecione o Paciente" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Visão Geral</SelectItem>
+                                {isManagerView && <SelectItem value="all">Conjunto</SelectItem>}
                                 {activePatients.map(p => (
                                     <SelectItem key={p.id} value={p.id || ''}>{p.name}</SelectItem>
                                 ))}
@@ -125,12 +138,13 @@ const Reports = () => {
 
                     <div className="flex gap-2 items-end">
                         <div className="space-y-1">
-                            <Label className="text-xs">Início</Label>
+                            <Label className="text-xs">Inicio</Label>
                             <Input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
                                 className="w-[140px]"
+                                disabled={forceLastSevenDays}
                             />
                         </div>
                         <div className="space-y-1">
@@ -140,6 +154,7 @@ const Reports = () => {
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
                                 className="w-[140px]"
+                                disabled={forceLastSevenDays}
                             />
                         </div>
                         <Button variant="outline" className="mb-[1px]">
@@ -148,6 +163,11 @@ const Reports = () => {
                         </Button>
                     </div>
                 </div>
+                {forceLastSevenDays && (
+                    <p className="text-xs text-muted-foreground">
+                        No modo conjunto, o grafico considera automaticamente os ultimos 7 dias.
+                    </p>
+                )}
 
                 {isLoading ? (
                     <div className="text-center py-12">
@@ -159,7 +179,7 @@ const Reports = () => {
                             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                             <p className="text-muted-foreground">Nenhum paciente ativo encontrado</p>
                             <p className="text-sm text-muted-foreground mt-2">
-                                Cadastre pacientes para visualizar relatórios
+                                Cadastre pacientes para visualizar relatorios
                             </p>
                             <Button className="mt-4" onClick={() => navigate('/patients')}>
                                 Ir para Pacientes
@@ -168,7 +188,7 @@ const Reports = () => {
                     </Card>
                 ) : (
                     <>
-                        {/* Estatísticas Rápidas */}
+                        {/* Estatisticas Rapidas */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <Card>
                                 <CardContent className="pt-6">
@@ -210,9 +230,9 @@ const Reports = () => {
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
                                         <TrendingUp className="h-5 w-5" />
-                                        Adesão à Meta Nutricional (%)
+                                        Infusao da TNE (%)
                                     </CardTitle>
-                                    <CardDescription>Volume infundido vs Meta prescrita (últimos 7 dias)</CardDescription>
+                                    <CardDescription>Volume infundido em relacao ao volume prescrito</CardDescription>
                                 </CardHeader>
                                 <CardContent className="h-[300px]">
                                     <ResponsiveContainer width="100%" height="100%">
@@ -231,34 +251,29 @@ const Reports = () => {
                             {/* Details Card */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Resumo do Período</CardTitle>
+                                    <CardTitle>Resumo do Periodo</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
                                         <div className="flex justify-between items-center border-b pb-2">
-                                            <span className="text-muted-foreground">Média de Adequação</span>
+                                            <span className="text-muted-foreground">Media de infusao</span>
                                             <span className="font-bold text-lg">{summary.avgPercentage}%</span>
                                         </div>
                                         <div className="flex justify-between items-center border-b pb-2">
-                                            <span className="text-muted-foreground">Evoluções na Meta ({">"}90%)</span>
+                                            <span className="text-muted-foreground">Infusao {">"}80% prescrito</span>
                                             <span className="font-bold text-lg text-green-600">{summary.daysOnGoal}</span>
                                         </div>
                                         <div className="flex justify-between items-center border-b pb-2">
-                                            <span className="text-muted-foreground">Evoluções Abaixo ({'<'}70%)</span>
+                                            <span className="text-muted-foreground">Infusao {'<'}80% prescrito</span>
                                             <span className="font-bold text-lg text-red-600">{summary.daysBelow}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-muted-foreground">Total Infundido</span>
-                                            <span className="font-bold text-lg">{summary.totalVolume.toLocaleString()} ml</span>
-                                        </div>
-                                    </div>
+                                        </div></div>
                                 </CardContent>
                             </Card>
 
                             {/* Type Distribution */}
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Distribuição por Tipo</CardTitle>
+                                    <CardTitle>Vias de Terapia Nutricional</CardTitle>
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
@@ -296,3 +311,5 @@ const Reports = () => {
 };
 
 export default Reports;
+
+

@@ -16,6 +16,7 @@ import {
     AppSettings,
     Hospital,
     Ward,
+    AppTool,
     patientsService,
     formulasService,
     modulesService,
@@ -27,6 +28,7 @@ import {
     settingsService,
     hospitalsService,
     wardsService,
+    appToolsService,
     initializeDatabase,
     supabase
 } from '@/lib/database';
@@ -366,20 +368,25 @@ export function useSupplies() {
 // PROFESSIONALS HOOKS
 // ============================================
 
-export function useProfessionals() {
+export function useProfessionals(hospitalId?: string) {
     const [professionals, setProfessionals] = useState<Professional[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchProfessionals = useCallback(async () => {
+        if (!hospitalId) {
+            setProfessionals([]);
+            setIsLoading(false);
+            return;
+        }
         try {
-            const data = await professionalsService.getAll();
+            const data = await professionalsService.getByHospital(hospitalId);
             setProfessionals(data);
         } catch (error) {
             console.error('Error fetching professionals:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useEffect(() => {
         fetchProfessionals();
@@ -834,6 +841,47 @@ export function useSettings() {
         isLoading,
         saveSettings,
         refetch: fetchSettings
+    };
+}
+
+// ============================================
+// TOOLS CATALOG HOOKS
+// ============================================
+
+export function useAppTools() {
+    const [tools, setTools] = useState<AppTool[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchTools = useCallback(async () => {
+        try {
+            const data = await appToolsService.getAll();
+            setTools(data);
+        } catch (error) {
+            console.error('Error fetching app tools:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchTools();
+
+        const subscription = supabase
+            .channel('app_tools_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_tools' }, () => {
+                fetchTools();
+            })
+            .subscribe();
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [fetchTools]);
+
+    return {
+        tools,
+        isLoading,
+        refetch: fetchTools
     };
 }
 

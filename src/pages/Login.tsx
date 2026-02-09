@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,181 +8,252 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, Activity } from "lucide-react";
 import { toast } from "sonner";
 import logo from "@/assets/logoenmeta.png";
-import { useProfessionals, useHospitals } from "@/hooks/useDatabase";
-import { useEffect } from "react";
+import { useProfessionals, useHospitals, useWards } from "@/hooks/useDatabase";
+import { rolePermissionsService } from "@/lib/database";
+import {
+  applyRolePermissionsFromDatabase,
+  ROLE_OPTIONS,
+  ROLE_LABELS,
+  hasActiveSession,
+  normalizeRole,
+} from "@/lib/permissions";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { professionals } = useProfessionals();
-  const { hospitals } = useHospitals();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     hospital: "",
-    identifier: "", // Replaces email, can be CRN or Matrícula
+    ward: "",
+    identifier: "",
     password: "",
-    role: "nutritionist", // manager, nutritionist, technician
+    role: "nutritionist",
   });
+  const { professionals } = useProfessionals(formData.hospital || undefined);
+  const { hospitals } = useHospitals();
+
+  const { wards } = useWards(formData.hospital);
+  const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
+  const hospitalProfessionals = professionals;
+
+  useEffect(() => {
+    if (hasActiveSession()) {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
+
+  const syncRolePermissions = async () => {
+    try {
+      const rows = await rolePermissionsService.getAll();
+      if (rows.length > 0) {
+        applyRolePermissionsFromDatabase(rows);
+      }
+    } catch (error) {
+      console.warn("Nao foi possivel carregar permissoes do banco. Usando matriz padrao.", error);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.hospital || !formData.identifier || !formData.password) {
-      toast.error("Por favor, preencha todos os campos");
+    if (!formData.hospital || !formData.ward || !formData.identifier || !formData.password) {
+      toast.error("Preencha todos os campos");
       return;
     }
 
-    // Bypass for empty database (Bootstrap mode)
-    if (professionals.length === 0 && formData.role === 'manager') {
-      toast.info("Modo de Inicialização: Nenhum profissional cadastrado. Acesso de Gestor liberado.");
-      localStorage.setItem('userRole', formData.role);
-      localStorage.setItem('userName', "Gestor Inicial");
+    const normalizedRole = normalizeRole(formData.role);
+
+    if (hospitalProfessionals.length === 0 && normalizedRole === "general_manager") {
+      toast.info("Modo de inicializacao da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
+      localStorage.setItem("userRole", normalizedRole);
+      localStorage.setItem("userName", "Gestor Inicial");
+      localStorage.removeItem("userProfessionalId");
+      localStorage.setItem("userHospitalId", formData.hospital);
+      localStorage.setItem("userHospitalName", selectedHospitalName);
+      localStorage.setItem("userWard", formData.ward);
+      window.dispatchEvent(new Event("enmeta-session-updated"));
+      await syncRolePermissions();
       navigate("/dashboard");
       return;
     }
 
-    // Validation
-    const user = professionals.find(p => {
-      const isRoleMatch = p.role === formData.role;
-      // Check CRN for nutritionist, or Registration/CPF for others if needed. 
-      // For simplicity/user request, matching "identifier" against CRN or Matricula
-      const isIdMatch = p.crn === formData.identifier || p.registrationNumber === formData.identifier;
-      // In a real app, we would hash/check password here. 
-      // Current DB doesn't store passwords, so we check if record exists + basic password presence
+    const user = hospitalProfessionals.find((p) => {
+      const isRoleMatch = normalizeRole(p.role) === normalizedRole;
+      const isIdMatch = p.registrationNumber === formData.identifier;
       return isRoleMatch && isIdMatch;
     });
 
     if (user) {
       if (!user.isActive) {
-        toast.error("Usuário inativo. Contate o gestor.");
+        toast.error("Usuario inativo. Contate o gestor.");
         return;
       }
-      localStorage.setItem('userRole', formData.role);
-      localStorage.setItem('userName', user.name);
+
+      localStorage.setItem("userRole", normalizedRole);
+      localStorage.setItem("userName", user.name);
+      if (user.id) {
+        localStorage.setItem("userProfessionalId", user.id);
+      } else {
+        localStorage.removeItem("userProfessionalId");
+      }
+      localStorage.setItem("userHospitalId", formData.hospital);
+      localStorage.setItem("userHospitalName", selectedHospitalName);
+      localStorage.setItem("userWard", formData.ward);
+      window.dispatchEvent(new Event("enmeta-session-updated"));
+      await syncRolePermissions();
       toast.success(`Bem-vindo(a), ${user.name}!`);
       navigate("/dashboard");
+      return;
+    }
+
+    if (normalizedRole !== "general_manager") {
+      toast.error(`Acesso negado. ${ROLE_LABELS[normalizedRole]} deve ser cadastrado pelo gestor.`);
     } else {
-      if (formData.role !== 'manager') {
-        toast.error(`Acesso negado. ${formData.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'} deve ser cadastrado pelo Gestor.`);
-      } else {
-        toast.error("Gestor não encontrado. Verifique suas credenciais.");
-      }
+      toast.error("Gestor nao encontrado. Verifique suas credenciais.");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-medical-green-light via-background to-medical-green-light p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src={logo} alt="ENMeta Logo" className="h-32 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-medical-green-dark mb-2">Nutrição Enteral Inteligente</h1>
-          <p className="text-muted-foreground">Desenvolvido para uso clínico beira-leito</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-medical-green-light via-background to-white p-4 lg:p-8">
+      <div className="w-full max-w-5xl">
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+          <div className="rounded-2xl border border-medical-green/20 bg-card/70 p-8 shadow-sm backdrop-blur">
+            <img src={logo} alt="ENMeta Logo" className="h-48 w-auto mx-auto mb-5 object-contain" />
+            <h1 className="text-center text-3xl font-bold text-medical-green-dark leading-tight">
+              Nutricao Enteral Inteligente e Sustentavel
+            </h1>
+            <p className="mt-3 text-center text-muted-foreground">
+              Plataforma clinica para prescricao, evolucao e acompanhamento nutricional por unidade hospitalar
+            </p>
+            <div className="mt-6 flex items-center justify-center text-sm text-muted-foreground">
+              <Activity className="inline-block h-4 w-4 mr-1" />
+              Sistema de prescricao e analise de nutricao enteral
+            </div>
+          </div>
 
-        <Card className="border-border shadow-lg">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">Entrar</CardTitle>
-            <CardDescription className="text-center">Acesse sua conta para continuar</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="hospital">Código do Hospital</Label>
-                <Select
-                  value={formData.hospital}
-                  onValueChange={(value) => setFormData({ ...formData, hospital: value })}
-                >
-                  <SelectTrigger id="hospital">
-                    <SelectValue placeholder="Selecione o hospital" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {hospitals.map((hospital) => (
-                      <SelectItem key={hospital.id} value={hospital.cnes || hospital.id || "unknown"}>
-                        {hospital.cnes ? `${hospital.cnes} - ` : ""}{hospital.name}
-                      </SelectItem>
-                    ))}
-                    {hospitals.length === 0 && (
-                      <SelectItem value="manual" disabled>Nenhum hospital cadastrado</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="role">Função</Label>
-                <Select
-                  value={formData.role}
-                  onValueChange={(value) => setFormData({ ...formData, role: value })}
-                >
-                  <SelectTrigger id="role">
-                    <SelectValue placeholder="Selecione sua função" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="manager">Gestor</SelectItem>
-                    <SelectItem value="nutritionist">Nutricionista</SelectItem>
-                    <SelectItem value="technician">Técnico</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="identifier">
-                  {formData.role === 'nutritionist' ? 'CRN' : 'Matrícula'}
-                </Label>
-                <Input
-                  id="identifier"
-                  type="text"
-                  placeholder={formData.role === 'nutritionist' ? 'CRN-0000' : '000000'}
-                  value={formData.identifier}
-                  onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Senha</Label>
-                  <Button
-                    type="button"
-                    variant="link"
-                    className="text-xs text-primary p-0 h-auto"
-                    onClick={() => toast.info("Função de recuperação de senha em desenvolvimento")}
+          <Card className="border-border shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-2xl text-center">Entrar</CardTitle>
+              <CardDescription className="text-center">Acesse sua conta para continuar</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="hospital">Escolher Hospital</Label>
+                  <Select
+                    value={formData.hospital}
+                    onValueChange={(value) => setFormData({ ...formData, hospital: value, ward: "" })}
                   >
-                    Esqueceu a senha?
-                  </Button>
+                    <SelectTrigger id="hospital">
+                      <SelectValue placeholder="Selecione o hospital" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hospitals.map((hospital) => (
+                        <SelectItem key={hospital.id} value={hospital.id || "unknown"}>
+                          {hospital.name}
+                        </SelectItem>
+                      ))}
+                      {hospitals.length === 0 && (
+                        <SelectItem value="manual" disabled>Nenhum hospital cadastrado</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="relative">
+
+                <div className="space-y-2">
+                  <Label htmlFor="ward">Escolher Unidade</Label>
+                  <Select
+                    value={formData.ward}
+                    onValueChange={(value) => setFormData({ ...formData, ward: value })}
+                    disabled={!formData.hospital}
+                  >
+                    <SelectTrigger id="ward">
+                      <SelectValue placeholder={!formData.hospital ? "Selecione o hospital primeiro" : "Selecione a unidade"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {wards.map((ward) => (
+                        <SelectItem key={ward.id} value={ward.name}>
+                          {ward.name}
+                        </SelectItem>
+                      ))}
+                      {wards.length === 0 && (
+                        <SelectItem value="no-ward" disabled>Nenhuma unidade cadastrada</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="role">Funcao</Label>
+                  <Select
+                    value={formData.role}
+                    onValueChange={(value) => setFormData({ ...formData, role: value })}
+                  >
+                    <SelectTrigger id="role">
+                      <SelectValue placeholder="Selecione sua funcao" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_OPTIONS.map((role) => (
+                        <SelectItem key={role.value} value={role.value}>
+                          {role.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="identifier">Matricula</Label>
                   <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    id="identifier"
+                    type="text"
+                    placeholder="000000"
+                    value={formData.identifier}
+                    onChange={(e) => setFormData({ ...formData, identifier: e.target.value })}
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </Button>
                 </div>
-              </div>
 
-              <Button type="submit" className="w-full" size="lg">
-                Entrar
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Senha</Label>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="text-xs text-primary p-0 h-auto"
+                      onClick={() => toast.info("Recuperacao de senha em desenvolvimento")}
+                    >
+                      Esqueceu a senha?
+                    </Button>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="********"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
 
-        <div className="mt-6 text-center text-sm text-muted-foreground">
-          <Activity className="inline-block h-4 w-4 mr-1" />
-          Sistema de prescrição e análise de nutrição enteral
+                <Button type="submit" className="w-full" size="lg">
+                  Entrar
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </div>

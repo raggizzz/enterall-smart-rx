@@ -1,60 +1,98 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Users,
-  FileText,
-  AlertCircle,
   Search,
   UserPlus,
   Building2,
-  LogOut,
   Utensils,
   Droplet,
   Syringe,
   BanIcon,
   Pill,
-  Database,
-  Settings,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import logo from "@/assets/logoenmeta.png";
+import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
-import { usePatients, usePrescriptions, useDashboardData, useClinics, useHospitals, useWards } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards } from "@/hooks/useDatabase";
+
+interface WardBed {
+  bed: string;
+  patient: string | null;
+  dob: string | null;
+  record: string | null;
+  feedingRoute: "oral" | "oral-supplement" | "enteral" | "parenteral" | "fasting" | "empty";
+  status: "goal_met" | "below_goal" | "warning" | "no_diet" | null;
+  prescribedVolume: number;
+  prescribedCalories: number;
+  patientId: string | null | undefined;
+  prescriptionId?: string | null;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [userName, setUserName] = useState("Profissional");
+  const [userProfessionalId, setUserProfessionalId] = useState("");
   const [selectedHospital, setSelectedHospital] = useState("");
   const [selectedWard, setSelectedWard] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
 
   const [evolutionDialogOpen, setEvolutionDialogOpen] = useState(false);
-  const [selectedPatientForEvolution, setSelectedPatientForEvolution] = useState<any>(null);
+  const [selectedPatientForEvolution, setSelectedPatientForEvolution] = useState<WardBed | null>(null);
 
   const { patients } = usePatients();
   const { prescriptions } = usePrescriptions();
-  const dashboardData = useDashboardData();
-  const { clinics } = useClinics();
   const { hospitals } = useHospitals();
   const { wards } = useWards(selectedHospital);
+  const { professionals } = useProfessionals(selectedHospital || undefined);
 
   const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
+  useEffect(() => {
+    const syncSessionContext = () => {
+      if (typeof window === "undefined") return;
 
-  // Stats from real database
-  const stats = [
-    { label: "Prescrições ativas", value: dashboardData.activePrescriptions.toString(), icon: FileText, color: "text-primary" },
-    { label: "Evoluções hoje", value: dashboardData.todayEvolutions.toString(), icon: AlertCircle, color: "text-warning" },
-    { label: "Pacientes ativos", value: dashboardData.patientsCount.toString(), icon: Users, color: "text-success" },
-  ];
+      const storedName = localStorage.getItem("userName");
+      const storedProfessionalId = localStorage.getItem("userProfessionalId") || "";
+      const storedHospital = localStorage.getItem("userHospitalId") || "";
+      const storedWard = localStorage.getItem("userWard") || "";
 
+      if (storedName) setUserName(storedName);
+      if (storedProfessionalId) setUserProfessionalId(storedProfessionalId);
+      if (storedHospital) setSelectedHospital(storedHospital);
+      if (storedWard) setSelectedWard(storedWard);
+    };
+
+    syncSessionContext();
+    window.addEventListener("enmeta-session-updated", syncSessionContext);
+    return () => window.removeEventListener("enmeta-session-updated", syncSessionContext);
+  }, []);
+
+  useEffect(() => {
+    if (!userProfessionalId || professionals.length === 0) return;
+    const loggedUser = professionals.find((p) => p.id === userProfessionalId);
+    if (!loggedUser?.name || loggedUser.name === userName) return;
+    setUserName(loggedUser.name);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("userName", loggedUser.name);
+      window.dispatchEvent(new Event("enmeta-session-updated"));
+    }
+  }, [professionals, userName, userProfessionalId]);
+
+  useEffect(() => {
+    if (!selectedHospital) return;
+    const selected = hospitals.find((hospital) => hospital.id === selectedHospital);
+    if (!selected?.name) return;
+    localStorage.setItem("userHospitalName", selected.name);
+    window.dispatchEvent(new Event("enmeta-session-updated"));
+  }, [hospitals, selectedHospital]);
   // Generate ward beds from real patients
   const wardBeds = useMemo(() => {
     if (!selectedHospital || !selectedWard) return [];
@@ -66,8 +104,9 @@ const Dashboard = () => {
     );
 
     // Create beds from patients
-    const patientBeds = activePatients.map((patient, index) => {
-      const patientPrescription = prescriptions.find(p => p.patientId === patient.id);
+    const patientBeds: WardBed[] = activePatients.map((patient, index) => {
+      const patientPrescription = prescriptions.find((p) => p.patientId === patient.id && p.status === "active")
+        || prescriptions.find((p) => p.patientId === patient.id);
 
       let feedingRoute = 'oral';
       if (patient.nutritionType === 'enteral') feedingRoute = 'enteral';
@@ -84,11 +123,12 @@ const Dashboard = () => {
         prescribedVolume: patientPrescription?.totalVolume || 0,
         prescribedCalories: patientPrescription?.totalCalories || 0,
         patientId: patient.id,
+        prescriptionId: patientPrescription?.id,
       };
     });
 
     // Add empty beds to fill up to 8 (or more if needed, but keeping 8 for now or until filled)
-    const emptyBeds = [];
+    const emptyBeds: WardBed[] = [];
     // Ensure at least 8 slots or enough to cover all patients
     const totalSlots = Math.max(8, patientBeds.length + (4 - (patientBeds.length % 4)));
 
@@ -103,6 +143,7 @@ const Dashboard = () => {
         prescribedVolume: 0,
         prescribedCalories: 0,
         patientId: null,
+        prescriptionId: null,
       });
     }
 
@@ -131,7 +172,7 @@ const Dashboard = () => {
       case "oral":
         return <Badge className="bg-green-600">Oral</Badge>;
       case "oral-supplement":
-        return <Badge className="bg-blue-600">Suplementação Oral</Badge>;
+        return <Badge className="bg-blue-600">Suplementacao Oral</Badge>;
       case "enteral":
         return <Badge className="bg-purple-600">Enteral</Badge>;
       case "parenteral":
@@ -152,7 +193,7 @@ const Dashboard = () => {
       case "below_goal":
         return <Badge className="bg-yellow-500 hover:bg-yellow-600">Abaixo da Meta</Badge>;
       case "warning":
-        return <Badge className="bg-orange-500 hover:bg-orange-600">Atenção</Badge>;
+        return <Badge className="bg-orange-500 hover:bg-orange-600">Atencao</Badge>;
       case "no_diet":
         return <Badge variant="secondary">Sem Dieta</Badge>;
       default:
@@ -171,60 +212,57 @@ const Dashboard = () => {
 
 
 
-  const handleOpenEvolution = (e: React.MouseEvent, patient: any) => {
+  const handleOpenEvolution = (e: React.MouseEvent, patient: WardBed) => {
     e.stopPropagation(); // Prevent card click
     setSelectedPatientForEvolution(patient);
     setEvolutionDialogOpen(true);
   };
 
+  const handleOpenPrescription = (patient: WardBed) => {
+    if (!patient.patientId) return;
+    const query = new URLSearchParams({ patient: patient.patientId });
+    if (patient.prescriptionId) {
+      query.set("prescription", patient.prescriptionId);
+    }
+    navigate(`/prescription?${query.toString()}`);
+  };
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-card shadow-sm">
-        <div className="container flex h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <img src={logo} alt="ENMeta" className="h-10" />
-            <span className="text-lg font-semibold text-medical-green-dark">ENMeta</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm font-medium">Dr. Online</p>
-              <p className="text-xs text-muted-foreground">Nutricionista</p>
-            </div>
-            <Button variant="outline" size="icon">
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background">
+      <Header />
 
       <div className="container px-4 py-6 space-y-6">
         {/* Welcome Section */}
         <div className="flex flex-col gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Olá, Dr. Online 👋</h1>
-            <p className="text-muted-foreground">Bem-vindo ao sistema de nutrição enteral</p>
+            <h1 className="text-3xl font-bold text-foreground">Ola, {userName}</h1>
+            <p className="text-muted-foreground">Bem-vindo ao sistema de nutricao enteral</p>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <Card>
+        <Card className="bg-card/90 backdrop-blur border-primary/10">
           <CardHeader>
-            <CardTitle>Ações Rápidas</CardTitle>
-            <CardDescription>Acesso rápido às principais funcionalidades</CardDescription>
+            <CardTitle>Acoes Rapidas</CardTitle>
+            <CardDescription>Acesso rapido as principais funcionalidades</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="hospital-select" className="text-sm font-medium">Selecionar Hospital</Label>
+                <Label htmlFor="hospital-select" className="text-sm font-medium" title="Selecione a unidade (hospital) para carregar os setores.">Selecionar Unidade</Label>
                 <Select value={selectedHospital} onValueChange={(val) => {
+                  const selected = hospitals.find((hospital) => hospital.id === val);
                   setSelectedHospital(val);
-                  setSelectedWard(""); // Reset ward when hospital changes
+                  setSelectedWard("");
+                  localStorage.setItem("userHospitalId", val);
+                  localStorage.setItem("userHospitalName", selected?.name || "Unidade nao selecionada");
+                  localStorage.removeItem("userWard");
+                  window.dispatchEvent(new Event("enmeta-session-updated"));
                 }}>
                   <SelectTrigger id="hospital-select" className="h-auto py-4">
                     <div className="flex items-center gap-2">
                       <Building2 className="h-5 w-5" />
-                      <SelectValue placeholder="Selecione o Hospital" />
+                      <SelectValue placeholder="Selecione a unidade" />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
@@ -238,18 +276,22 @@ const Dashboard = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="ward-select" className="text-sm font-medium">Selecionar Ala</Label>
+                <Label htmlFor="ward-select" className="text-sm font-medium" title="Filtre os pacientes por setor ou ala da unidade.">Selecionar Setor</Label>
                 <Select
                   value={selectedWard}
-                  onValueChange={setSelectedWard}
+                  onValueChange={(value) => {
+                    setSelectedWard(value);
+                    localStorage.setItem("userWard", value);
+                    window.dispatchEvent(new Event("enmeta-session-updated"));
+                  }}
                   disabled={!selectedHospital}
                 >
                   <SelectTrigger id="ward-select" className="h-auto py-4">
                     <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="icon" className="p-0 h-5 w-5 pointer-events-none">
+                      <span className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground">
                         <Building2 className="h-5 w-5" />
-                      </Button>
-                      <SelectValue placeholder={!selectedHospital ? "Selecione um hospital primeiro" : "Escolher setor do hospital"} />
+                      </span>
+                      <SelectValue placeholder={!selectedHospital ? "Selecione uma unidade primeiro" : "Escolher setor da unidade"} />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
@@ -259,7 +301,7 @@ const Dashboard = () => {
                       </SelectItem>
                     ))}
                     {wards.length === 0 && (
-                      <div className="p-2 text-sm text-muted-foreground text-center">Nenhuma ala cadastrada</div>
+                      <div className="p-2 text-sm text-muted-foreground text-center">Nenhum setor cadastrado</div>
                     )}
                   </SelectContent>
                 </Select>
@@ -267,9 +309,9 @@ const Dashboard = () => {
 
               <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
                 <DialogTrigger asChild>
-                  <div className="space-y-2">
+                  <div className="space-y-2" title="Busque por nome, data de nascimento ou prontuario.">
                     <Label className="text-sm font-medium">Buscar Paciente</Label>
-                    <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2">
+                    <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2" title="Abrir busca detalhada de paciente">
                       <Search className="h-6 w-6" />
                       <span>Buscar Paciente</span>
                     </Button>
@@ -278,7 +320,7 @@ const Dashboard = () => {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Buscar Paciente</DialogTitle>
-                    <DialogDescription>Busque por nome, data de nascimento ou número de prontuário</DialogDescription>
+                    <DialogDescription>Busque por nome, data de nascimento ou Numero de Prontuario</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -300,10 +342,10 @@ const Dashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="search-record">Número de Prontuário</Label>
+                      <Label htmlFor="search-record">Numero de Prontuario</Label>
                       <Input
                         id="search-record"
-                        placeholder="Digite o prontuário"
+                        placeholder="Digite o prontuario"
                         value={patientSearch.record}
                         onChange={(e) => setPatientSearch({ ...patientSearch, record: e.target.value })}
                       />
@@ -317,10 +359,11 @@ const Dashboard = () => {
               </Dialog>
 
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Cadastrar Paciente</Label>
+                <Label className="text-sm font-medium" title="Abre o cadastro completo de paciente.">Cadastrar Paciente</Label>
                 <Button
                   variant="outline"
                   className="h-auto py-4 w-full flex flex-col gap-2"
+                  title="Cadastrar novo paciente"
                   onClick={() => navigate('/patients')}
                 >
                   <UserPlus className="h-6 w-6" />
@@ -330,32 +373,14 @@ const Dashboard = () => {
             </div>
           </CardContent>
         </Card>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {stat.label}
-                </CardTitle>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stat.value}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
         {/* Ward Map - Only shows after ward selection */}
         {selectedWard && (
-          <Card>
+          <Card className="bg-card/90 backdrop-blur border-primary/10">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Mapa do Setor - {selectedWard}</CardTitle>
-                  <CardDescription>Visualização dos leitos e pacientes com vias alimentares</CardDescription>
+                  <CardDescription>Visualizacao dos leitos e pacientes com vias alimentares</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Input
@@ -378,7 +403,7 @@ const Dashboard = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Pill className="h-5 w-5 text-blue-600" />
-                    <span className="text-sm">Suplementação</span>
+                    <span className="text-sm">Suplementacao</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Droplet className="h-5 w-5 text-purple-600" />
@@ -408,7 +433,7 @@ const Dashboard = () => {
                       key={index}
                       className={`border-2 transition-all hover:shadow-lg cursor-pointer ${bed.patient ? "border-primary" : "border-dashed border-muted"
                         }`}
-                      onClick={() => bed.patient && navigate("/prescription")}
+                      onClick={() => bed.patient && handleOpenPrescription(bed)}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
@@ -429,20 +454,27 @@ const Dashboard = () => {
                               {getStatusBadge(bed.status)}
                             </div>
                             <div className="flex gap-2 mt-2">
-                              <Button variant="link" className="p-0 h-auto text-primary text-sm">
-                                Prescrever →
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-primary text-sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenPrescription(bed);
+                                }}
+                              >
+                                Prescrever
                               </Button>
                               <Button
                                 variant="link"
                                 className="p-0 h-auto text-primary text-sm"
                                 onClick={(e) => handleOpenEvolution(e, bed)}
                               >
-                                Evoluir →
+                                Evoluir
                               </Button>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Leito disponível</p>
+                          <p className="text-sm text-muted-foreground">Leito disponivel</p>
                         )}
                       </CardContent>
                     </Card>
@@ -460,6 +492,8 @@ const Dashboard = () => {
           open={evolutionDialogOpen}
           onOpenChange={setEvolutionDialogOpen}
           patientName={selectedPatientForEvolution.patient}
+          patientId={selectedPatientForEvolution.patientId}
+          prescriptionId={selectedPatientForEvolution.prescriptionId ?? undefined}
           prescribedVolume={selectedPatientForEvolution.prescribedVolume}
           prescribedCalories={selectedPatientForEvolution.prescribedCalories}
         />

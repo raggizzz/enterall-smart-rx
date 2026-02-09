@@ -4,16 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Calculator, AlertTriangle, Save } from "lucide-react";
+import { Save } from "lucide-react";
+import { useEvolutions } from "@/hooks/useDatabase";
 
 interface DailyEvolutionDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     patientName: string;
-    prescribedVolume: number; // Total volume prescribed for the day
+    patientId: string | null | undefined;
+    prescriptionId?: string;
+    prescribedVolume: number;
     prescribedCalories: number;
 }
 
@@ -21,62 +23,80 @@ export function DailyEvolutionDialog({
     open,
     onOpenChange,
     patientName,
+    patientId,
+    prescriptionId,
     prescribedVolume,
     prescribedCalories
 }: DailyEvolutionDialogProps) {
+    const { createEvolution } = useEvolutions();
     const [infusedVolume, setInfusedVolume] = useState("");
     const [intercurrences, setIntercurrences] = useState<string[]>([]);
     const [notes, setNotes] = useState("");
     const [percentage, setPercentage] = useState(0);
+    const [isSaving, setIsSaving] = useState(false);
 
     const intercurrenceOptions = [
-        { id: "jejum_exame", label: "Jejum para Exame" },
-        { id: "jejum_centro_cirurgico", label: "Jejum Centro Cirúrgico" },
-        { id: "vomitos", label: "Vômitos/Regurgitação" },
+        { id: "jejum_exame", label: "Jejum para exame" },
+        { id: "jejum_centro_cirurgico", label: "Jejum centro cirurgico" },
+        { id: "vomitos", label: "Vomitos ou regurgitacao" },
         { id: "diarreia", label: "Diarreia" },
-        { id: "distensao", label: "Distensão Abdominal" },
-        { id: "sonda_obstruida", label: "Sonda Obstruída/Deslocada" },
-        { id: "pausa_procedimento", label: "Pausa para Procedimento" },
+        { id: "distensao", label: "Distensao abdominal" },
+        { id: "sonda_obstruida", label: "Sonda obstruida ou deslocada" },
+        { id: "pausa_procedimento", label: "Pausa para procedimento" },
     ];
 
     useEffect(() => {
         if (infusedVolume && prescribedVolume > 0) {
             const vol = parseFloat(infusedVolume);
             const pct = (vol / prescribedVolume) * 100;
-            setPercentage(Math.min(pct, 100)); // Cap at 100 for display logic if needed, or allow >100
+            setPercentage(Math.min(pct, 100));
         } else {
             setPercentage(0);
         }
     }, [infusedVolume, prescribedVolume]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
+        if (!patientId) {
+            toast.error("Paciente invalido para evolucao");
+            return;
+        }
+
         if (!infusedVolume) {
             toast.error("Informe o volume infundido");
             return;
         }
 
-        // Mock save logic
-        console.log("Saving evolution:", {
-            patientName,
-            infusedVolume,
-            percentage,
-            intercurrences,
-            notes,
-            date: new Date().toISOString()
-        });
+        setIsSaving(true);
+        try {
+            const intercurrencesWithNotes = notes.trim()
+                ? [...intercurrences, `OBS: ${notes.trim()}`]
+                : intercurrences;
 
-        toast.success("Evolução registrada com sucesso!");
-        onOpenChange(false);
+            await createEvolution({
+                patientId,
+                prescriptionId,
+                date: new Date().toISOString().slice(0, 10),
+                volumeInfused: parseFloat(infusedVolume),
+                metaReached: Number(percentage.toFixed(2)),
+                intercurrences: intercurrencesWithNotes.length > 0 ? intercurrencesWithNotes : undefined,
+            });
 
-        // Reset form
-        setInfusedVolume("");
-        setIntercurrences([]);
-        setNotes("");
+            toast.success("Evolucao registrada com sucesso");
+            onOpenChange(false);
+            setInfusedVolume("");
+            setIntercurrences([]);
+            setNotes("");
+        } catch (error) {
+            console.error("Erro ao salvar evolucao:", error);
+            toast.error("Erro ao salvar evolucao");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const toggleIntercurrence = (id: string) => {
-        setIntercurrences(prev =>
-            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        setIntercurrences((prev) =>
+            prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
         );
     };
 
@@ -88,30 +108,28 @@ export function DailyEvolutionDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md bg-card/95 backdrop-blur border-primary/10">
                 <DialogHeader>
-                    <DialogTitle>Evolução Diária - {patientName}</DialogTitle>
+                    <DialogTitle>Evolucao diaria - {patientName}</DialogTitle>
                     <DialogDescription>
-                        Registre o volume infundido nas últimas 24h e intercorrências.
+                        Registre o volume infundido nas ultimas 24h e intercorrencias.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-6 py-4">
-                    {/* Targets */}
                     <div className="p-3 bg-muted rounded-lg flex justify-between text-sm">
                         <div>
-                            <span className="text-muted-foreground">Meta Volume:</span>
+                            <span className="text-muted-foreground">Meta volume:</span>
                             <p className="font-semibold">{prescribedVolume} ml</p>
                         </div>
                         <div>
-                            <span className="text-muted-foreground">Meta Calórica:</span>
+                            <span className="text-muted-foreground">Meta calorica:</span>
                             <p className="font-semibold">{prescribedCalories} kcal</p>
                         </div>
                     </div>
 
-                    {/* Volume Input */}
                     <div className="space-y-2">
-                        <Label htmlFor="infused-volume">Volume Infundido (ml) *</Label>
+                        <Label htmlFor="infused-volume">Volume infundido (ml) *</Label>
                         <div className="flex gap-4 items-center">
                             <Input
                                 id="infused-volume"
@@ -130,9 +148,8 @@ export function DailyEvolutionDialog({
                         </div>
                     </div>
 
-                    {/* Intercurrences */}
                     <div className="space-y-2">
-                        <Label>Intercorrências / Motivos de Pausa</Label>
+                        <Label>Intercorrencias / motivos de pausa</Label>
                         <div className="grid grid-cols-2 gap-2">
                             {intercurrenceOptions.map((option) => (
                                 <div key={option.id} className="flex items-center space-x-2">
@@ -149,12 +166,11 @@ export function DailyEvolutionDialog({
                         </div>
                     </div>
 
-                    {/* Notes */}
                     <div className="space-y-2">
-                        <Label htmlFor="notes">Observações</Label>
+                        <Label htmlFor="notes">Observacoes</Label>
                         <Textarea
                             id="notes"
-                            placeholder="Outras observações relevantes..."
+                            placeholder="Outras observacoes relevantes..."
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                         />
@@ -163,9 +179,9 @@ export function DailyEvolutionDialog({
 
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleSave}>
+                    <Button onClick={handleSave} disabled={isSaving}>
                         <Save className="h-4 w-4 mr-2" />
-                        Salvar Evolução
+                        {isSaving ? "Salvando..." : "Salvar evolucao"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -127,7 +127,14 @@ const OralMap = () => {
                                         </div>
                                     )}
 
-                                    {patient.observation && (
+                                    {patient.nutritionType === 'oral' && (
+                                        <div className="text-sm bg-green-50 p-2 rounded border border-green-200">
+                                            <p className="font-medium text-green-800">Caracteristicas da dieta</p>
+                                            <p className="text-green-700">{patient.observation || 'Nao informado'}</p>
+                                        </div>
+                                    )}
+
+                                    {patient.observation && patient.nutritionType !== 'oral' && (
                                         <div className="flex items-start gap-2 text-sm bg-yellow-50 p-2 rounded text-yellow-800">
                                             <AlertCircle className="h-4 w-4 mt-0.5" />
                                             <span>{patient.observation}</span>

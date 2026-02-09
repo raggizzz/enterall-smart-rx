@@ -8,10 +8,10 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 156 28% 95%;
     --foreground: 156 100% 12%;
 
-    --card: 0 0% 100%;
+    --card: 156 24% 99%;
     --card-foreground: 156 100% 12%;
 
     --popover: 0 0% 100%;
@@ -20,10 +20,10 @@ All colors MUST be HSL.
     --primary: 156 73% 36%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 156 45% 94%;
+    --secondary: 156 38% 90%;
     --secondary-foreground: 156 100% 12%;
 
-    --muted: 156 30% 96%;
+    --muted: 156 26% 92%;
     --muted-foreground: 156 15% 45%;
 
     --accent: 156 100% 40%;
@@ -32,8 +32,8 @@ All colors MUST be HSL.
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 156 25% 88%;
-    --input: 156 25% 88%;
+    --border: 156 20% 84%;
+    --input: 156 20% 84%;
     --ring: 156 73% 36%;
     
     --medical-green: 156 73% 36%;
@@ -114,6 +114,15 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(circle at 0% 0%, hsl(var(--medical-green-light)) 0%, transparent 34%),
+      radial-gradient(circle at 100% 100%, hsl(var(--secondary)) 0%, transparent 30%);
+    background-attachment: fixed;
+  }
+
+  #root {
+    min-height: 100vh;
   }
 }

@@ -36,6 +36,8 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { useSettings, useBackup, useDashboardData, useHospitals, useWards } from "@/hooks/useDatabase";
 import { db, NursingCosts, IndirectCosts, Hospital, Ward } from "@/lib/database";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
     Table,
     TableBody,
@@ -56,6 +58,10 @@ const Settings = () => {
     const { settings, saveSettings, isLoading: settingsLoading } = useSettings();
     const { exportBackup, importBackup, isExporting, isImporting } = useBackup();
     const dashboardData = useDashboardData();
+    const role = useCurrentRole();
+    const canManageUnits = can(role, "manage_units");
+    const canManageWards = can(role, "manage_wards");
+    const canManageCosts = can(role, "manage_costs");
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +69,7 @@ const Settings = () => {
     const [rtName, setRtName] = useState(settings?.defaultSignatures?.rtName || "");
     const [rtCrn, setRtCrn] = useState(settings?.defaultSignatures?.rtCrn || "");
     const [defaultConservation, setDefaultConservation] = useState(
-        settings?.labelSettings?.defaultConservation || "Refrigerar 2-8°C"
+        settings?.labelSettings?.defaultConservation || "Refrigerar 2-8Â°C"
     );
 
     // Estados para Custos de Enfermagem
@@ -87,7 +93,7 @@ const Settings = () => {
             setHospitalName(settings.hospitalName || "");
             setRtName(settings.defaultSignatures?.rtName || "");
             setRtCrn(settings.defaultSignatures?.rtCrn || "");
-            setDefaultConservation(settings.labelSettings?.defaultConservation || "Refrigerar 2-8°C");
+            setDefaultConservation(settings.labelSettings?.defaultConservation || "Refrigerar 2-8Â°C");
 
             // Atualizar custos de enfermagem
             setNursingCosts({
@@ -121,10 +127,10 @@ const Settings = () => {
                 nursingCosts,
                 indirectCosts
             });
-            toast.success("Configurações salvas com sucesso!");
+            toast.success("Configuracoes salvas com sucesso!");
         } catch (error) {
             console.error("Error saving settings:", error);
-            toast.error("Erro ao salvar configurações");
+            toast.error("Erro ao salvar configuracoes");
         }
     };
 
@@ -148,14 +154,14 @@ const Settings = () => {
 
         try {
             const backup = await importBackup(file, true);
-            toast.success(`Backup importado com sucesso! ${backup.data.patients?.length || 0} pacientes, ${backup.data.formulas?.length || 0} fórmulas.`);
+            toast.success(`Backup importado com sucesso! ${backup.data.patients?.length || 0} pacientes, ${backup.data.formulas?.length || 0} formulas.`);
             // Reset file input
             if (fileInputRef.current) {
                 fileInputRef.current.value = "";
             }
         } catch (error) {
             console.error("Error importing backup:", error);
-            toast.error("Erro ao importar backup. Verifique se o arquivo é válido.");
+            toast.error("Erro ao importar backup. Verifique se o arquivo e valido.");
         }
     };
 
@@ -174,8 +180,8 @@ const Settings = () => {
             <Header />
             <div className="container py-6 space-y-6">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
-                    <p className="text-muted-foreground">Gerencie as configurações do sistema e backup de dados</p>
+                    <h1 className="text-2xl font-bold tracking-tight">Configuracoes</h1>
+                    <p className="text-muted-foreground">Gerencie as configuracoes do sistema e backup de dados</p>
                 </div>
 
                 {/* Status do Banco de Dados */}
@@ -183,10 +189,10 @@ const Settings = () => {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-green-700">
                             <Database className="h-5 w-5" />
-                            Status do Banco de Dados Local
+                            Status do Banco de Dados por Unidade
                         </CardTitle>
                         <CardDescription>
-                            Seus dados são salvos localmente no navegador (IndexedDB)
+                            Dados salvos no Supabase com segregacao por hospital (hospital_id)
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -197,57 +203,47 @@ const Settings = () => {
                             </div>
                             <div className="text-center p-4 bg-white rounded-lg border">
                                 <div className="text-2xl font-bold text-green-600">{dashboardData.formulasCount}</div>
-                                <div className="text-sm text-gray-500">Fórmulas</div>
+                                <div className="text-sm text-gray-500">Formulas</div>
                             </div>
                             <div className="text-center p-4 bg-white rounded-lg border">
                                 <div className="text-2xl font-bold text-purple-600">{dashboardData.activePrescriptions}</div>
-                                <div className="text-sm text-gray-500">Prescrições Ativas</div>
+                                <div className="text-sm text-gray-500">Prescricoes Ativas</div>
                             </div>
                             <div className="text-center p-4 bg-white rounded-lg border">
                                 <div className="text-2xl font-bold text-orange-600">{dashboardData.todayEvolutions}</div>
-                                <div className="text-sm text-gray-500">Evoluções Hoje</div>
+                                <div className="text-sm text-gray-500">Evolucoes Hoje</div>
                             </div>
                         </div>
 
                         <div className="mt-4 flex items-center gap-2 text-sm text-green-600">
                             <CheckCircle2 className="h-4 w-4" />
-                            <span>Banco de dados funcionando - Modo Offline ativo</span>
+                            <span>Banco funcionando com isolamento por unidade</span>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Configurações do Hospital */}
+                {/* Configuracoes do Hospital */}
+                {(canManageUnits || canManageWards) && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Building2 className="h-5 w-5" />
-                            Dados do Hospital
+                            Assinatura e Etiquetas
                         </CardTitle>
                         <CardDescription>
-                            Configure as informações que aparecem nos relatórios e etiquetas
+                            Defina assinatura e texto padrao para impressao das etiquetas
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Nome do Hospital</Label>
-                            <Input
-                                value={hospitalName}
-                                onChange={(e) => setHospitalName(e.target.value)}
-                                placeholder="Ex: Hospital Regional Norte"
-                            />
-                        </div>
-
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <Label className="text-sm font-semibold">Assinatura Padrão para Etiquetas</Label>
+<div className="space-y-2">
+                            <Label className="text-sm font-semibold">Assinatura Padrao para Etiquetas</Label>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Nome do RT</Label>
                                     <Input
                                         value={rtName}
                                         onChange={(e) => setRtName(e.target.value)}
-                                        placeholder="Nome do Responsável Técnico"
+                                        placeholder="Nome do Responsavel Tecnico"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -262,22 +258,24 @@ const Settings = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Texto de Conservação Padrão (Etiquetas)</Label>
+                            <Label>Texto de Conservacao Padrao (Etiquetas)</Label>
                             <Input
                                 value={defaultConservation}
                                 onChange={(e) => setDefaultConservation(e.target.value)}
-                                placeholder="Ex: Refrigerar 2-8°C"
+                                placeholder="Ex: Sistema aberto: usar em ate 4h apos manipulacao"
                             />
                         </div>
 
                         <Button onClick={handleSaveSettings} className="w-full">
                             <Save className="h-4 w-4 mr-2" />
-                            Salvar Configurações
+                            Salvar Configuracoes
                         </Button>
                     </CardContent>
                 </Card>
+                )}
 
                 {/* Custos Indiretos - Tempo de Enfermagem */}
+                {canManageCosts && (
                 <Card className="border-purple-200">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-purple-700">
@@ -285,13 +283,13 @@ const Settings = () => {
                             Custos Indiretos - Tempo de Enfermagem
                         </CardTitle>
                         <CardDescription>
-                            Configure os tempos de instalação e custos de enfermagem para cálculo de custos
+                            Configure os tempos de instalacao e custos de enfermagem para calculo de custos
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        {/* Tempos de instalação */}
+                        {/* Tempos de instalacao */}
                         <div className="space-y-4">
-                            <Label className="text-sm font-semibold">Tempos de Instalação (em segundos)</Label>
+                            <Label className="text-sm font-semibold">Tempos de Instalacao (em segundos)</Label>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -352,7 +350,7 @@ const Settings = () => {
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
                                     <Label className="text-sm text-muted-foreground">
-                                        Frasco em Bolus (água ou dieta)
+                                        Frasco em Bolus (agua ou dieta)
                                     </Label>
                                     <Input
                                         type="number"
@@ -400,7 +398,7 @@ const Settings = () => {
                                 Custos Indiretos - Outros
                             </Label>
                             <p className="text-xs text-muted-foreground">
-                                Mão-de-obra de manipuladores, estoquistas e outros custos determinados pela unidade
+                                Mao-de-obra de manipuladores, estoquistas e outros custos determinados pela unidade
                             </p>
                             <div className="flex items-center gap-2">
                                 <span className="text-muted-foreground">R$</span>
@@ -425,15 +423,18 @@ const Settings = () => {
                         </Button>
                     </CardContent>
                 </Card>
+                )}
 
-                <HospitalList />
+                {(canManageUnits || canManageWards) && (
+                    <HospitalList canManageUnits={canManageUnits} canManageWards={canManageWards} />
+                )}
 
-                {/* Backup e Restauração */}
+                {/* Backup e Restauracao */}
                 <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <HardDrive className="h-5 w-5" />
-                            Backup e Restauração
+                            Backup e Restauracao
                         </CardTitle>
                         <CardDescription>
                             Exporte seus dados para backup ou importe de outro dispositivo
@@ -477,7 +478,7 @@ const Settings = () => {
                                 </div>
                                 <p className="text-sm text-gray-600">
                                     Restaure dados de um arquivo de backup.
-                                    <strong className="text-red-600"> Isso substituirá os dados atuais!</strong>
+                                    <strong className="text-red-600"> Isso substituira os dados atuais!</strong>
                                 </p>
                                 <input
                                     type="file"
@@ -512,10 +513,9 @@ const Settings = () => {
                                 <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
                                 <div>
                                     <p className="text-sm font-semibold text-amber-800">Importante sobre Backups</p>
-                                    <p className="text-sm text-amber-700">
-                                        Recomendamos fazer backup regularmente. Os dados são salvos apenas
-                                        neste navegador/computador. Se limpar os dados do navegador ou
-                                        trocar de máquina, você precisará importar o backup.
+                                <p className="text-sm text-amber-700">
+                                        Recomendamos fazer backup regularmente. Apesar de os dados estarem no Supabase,
+                                        o backup facilita auditoria, migracao e recuperacao operacional.
                                     </p>
                                 </div>
                             </div>
@@ -530,37 +530,37 @@ const Settings = () => {
 
 export default Settings;
 
-const HospitalList = () => {
+const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: boolean; canManageWards: boolean }) => {
     const { hospitals, createHospital, updateHospital, deleteHospital } = useHospitals();
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingHospital, setEditingHospital] = useState<Hospital | null>(null);
-    const [newHospital, setNewHospital] = useState({ name: "", cep: "", cnes: "" });
+    const [newHospital, setNewHospital] = useState({ name: "" });
     const [selectedHospitalForWards, setSelectedHospitalForWards] = useState<Hospital | null>(null);
 
     const handleSave = async () => {
+        if (!canManageUnits) {
+            toast.error("Sem permissao para gerenciar hospitais");
+            return;
+        }
         if (!newHospital.name) {
-            toast.error("Nome é obrigatório");
+            toast.error("Nome e obrigatorio");
             return;
         }
         try {
             if (editingHospital?.id) {
                 await updateHospital(editingHospital.id, {
-                    name: newHospital.name,
-                    cep: newHospital.cep,
-                    cnes: newHospital.cnes
+                    name: newHospital.name
                 });
                 toast.success("Hospital atualizado!");
             } else {
                 await createHospital({
                     name: newHospital.name,
-                    cep: newHospital.cep,
-                    cnes: newHospital.cnes,
                     isActive: true
                 });
                 toast.success("Hospital criado!");
             }
             setIsDialogOpen(false);
-            setNewHospital({ name: "", cep: "", cnes: "" });
+            setNewHospital({ name: "" });
             setEditingHospital(null);
         } catch (e) {
             toast.error("Erro ao salvar hospital");
@@ -568,10 +568,14 @@ const HospitalList = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Excluir hospital? Isso não excluirá as alas automaticamente (ainda).")) return;
+        if (!canManageUnits) {
+            toast.error("Sem permissao para gerenciar hospitais");
+            return;
+        }
+        if (!confirm("Excluir hospital? Isso nao excluira as alas automaticamente (ainda).")) return;
         try {
             await deleteHospital(id);
-            toast.success("Hospital excluído");
+            toast.success("Hospital excluido");
         } catch (e) {
             toast.error("Erro ao excluir");
         }
@@ -583,12 +587,12 @@ const HospitalList = () => {
                 <div>
                     <CardTitle className="flex items-center gap-2">
                         <Building2 className="h-5 w-5" />
-                        Gestão de Hospitais e Alas
+                        Gestao de Unidades e Setores
                     </CardTitle>
-                    <CardDescription>Cadastre hospitais e gerencie suas alas</CardDescription>
+                    <CardDescription>Cadastre unidades e gerencie seus setores</CardDescription>
                 </div>
-                <Button onClick={() => { setEditingHospital(null); setIsDialogOpen(true); }}>
-                    <Plus className="h-4 w-4 mr-2" /> Novo Hospital
+                <Button disabled={!canManageUnits} onClick={() => { setEditingHospital(null); setIsDialogOpen(true); }}>
+                    <Plus className="h-4 w-4 mr-2" /> Nova Unidade
                 </Button>
             </CardHeader>
             <CardContent>
@@ -598,22 +602,16 @@ const HospitalList = () => {
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <h3 className="font-semibold text-lg">{hospital.name}</h3>
-                                    {hospital.cnes && <p className="text-sm text-muted-foreground">CNES: {hospital.cnes}</p>}
-                                    {hospital.cep && <p className="text-sm text-muted-foreground">CEP: {hospital.cep}</p>}
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => {
+                                    <Button variant="outline" size="sm" disabled={!canManageUnits} onClick={() => {
                                         setEditingHospital(hospital);
-                                        setNewHospital({
-                                            name: hospital.name,
-                                            cep: hospital.cep || "",
-                                            cnes: hospital.cnes || ""
-                                        });
+                                        setNewHospital({ name: hospital.name });
                                         setIsDialogOpen(true);
                                     }}>
                                         <Edit2 className="h-4 w-4" />
                                     </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => hospital.id && handleDelete(hospital.id)}>
+                                    <Button variant="destructive" size="sm" disabled={!canManageUnits} onClick={() => hospital.id && handleDelete(hospital.id)}>
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -625,7 +623,7 @@ const HospitalList = () => {
                                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                                     <Bed className="h-4 w-4" /> Alas / Setores
                                 </h4>
-                                {hospital.id && <WardList hospitalId={hospital.id} />}
+                                {hospital.id && <WardList hospitalId={hospital.id} canManageWards={canManageWards} />}
                             </div>
                         </div>
                     ))}
@@ -637,20 +635,12 @@ const HospitalList = () => {
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>{editingHospital ? 'Editar' : 'Novo'} Hospital</DialogTitle>
+                            <DialogTitle>{editingHospital ? 'Editar' : 'Nova'} Unidade</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4 py-2">
                             <div className="space-y-2">
-                                <Label>Nome do Hospital</Label>
+                                <Label>Nome da Unidade</Label>
                                 <Input value={newHospital.name} onChange={e => setNewHospital({ ...newHospital, name: e.target.value })} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>CNES</Label>
-                                <Input value={newHospital.cnes} onChange={e => setNewHospital({ ...newHospital, cnes: e.target.value })} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>CEP</Label>
-                                <Input value={newHospital.cep} onChange={e => setNewHospital({ ...newHospital, cep: e.target.value })} placeholder="00000-000" />
                             </div>
                         </div>
                         <DialogFooter>
@@ -663,13 +653,17 @@ const HospitalList = () => {
     );
 };
 
-const WardList = ({ hospitalId }: { hospitalId: string }) => {
+const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManageWards: boolean }) => {
     const { wards, createWard, updateWard, deleteWard } = useWards(hospitalId);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingWard, setEditingWard] = useState<Ward | null>(null);
-    const [newWard, setNewWard] = useState<{ name: string, type: any }>({ name: "", type: "uti-adulto" });
+    const [newWard, setNewWard] = useState<{ name: string, type: Ward["type"] }>({ name: "", type: "uti-adulto" });
 
     const handleSave = async () => {
+        if (!canManageWards) {
+            toast.error("Sem permissao para gerenciar alas");
+            return;
+        }
         if (!newWard.name) return;
         try {
             if (editingWard?.id) {
@@ -699,21 +693,21 @@ const WardList = ({ hospitalId }: { hospitalId: string }) => {
                     <div key={ward.id} className="flex justify-between items-center p-2 bg-muted/50 rounded text-sm group">
                         <span>{ward.name} <span className="text-xs text-muted-foreground">({ward.type})</span></span>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!canManageWards} onClick={() => {
                                 setEditingWard(ward);
                                 setNewWard({ name: ward.name, type: ward.type });
                                 setIsDialogOpen(true);
                             }}>
                                 <Edit2 className="h-3 w-3" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600" onClick={() => ward.id && deleteWard(ward.id)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600" disabled={!canManageWards} onClick={() => ward.id && deleteWard(ward.id)}>
                                 <Trash2 className="h-3 w-3" />
                             </Button>
                         </div>
                     </div>
                 ))}
             </div>
-            <Button variant="outline" size="sm" className="w-full mt-2 border-dashed" onClick={() => { setEditingWard(null); setIsDialogOpen(true); }}>
+            <Button variant="outline" size="sm" className="w-full mt-2 border-dashed" disabled={!canManageWards} onClick={() => { setEditingWard(null); setIsDialogOpen(true); }}>
                 <Plus className="h-3 w-3 mr-1" /> Adicionar Ala
             </Button>
 
@@ -727,13 +721,13 @@ const WardList = ({ hospitalId }: { hospitalId: string }) => {
                         </div>
                         <div className="space-y-2">
                             <Label>Tipo</Label>
-                            <Select value={newWard.type} onValueChange={(v: any) => setNewWard({ ...newWard, type: v })}>
+                            <Select value={newWard.type} onValueChange={(v: Ward["type"]) => setNewWard({ ...newWard, type: v })}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="uti-adulto">UTI Adulto</SelectItem>
-                                    <SelectItem value="uti-pediatrica">UTI Pediátrica</SelectItem>
+                                    <SelectItem value="uti-pediatrica">UTI Pediatrica</SelectItem>
                                     <SelectItem value="enfermaria">Enfermaria</SelectItem>
-                                    <SelectItem value="ambulatorio">Ambulatório</SelectItem>
+                                    <SelectItem value="ambulatorio">Ambulatorio</SelectItem>
                                     <SelectItem value="other">Outro</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -745,3 +739,6 @@ const WardList = ({ hospitalId }: { hospitalId: string }) => {
         </div>
     );
 };
+
+
+

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,13 +24,35 @@ import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { useProfessionals } from "@/hooks/useDatabase";
 import { Professional } from "@/lib/database";
+import { ROLE_OPTIONS, getRoleLabel, normalizeRole, can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 
 const Professionals = () => {
-    const { professionals, isLoading, createProfessional, updateProfessional, deleteProfessional } = useProfessionals();
+    const [hospitalId, setHospitalId] = useState("");
+    const { professionals, isLoading, createProfessional, updateProfessional, deleteProfessional } = useProfessionals(hospitalId || undefined);
+    const role = useCurrentRole();
+    const canManageManagers = can(role, "manage_managers");
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
     const [currentProfessional, setCurrentProfessional] = useState<Partial<Professional>>({});
+
+    useEffect(() => {
+        const syncHospital = () => {
+            if (typeof window === "undefined") return;
+            setHospitalId(localStorage.getItem("userHospitalId") || "");
+        };
+        syncHospital();
+        window.addEventListener("enmeta-session-updated", syncHospital);
+        return () => window.removeEventListener("enmeta-session-updated", syncHospital);
+    }, []);
+
+    const roleOptions = ROLE_OPTIONS.filter((option) => {
+        if ((option.value === "general_manager" || option.value === "local_manager") && !canManageManagers) {
+            return false;
+        }
+        return true;
+    });
 
     const resetForm = () => {
         setCurrentProfessional({});
@@ -38,15 +60,25 @@ const Professionals = () => {
     };
 
     const handleSave = async () => {
+        if (!hospitalId) {
+            toast.error("Selecione uma unidade antes de cadastrar profissionais");
+            return;
+        }
         if (!currentProfessional.name || !currentProfessional.role || !currentProfessional.registrationNumber) {
             toast.error("Preencha os campos obrigatórios");
+            return;
+        }
+
+        const normalizedRole = normalizeRole(currentProfessional.role);
+        if (!canManageManagers && (normalizedRole === "general_manager" || normalizedRole === "local_manager")) {
+            toast.error("Sem permissão para cadastrar gestores");
             return;
         }
 
         try {
             const professionalData = {
                 name: currentProfessional.name!,
-                role: currentProfessional.role!,
+                role: normalizedRole,
                 registrationNumber: currentProfessional.registrationNumber!,
                 cpf: currentProfessional.cpf,
                 crn: currentProfessional.crn,
@@ -66,14 +98,14 @@ const Professionals = () => {
             setIsDialogOpen(false);
             resetForm();
         } catch (error) {
-            console.error('Error saving professional:', error);
+            console.error("Error saving professional:", error);
             toast.error("Erro ao salvar profissional");
         }
     };
 
     const handleEdit = (professional: Professional) => {
         setEditingProfessional(professional);
-        setCurrentProfessional({ ...professional });
+        setCurrentProfessional({ ...professional, role: normalizeRole(professional.role) });
         setIsDialogOpen(true);
     };
 
@@ -101,7 +133,7 @@ const Professionals = () => {
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Profissionais</h1>
-                        <p className="text-muted-foreground">Gerencie a equipe da unidade - Dados Locais</p>
+                        <p className="text-muted-foreground">Gerencie a equipe da unidade selecionada</p>
                     </div>
                     <Dialog open={isDialogOpen} onOpenChange={(open) => {
                         setIsDialogOpen(open);
@@ -131,7 +163,7 @@ const Professionals = () => {
                                         <Label>Função *</Label>
                                         <Select
                                             value={currentProfessional.role}
-                                            onValueChange={(val: 'manager' | 'nutritionist' | 'technician') =>
+                                            onValueChange={(val: 'general_manager' | 'local_manager' | 'nutritionist' | 'technician') =>
                                                 setCurrentProfessional({ ...currentProfessional, role: val })
                                             }
                                         >
@@ -139,9 +171,11 @@ const Professionals = () => {
                                                 <SelectValue placeholder="Selecione" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="manager">Gestor</SelectItem>
-                                                <SelectItem value="nutritionist">Nutricionista</SelectItem>
-                                                <SelectItem value="technician">Técnico</SelectItem>
+                                                {roleOptions.map((roleOption) => (
+                                                    <SelectItem key={roleOption.value} value={roleOption.value}>
+                                                        {roleOption.label}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -172,7 +206,7 @@ const Professionals = () => {
                                         />
                                     </div>
                                 </div>
-                                {currentProfessional.role === 'manager' && (
+                                {['general_manager', 'local_manager'].includes(normalizeRole(currentProfessional.role)) && (
                                     <div className="grid gap-2">
                                         <Label>CPE (Código do Gestor)</Label>
                                         <Input
@@ -234,43 +268,52 @@ const Professionals = () => {
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    filteredProfessionals.map((professional) => (
-                                        <TableRow key={professional.id}>
-                                            <TableCell className="font-medium">
-                                                <div className="flex items-center gap-2">
-                                                    <UserCog className="h-4 w-4 text-muted-foreground" />
-                                                    {professional.name}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className={`px-2 py-1 rounded text-xs font-medium ${professional.role === 'manager' ? 'bg-purple-100 text-purple-800' :
-                                                        professional.role === 'nutritionist' ? 'bg-green-100 text-green-800' :
-                                                            'bg-blue-100 text-blue-800'
-                                                    }`}>
-                                                    {professional.role === 'manager' ? 'Gestor' :
-                                                        professional.role === 'nutritionist' ? 'Nutricionista' : 'Técnico'}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell>{professional.registrationNumber}</TableCell>
-                                            <TableCell>{professional.crn || '-'}</TableCell>
-                                            <TableCell>{professional.managingUnit || '-'}</TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(professional)}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="text-destructive"
-                                                        onClick={() => professional.id && handleDelete(professional.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                    filteredProfessionals.map((professional) => {
+                                        const normalizedRole = normalizeRole(professional.role);
+                                        const isManagerRole = normalizedRole === 'general_manager' || normalizedRole === 'local_manager';
+                                        const canEditManager = !isManagerRole || canManageManagers;
+                                        const badgeClass = normalizedRole === 'general_manager'
+                                            ? 'bg-purple-100 text-purple-800'
+                                            : normalizedRole === 'local_manager'
+                                                ? 'bg-indigo-100 text-indigo-800'
+                                                : normalizedRole === 'nutritionist'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : 'bg-blue-100 text-blue-800';
+                                        return (
+                                            <TableRow key={professional.id}>
+                                                <TableCell className="font-medium">
+                                                    <div className="flex items-center gap-2">
+                                                        <UserCog className="h-4 w-4 text-muted-foreground" />
+                                                        {professional.name}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${badgeClass}`}>
+                                                        {getRoleLabel(professional.role)}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell>{professional.registrationNumber}</TableCell>
+                                                <TableCell>{professional.crn || '-'}</TableCell>
+                                                <TableCell>{professional.managingUnit || '-'}</TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button variant="ghost" size="icon" disabled={!canEditManager} onClick={() => handleEdit(professional)}>
+                                                            <Edit className="h-4 w-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-destructive"
+                                                            disabled={!canEditManager}
+                                                            onClick={() => professional.id && handleDelete(professional.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })
                                 )}
                             </TableBody>
                         </Table>

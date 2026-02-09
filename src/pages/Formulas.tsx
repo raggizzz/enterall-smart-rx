@@ -26,6 +26,8 @@ import BottomNav from "@/components/BottomNav";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
 import { Formula, Module } from "@/lib/database";
 import { toast } from "sonner";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 
 const Formulas = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +38,8 @@ const Formulas = () => {
 
   const { formulas, isLoading: formulasLoading, createFormula, updateFormula, deleteFormula } = useFormulas();
   const { modules, isLoading: modulesLoading, createModule, updateModule, deleteModule } = useModules();
+  const role = useCurrentRole();
+  const canManageFormulas = can(role, "manage_formulas");
 
   // Formula form state
   const [formulaForm, setFormulaForm] = useState({
@@ -124,6 +128,11 @@ const Formulas = () => {
   };
 
   const handleEditFormula = (formula: Formula) => {
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para editar formulas");
+      return;
+    }
+
     setEditingFormula(formula);
     setFormulaForm({
       code: formula.code || "",
@@ -146,8 +155,13 @@ const Formulas = () => {
   };
 
   const handleSaveFormula = async () => {
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para gerenciar formulas");
+      return;
+    }
+
     if (!formulaForm.name || !formulaForm.code) {
-      toast.error("Preencha nome e código da fórmula");
+      toast.error("Preencha nome e codigo da formula");
       return;
     }
 
@@ -173,30 +187,40 @@ const Formulas = () => {
     try {
       if (editingFormula?.id) {
         await updateFormula(editingFormula.id, formulaData);
-        toast.success("Fórmula atualizada com sucesso!");
+        toast.success("Formula atualizada com sucesso!");
       } else {
         await createFormula(formulaData);
-        toast.success("Fórmula criada com sucesso!");
+        toast.success("Formula criada com sucesso!");
       }
       setIsNewFormulaOpen(false);
       resetFormulaForm();
     } catch (error) {
       console.error("Error saving formula:", error);
-      toast.error("Erro ao salvar fórmula");
+      toast.error("Erro ao salvar formula");
     }
   };
 
   const handleDeleteFormula = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta fórmula?")) return;
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para excluir formulas");
+      return;
+    }
+
+    if (!confirm("Tem certeza que deseja excluir esta formula?")) return;
     try {
       await deleteFormula(id);
-      toast.success("Fórmula excluída com sucesso!");
+      toast.success("Formula excluida com sucesso!");
     } catch (error) {
-      toast.error("Erro ao excluir fórmula");
+      toast.error("Erro ao excluir formula");
     }
   };
 
   const handleEditModule = (module: Module) => {
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para editar modulos");
+      return;
+    }
+
     setEditingModule(module);
     setModuleForm({
       name: module.name,
@@ -216,8 +240,13 @@ const Formulas = () => {
   };
 
   const handleSaveModule = async () => {
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para gerenciar modulos");
+      return;
+    }
+
     if (!moduleForm.name) {
-      toast.error("Preencha o nome do módulo");
+      toast.error("Preencha o nome do modulo");
       return;
     }
 
@@ -240,26 +269,31 @@ const Formulas = () => {
     try {
       if (editingModule?.id) {
         await updateModule(editingModule.id, moduleData);
-        toast.success("Módulo atualizado com sucesso!");
+        toast.success("Modulo atualizado com sucesso!");
       } else {
         await createModule(moduleData);
-        toast.success("Módulo criado com sucesso!");
+        toast.success("Modulo criado com sucesso!");
       }
       setIsNewModuleOpen(false);
       resetModuleForm();
     } catch (error) {
       console.error("Error saving module:", error);
-      toast.error("Erro ao salvar módulo");
+      toast.error("Erro ao salvar modulo");
     }
   };
 
   const handleDeleteModule = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este módulo?")) return;
+    if (!canManageFormulas) {
+      toast.error("Sem permissao para excluir modulos");
+      return;
+    }
+
+    if (!confirm("Tem certeza que deseja excluir este modulo?")) return;
     try {
       await deleteModule(id);
-      toast.success("Módulo excluído com sucesso!");
+      toast.success("Modulo excluido com sucesso!");
     } catch (error) {
-      toast.error("Erro ao excluir módulo");
+      toast.error("Erro ao excluir modulo");
     }
   };
 
@@ -269,11 +303,12 @@ const Formulas = () => {
       <div className="container mx-auto px-4 py-6 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Catálogo de Nutrição</h1>
-            <p className="text-muted-foreground">Fórmulas Enterais e Módulos - Banco de Dados Local</p>
+            <h1 className="text-3xl font-bold text-foreground">Catalogo de Nutricao</h1>
+            <p className="text-muted-foreground">Formulas Enterais e Modulos - Banco de Dados Local</p>
           </div>
           <div className="flex gap-2">
             {/* New Formula Dialog */}
+            {canManageFormulas && (
             <Dialog open={isNewFormulaOpen} onOpenChange={(open) => {
               setIsNewFormulaOpen(open);
               if (!open) resetFormulaForm();
@@ -281,17 +316,17 @@ const Formulas = () => {
               <DialogTrigger asChild>
                 <Button className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Nova Fórmula
+                  Nova Formula
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingFormula ? 'Editar' : 'Cadastrar Nova'} Fórmula</DialogTitle>
+                  <DialogTitle>{editingFormula ? 'Editar' : 'Cadastrar Nova'} Formula</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Código *</Label>
+                      <Label>Codigo *</Label>
                       <Input
                         value={formulaForm.code}
                         onChange={(e) => setFormulaForm({ ...formulaForm, code: e.target.value })}
@@ -313,7 +348,7 @@ const Formulas = () => {
                       <Input
                         value={formulaForm.manufacturer}
                         onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })}
-                        placeholder="Ex: Nestlé"
+                        placeholder="Ex: Nestle"
                       />
                     </div>
                     <div className="space-y-2">
@@ -324,14 +359,16 @@ const Formulas = () => {
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="standard">Padrão</SelectItem>
+                          <SelectItem value="standard">Padrao</SelectItem>
                           <SelectItem value="high-protein">Hiperproteica</SelectItem>
-                          <SelectItem value="high-calorie">Hipercalórica</SelectItem>
-                          <SelectItem value="diabetic">Diabética</SelectItem>
+                          <SelectItem value="high-calorie">Hipercalorica</SelectItem>
+                          <SelectItem value="diabetic">Diabetica</SelectItem>
                           <SelectItem value="renal">Renal</SelectItem>
-                          <SelectItem value="peptide">Peptídica</SelectItem>
+                          <SelectItem value="peptide">Peptidica</SelectItem>
                           <SelectItem value="fiber">Com Fibras</SelectItem>
                           <SelectItem value="immune">Imunomoduladora</SelectItem>
+                          <SelectItem value="oral-supplement">Suplementos Via Oral</SelectItem>
+                          <SelectItem value="infant-formula">Formulas Infantis</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -369,7 +406,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Proteína/100ml (g)</Label>
+                      <Label>Proteina/100ml (g)</Label>
                       <Input
                         type="number"
                         step="0.1"
@@ -389,7 +426,7 @@ const Formulas = () => {
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>% Proteínas (VET)</Label>
+                      <Label>% Proteinas (VET)</Label>
                       <Input
                         type="number"
                         value={formulaForm.proteinPct}
@@ -405,7 +442,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>% Lipídeos (VET)</Label>
+                      <Label>% Lipideos (VET)</Label>
                       <Input
                         type="number"
                         value={formulaForm.fatPct}
@@ -415,7 +452,7 @@ const Formulas = () => {
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <Label>Apresentações (mL)</Label>
+                      <Label>Apresentacoes (mL)</Label>
                       <Input
                         value={formulaForm.presentations}
                         onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })}
@@ -447,13 +484,15 @@ const Formulas = () => {
                     </div>
                   </div>
                   <Button onClick={handleSaveFormula} className="w-full mt-4">
-                    {editingFormula ? 'Salvar Alterações' : 'Criar Fórmula'}
+                    {editingFormula ? 'Salvar Alteracoes' : 'Criar Formula'}
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
+            )}
 
             {/* New Module Dialog */}
+            {canManageFormulas && (
             <Dialog open={isNewModuleOpen} onOpenChange={(open) => {
               setIsNewModuleOpen(open);
               if (!open) resetModuleForm();
@@ -461,12 +500,12 @@ const Formulas = () => {
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2">
                   <Plus className="h-4 w-4" />
-                  Novo Módulo
+                  Novo Modulo
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>{editingModule ? 'Editar' : 'Cadastrar Novo'} Módulo</DialogTitle>
+                  <DialogTitle>{editingModule ? 'Editar' : 'Cadastrar Novo'} Modulo</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
@@ -488,7 +527,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Qtd Referência</Label>
+                      <Label>Quantidade de referencia</Label>
                       <Input
                         type="number"
                         value={moduleForm.referenceAmount}
@@ -496,7 +535,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Vezes/Dia</Label>
+                      <Label>Vezes ao dia (referencia)</Label>
                       <Input
                         type="number"
                         value={moduleForm.referenceTimesPerDay}
@@ -514,7 +553,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Proteína/dose (g)</Label>
+                      <Label>Proteina/dose (g)</Label>
                       <Input
                         type="number"
                         value={moduleForm.protein}
@@ -530,7 +569,7 @@ const Formulas = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Água Livre (mL)</Label>
+                      <Label>Agua Livre (mL)</Label>
                       <Input
                         type="number"
                         value={moduleForm.freeWater}
@@ -539,11 +578,12 @@ const Formulas = () => {
                     </div>
                   </div>
                   <Button onClick={handleSaveModule} className="w-full mt-4">
-                    {editingModule ? 'Salvar Alterações' : 'Criar Módulo'}
+                    {editingModule ? 'Salvar Alteracoes' : 'Criar Modulo'}
                   </Button>
                 </div>
               </DialogContent>
             </Dialog>
+            )}
           </div>
         </div>
 
@@ -561,40 +601,40 @@ const Formulas = () => {
 
         <Tabs defaultValue="formulas" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="formulas">Fórmulas Enterais ({filteredFormulas.length})</TabsTrigger>
-            <TabsTrigger value="modules">Módulos ({filteredModules.length})</TabsTrigger>
+            <TabsTrigger value="formulas">Formulas e Suplementos ({filteredFormulas.length})</TabsTrigger>
+            <TabsTrigger value="modules">Modulos ({filteredModules.length})</TabsTrigger>
           </TabsList>
 
-          {/* Tab Fórmulas */}
+          {/* Tab Formulas */}
           <TabsContent value="formulas">
             <Card>
               <CardHeader>
-                <CardTitle>Fórmulas Enterais</CardTitle>
+                <CardTitle>Formulas Enterais</CardTitle>
               </CardHeader>
               <CardContent>
                 {formulasLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Carregando fórmulas...</div>
+                  <div className="text-center py-8 text-muted-foreground">Carregando formulas...</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
-                          <TableHead className="font-semibold">Fórmula (Nome + Código)</TableHead>
+                          <TableHead className="font-semibold">Formula (Nome + Codigo)</TableHead>
                           <TableHead className="text-center font-semibold">Unid.</TableHead>
                           <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
-                          <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
-                          <TableHead className="text-center font-semibold">% Proteínas</TableHead>
+                          <TableHead className="text-center font-semibold">Dens. Calorica</TableHead>
+                          <TableHead className="text-center font-semibold">% Proteinas</TableHead>
                           <TableHead className="text-center font-semibold">% Carbs</TableHead>
-                          <TableHead className="text-center font-semibold">% Lipídeos</TableHead>
+                          <TableHead className="text-center font-semibold">% Lipideos</TableHead>
                           <TableHead className="text-center font-semibold">Fibras/100ml</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
+                          <TableHead className="text-right">Acoes</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredFormulas.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                              Nenhuma fórmula encontrada
+                              Nenhuma formula encontrada
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -627,6 +667,7 @@ const Formulas = () => {
                                 {f.fiberPerUnit ? `${f.fiberPerUnit}g` : '-'}
                               </TableCell>
                               <TableCell className="text-right">
+                                {canManageFormulas && (
                                 <div className="flex justify-end gap-1">
                                   <Button variant="ghost" size="icon" onClick={() => handleEditFormula(f)}>
                                     <Edit className="h-4 w-4" />
@@ -640,6 +681,7 @@ const Formulas = () => {
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))
@@ -652,35 +694,35 @@ const Formulas = () => {
             </Card>
           </TabsContent>
 
-          {/* Tab Módulos */}
+          {/* Tab Modulos */}
           <TabsContent value="modules">
             <Card>
               <CardHeader>
-                <CardTitle>Módulos para Nutrição Enteral</CardTitle>
+                <CardTitle>Modulos para Nutricao Enteral</CardTitle>
               </CardHeader>
               <CardContent>
                 {modulesLoading ? (
-                  <div className="text-center py-8 text-muted-foreground">Carregando módulos...</div>
+                  <div className="text-center py-8 text-muted-foreground">Carregando modulos...</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-muted/50">
-                          <TableHead className="font-semibold">Módulo (Nome)</TableHead>
+                          <TableHead className="font-semibold">Modulo (Nome)</TableHead>
                           <TableHead className="text-center font-semibold">Unid.</TableHead>
                           <TableHead className="text-center font-semibold">Valor (R$)</TableHead>
-                          <TableHead className="text-center font-semibold">Dens. Calórica</TableHead>
-                          <TableHead className="text-center font-semibold">Proteína/dose</TableHead>
+                          <TableHead className="text-center font-semibold">Dens. Calorica</TableHead>
+                          <TableHead className="text-center font-semibold">Proteina/dose</TableHead>
                           <TableHead className="text-center font-semibold">Kcal/dose</TableHead>
                           <TableHead className="text-center font-semibold">Fibras/dose</TableHead>
-                          <TableHead className="text-right">Ações</TableHead>
+                          <TableHead className="text-right">Acoes</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredModules.length === 0 ? (
                           <TableRow>
                             <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                              Nenhum módulo encontrado
+                              Nenhum modulo encontrado
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -700,6 +742,7 @@ const Formulas = () => {
                               <TableCell className="text-center">{m.calories || '-'} kcal</TableCell>
                               <TableCell className="text-center">{m.fiber || '-'}g</TableCell>
                               <TableCell className="text-right">
+                                {canManageFormulas && (
                                 <div className="flex justify-end gap-1">
                                   <Button variant="ghost" size="icon" onClick={() => handleEditModule(m)}>
                                     <Edit className="h-4 w-4" />
@@ -713,6 +756,7 @@ const Formulas = () => {
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))
@@ -732,3 +776,6 @@ const Formulas = () => {
 };
 
 export default Formulas;
+
+
+
