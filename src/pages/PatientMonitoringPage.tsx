@@ -6,24 +6,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, TrendingUp } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import PatientMonitoring from "@/components/PatientMonitoring";
 import { usePatients, usePrescriptions, useEvolutions } from "@/hooks/useDatabase";
 import { Patient, Prescription } from "@/lib/database";
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    ReferenceLine,
-    Legend,
-} from "recharts";
 
 type ChartRow = {
     date: string;
@@ -265,34 +254,8 @@ export default function PatientMonitoringPage() {
                     oralProtein={totals.oralProtein}
                     parenteralKcal={totals.parenteralKcal}
                     parenteralProtein={totals.parenteralProtein}
+                    historyData={chartData}
                 />
-
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <TrendingUp className="h-5 w-5" />
-                            Acompanhamento da TN / Meta (kcal)
-                        </CardTitle>
-                        <CardDescription>
-                            Ultimos 7 dias: NE infundida + NP infundida + calorias nao intencionais em relacao a meta
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="h-[320px]">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={chartData} margin={{ top: 20, right: 20, left: 8, bottom: 8 }}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" />
-                                <YAxis unit="%" domain={[0, 140]} />
-                                <Tooltip formatter={(value: number) => `${value}%`} />
-                                <Legend />
-                                <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" label="Meta" />
-                                <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relacao a meta" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relacao a meta" />
-                                <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal nao intencionais em relacao a meta" />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </CardContent>
-                </Card>
             </div>
             <BottomNav />
         </div>

@@ -30,11 +30,30 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+    ReferenceLine,
+    Legend,
+} from "recharts";
+import {
     Patient,
     TNEGoals,
     TNEInterruptions,
     UnintentionalCalories
 } from "@/lib/database";
+
+interface MonitoringChartRow {
+    date: string;
+    enteralPct: number;
+    parenteralPct: number;
+    nonIntentionalPct: number;
+    totalPct: number;
+}
 
 interface PatientMonitoringProps {
     patient: Patient;
@@ -46,6 +65,7 @@ interface PatientMonitoringProps {
     oralProtein?: number;
     parenteralKcal?: number;
     parenteralProtein?: number;
+    historyData?: MonitoringChartRow[];
 }
 
 export const PatientMonitoring = ({
@@ -57,6 +77,7 @@ export const PatientMonitoring = ({
     oralProtein = 0,
     parenteralKcal = 0,
     parenteralProtein = 0,
+    historyData,
 }: PatientMonitoringProps) => {
     // Estados locais
     const [goals, setGoals] = useState<TNEGoals>(patient.tneGoals || {});
@@ -116,6 +137,30 @@ export const PatientMonitoring = ({
         };
     }, [enteralKcal, oralKcal, parenteralKcal, unintentionalKcal.total,
         enteralProtein, oralProtein, parenteralProtein, patient.weight, idealWeight]);
+
+    const chartData = useMemo<MonitoringChartRow[]>(() => {
+        if (historyData && historyData.length > 0) {
+            return historyData;
+        }
+
+        const today = new Date();
+        const fallback: MonitoringChartRow[] = [];
+        for (let i = 6; i >= 0; i -= 1) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const dayLabel = `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}`;
+            const enteralPct = i === 0 ? Math.max(0, Math.min(infusionPercentage || 0, 140)) : 0;
+            fallback.push({
+                date: dayLabel,
+                enteralPct,
+                parenteralPct: 0,
+                nonIntentionalPct: 0,
+                totalPct: enteralPct,
+            });
+        }
+
+        return fallback;
+    }, [historyData, infusionPercentage]);
 
     // Verificar metas
     const goalStatus = useMemo(() => {
@@ -557,6 +602,33 @@ export const PatientMonitoring = ({
             </Card>
 
             {/* Botão Salvar */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5" />
+                        Acompanhamento da TN / Meta (kcal)
+                    </CardTitle>
+                    <CardDescription>
+                        Ultimos 7 dias: NE infundida + NP infundida + calorias nao intencionais em relacao a meta
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="h-[320px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 20, right: 20, left: 8, bottom: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis unit="%" domain={[0, 140]} />
+                            <Tooltip formatter={(value: number) => `${value}%`} />
+                            <Legend />
+                            <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" label="Meta" />
+                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relacao a meta" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relacao a meta" />
+                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal nao intencionais em relacao a meta" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </CardContent>
+            </Card>
+
             <Button onClick={handleSave} disabled={isSaving} className="w-full" size="lg">
                 <Save className="h-4 w-4 mr-2" />
                 {isSaving ? "Salvando..." : "Salvar Acompanhamento"}
