@@ -78,7 +78,13 @@ const Labels = () => {
 
         const rtName = settings?.defaultSignatures?.rtName || "RT nao cadastrado";
         const rtCrn = settings?.defaultSignatures?.rtCrn || "CRN nao cadastrado";
-        const conservationDefault = settings?.labelSettings?.defaultConservation || "Conservar conforme protocolo da unidade.";
+        const conservationOpen =
+            settings?.labelSettings?.openConservation ||
+            settings?.labelSettings?.defaultConservation ||
+            "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente.";
+        const conservationClosed =
+            settings?.labelSettings?.closedConservation ||
+            "Conservacao: em temperatura ambiente.";
 
         const getRate = (prescription: (typeof prescriptions)[number]): string | undefined => {
             if (prescription.infusionRateMlH && prescription.infusionRateMlH > 0) {
@@ -194,7 +200,7 @@ const Labels = () => {
                                     manipulationDate: activeDateText,
                                     manipulationTime: time,
                                     validityText: "Validade: 24h apos conexao com equipo, em temperatura ambiente.",
-                                    conservationText: "Conservacao: em temperatura ambiente.",
+                                    conservationText: conservationClosed,
                                     rtName,
                                     rtCrn,
                                 },
@@ -227,7 +233,7 @@ const Labels = () => {
                                     manipulationTime: time,
                                     validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
                                     controlText: `Numero sequencial: ${buildControl(prescription.id, time, "NE")}`,
-                                    conservationText: "Conservacao: em temperatura ambiente.",
+                                    conservationText: conservationOpen,
                                     rtName,
                                     rtCrn,
                                 },
@@ -258,7 +264,7 @@ const Labels = () => {
                                         manipulationTime: time,
                                         validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
                                         controlText: `Numero sequencial: ${buildControl(prescription.id, time, "AG")}`,
-                                        conservationText: "Conservacao: em temperatura ambiente.",
+                                        conservationText: conservationOpen,
                                         rtName,
                                         rtCrn,
                                     },
@@ -289,7 +295,7 @@ const Labels = () => {
                                     manipulationTime: time,
                                     validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
                                     controlText: `Numero sequencial: ${buildControl(prescription.id, time, "MO")}`,
-                                    conservationText: conservationDefault,
+                                    conservationText: conservationOpen,
                                     rtName,
                                     rtCrn,
                                 },
@@ -328,7 +334,7 @@ const Labels = () => {
                                         manipulationTime: time,
                                         validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
                                         controlText: `Numero sequencial: ${buildControl(prescription.id, time, `OR${index + 1}`)}`,
-                                        conservationText: conservationDefault,
+                                        conservationText: conservationOpen,
                                         rtName,
                                         rtCrn,
                                     },

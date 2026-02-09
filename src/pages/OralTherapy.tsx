@@ -39,14 +39,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import {
-    OralTherapy as OralTherapyType,
     OralSupplementSchedule,
     OralModuleSchedule,
-    Patient,
-    Formula,
-    Module
+    Patient
 } from "@/lib/database";
-import { usePatients, useFormulas, useModules } from "@/hooks/useDatabase";
+import { usePatients, useFormulas, useModules, usePrescriptions } from "@/hooks/useDatabase";
 
 const MEAL_SCHEDULES = [
     { key: 'breakfast', label: 'Desjejum' },
@@ -57,16 +54,27 @@ const MEAL_SCHEDULES = [
     { key: 'supper', label: 'Ceia' },
 ];
 
+const MEAL_TIME_MAP: Record<string, string> = {
+    breakfast: "06:00",
+    midMorning: "09:00",
+    lunch: "12:00",
+    afternoon: "15:00",
+    dinner: "18:00",
+    supper: "21:00",
+};
+
 export default function OralTherapyPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const patientId = searchParams.get('patient');
 
-    const { patients } = usePatients();
+    const { patients, updatePatient } = usePatients();
     const { formulas } = useFormulas();
     const { modules } = useModules();
+    const { prescriptions, createPrescription, updatePrescription } = usePrescriptions();
 
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Form state
     const [dietConsistency, setDietConsistency] = useState('');
@@ -263,16 +271,129 @@ export default function OralTherapyPage() {
         setOralModules(updated);
     };
 
+    const resolveScheduleTimes = (schedules: Record<string, unknown> | undefined): string[] => {
+        if (!schedules) return [];
+
+        const times = new Set<string>();
+        Object.entries(MEAL_TIME_MAP).forEach(([mealKey, time]) => {
+            if (schedules[mealKey] === true) {
+                times.add(time);
+            }
+        });
+
+        if (typeof schedules.other === "string" && schedules.other.trim().length > 0) {
+            times.add(schedules.other.trim());
+        }
+
+        return Array.from(times).sort();
+    };
+
     const handleSave = async () => {
         if (!selectedPatient) {
             toast.error("Selecione um paciente");
             return;
         }
+        if (!selectedPatient.id) {
+            toast.error("Paciente sem identificador");
+            return;
+        }
 
-        // Here you would save the oral therapy data
-        // For now, just show success
-        toast.success("Prescricao de dieta oral salva!");
-        navigate('/patients');
+        const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+        const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
+        const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
+
+        if (!resolvedHospitalId) {
+            toast.error("Hospital da sessao nao identificado. Refaca o login.");
+            return;
+        }
+
+        const supplementItems = supplements
+            .filter((supplement) => supplement.supplementId)
+            .map((supplement) => {
+                const selectedFormula = formulas.find((formula) => formula.id === supplement.supplementId);
+                const schedules = resolveScheduleTimes(supplement.schedules as unknown as Record<string, unknown>);
+                return {
+                    formulaId: supplement.supplementId,
+                    formulaName: selectedFormula?.name || supplement.supplementName || "Suplemento oral",
+                    volume: supplement.amount || 0,
+                    timesPerDay: schedules.length,
+                    schedules,
+                };
+            });
+
+        const oralModuleItems = oralModules
+            .filter((moduleItem) => moduleItem.moduleId)
+            .map((moduleItem) => {
+                const selectedModule = modules.find((module) => module.id === moduleItem.moduleId);
+                const schedules = resolveScheduleTimes(moduleItem.schedules as unknown as Record<string, unknown>);
+                return {
+                    moduleId: moduleItem.moduleId,
+                    moduleName: selectedModule?.name || moduleItem.moduleName || "Modulo oral",
+                    amount: moduleItem.amount || 0,
+                    unit: moduleItem.unit || "g",
+                    timesPerDay: schedules.length,
+                    schedules,
+                };
+            });
+
+        const notesParts = [
+            dietConsistency ? `Consistencia: ${dietConsistency}` : "",
+            dietCharacteristics ? `Caracteristicas: ${dietCharacteristics}` : "",
+            `Refeicoes/dia: ${mealsPerDay}`,
+            speechTherapy ? "Acompanhamento fonoaudiologico: sim" : "Acompanhamento fonoaudiologico: nao",
+            speechTherapy && needsThickener ? `Agua com espessante: sim (${safeConsistency || "consistencia nao informada"})` : "",
+            speechTherapy && !needsThickener ? "Agua com espessante: nao" : "",
+            observations ? `Observacoes: ${observations}` : "",
+        ].filter(Boolean);
+
+        const prescriptionPayload = {
+            hospitalId: resolvedHospitalId,
+            professionalId: sessionProfessionalId,
+            patientId: selectedPatient.id,
+            patientName: selectedPatient.name,
+            patientRecord: selectedPatient.record,
+            patientBed: selectedPatient.bed,
+            patientWard: selectedPatient.ward,
+            therapyType: "oral" as const,
+            systemType: "open" as const,
+            feedingRoute: "Oral",
+            formulas: supplementItems,
+            modules: oralModuleItems,
+            totalCalories: Math.round(oralTotals.kcal),
+            totalProtein: Math.round(oralTotals.protein * 10) / 10,
+            status: "active" as const,
+            startDate: new Date().toISOString().split("T")[0],
+            notes: notesParts.join(" | "),
+        };
+
+        setIsSaving(true);
+        try {
+            const activeOralPrescription = prescriptions.find(
+                (prescription) =>
+                    prescription.patientId === selectedPatient.id &&
+                    prescription.therapyType === "oral" &&
+                    prescription.status === "active"
+            );
+
+            if (activeOralPrescription?.id) {
+                await updatePrescription(activeOralPrescription.id, prescriptionPayload);
+            } else {
+                await createPrescription(prescriptionPayload);
+            }
+
+            await updatePatient(selectedPatient.id, {
+                nutritionType: "oral",
+                observation: dietCharacteristics || observations || selectedPatient.observation,
+            });
+
+            toast.success("Prescricao de dieta oral salva!");
+            navigate("/patients");
+        } catch (error) {
+            console.error("Erro ao salvar dieta oral:", error);
+            toast.error("Erro ao salvar dieta oral");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     if (!patientId) {
@@ -741,9 +862,9 @@ export default function OralTherapyPage() {
                 </Card>
 
                 {/* Salvar */}
-                <Button onClick={handleSave} className="w-full" size="lg">
+                <Button onClick={handleSave} className="w-full" size="lg" disabled={isSaving}>
                     <Save className="h-4 w-4 mr-2" />
-                    Salvar Prescricao de Dieta Oral
+                    {isSaving ? "Salvando..." : "Salvar Prescricao de Dieta Oral"}
                 </Button>
             </div>
             <BottomNav />

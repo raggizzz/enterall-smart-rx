@@ -65,13 +65,20 @@ const Settings = () => {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const [hospitalName, setHospitalName] = useState(settings?.hospitalName || "");
+    const [hospitalName, setHospitalName] = useState(
+        settings?.hospitalName || (typeof window !== "undefined" ? localStorage.getItem("userHospitalName") || "" : "")
+    );
     const [rtName, setRtName] = useState(settings?.defaultSignatures?.rtName || "");
     const [rtCrn, setRtCrn] = useState(settings?.defaultSignatures?.rtCrn || "");
-    const [defaultConservation, setDefaultConservation] = useState(
-        settings?.labelSettings?.defaultConservation || "Refrigerar 2-8Â°C"
+    const [openConservation, setOpenConservation] = useState(
+        settings?.labelSettings?.openConservation ||
+        settings?.labelSettings?.defaultConservation ||
+        "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente."
     );
-
+    const [closedConservation, setClosedConservation] = useState(
+        settings?.labelSettings?.closedConservation ||
+        "Conservacao: em temperatura ambiente."
+    );
     // Estados para Custos de Enfermagem
     const [nursingCosts, setNursingCosts] = useState<NursingCosts>({
         timeOpenSystemPump: settings?.nursingCosts?.timeOpenSystemPump || 0,
@@ -90,10 +97,20 @@ const Settings = () => {
     // Update form when settings load
     useEffect(() => {
         if (settings) {
-            setHospitalName(settings.hospitalName || "");
+            setHospitalName(
+                settings.hospitalName || (typeof window !== "undefined" ? localStorage.getItem("userHospitalName") || "" : "")
+            );
             setRtName(settings.defaultSignatures?.rtName || "");
             setRtCrn(settings.defaultSignatures?.rtCrn || "");
-            setDefaultConservation(settings.labelSettings?.defaultConservation || "Refrigerar 2-8Â°C");
+            setOpenConservation(
+                settings.labelSettings?.openConservation ||
+                settings.labelSettings?.defaultConservation ||
+                "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente."
+            );
+            setClosedConservation(
+                settings.labelSettings?.closedConservation ||
+                "Conservacao: em temperatura ambiente."
+            );
 
             // Atualizar custos de enfermagem
             setNursingCosts({
@@ -115,14 +132,16 @@ const Settings = () => {
     const handleSaveSettings = async () => {
         try {
             await saveSettings({
-                hospitalName,
+                hospitalName: hospitalName || (typeof window !== "undefined" ? localStorage.getItem("userHospitalName") || "Unidade" : "Unidade"),
                 defaultSignatures: {
                     rtName,
                     rtCrn
                 },
                 labelSettings: {
                     showConservation: true,
-                    defaultConservation
+                    defaultConservation: openConservation,
+                    openConservation,
+                    closedConservation
                 },
                 nursingCosts,
                 indirectCosts
@@ -231,7 +250,7 @@ const Settings = () => {
                             Assinatura e Etiquetas
                         </CardTitle>
                         <CardDescription>
-                            Defina assinatura e texto padrao para impressao das etiquetas
+                            Defina assinatura e conservacao da unidade selecionada
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -258,11 +277,23 @@ const Settings = () => {
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Texto de Conservacao Padrao (Etiquetas)</Label>
+                            <Label>Texto de Conservacao - Sistema Aberto</Label>
                             <Input
-                                value={defaultConservation}
-                                onChange={(e) => setDefaultConservation(e.target.value)}
-                                placeholder="Ex: Sistema aberto: usar em ate 4h apos manipulacao"
+                                value={openConservation}
+                                onChange={(e) => setOpenConservation(e.target.value)}
+                                placeholder="Ex: Validade de 4h apos manipulacao, em temperatura ambiente."
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Via oral e formulas infantis seguem este mesmo texto.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Texto de Conservacao - Sistema Fechado</Label>
+                            <Input
+                                value={closedConservation}
+                                onChange={(e) => setClosedConservation(e.target.value)}
+                                placeholder="Ex: Validade de 24h apos conexao com equipo, em temperatura ambiente."
                             />
                         </div>
 
@@ -739,6 +770,7 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
         </div>
     );
 };
+
 
 
 

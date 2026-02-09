@@ -259,6 +259,10 @@ const PrescriptionNew = () => {
   // Nutrition calculations
   const nutritionSummary = useMemo(() => {
     let totalCalories = 0, totalProtein = 0, totalFreeWater = 0;
+    let totalResiduePlastic = 0;
+    let totalResiduePaper = 0;
+    let totalResidueMetal = 0;
+    let totalResidueGlass = 0;
 
     if (systemType === "closed" && closedFormula.formulaId) {
       const formula = availableFormulas.find(f => f.id === closedFormula.formulaId);
@@ -270,6 +274,13 @@ const PrescriptionNew = () => {
         totalCalories = totalVolume * density;
         totalProtein = (totalVolume / 100) * formula.composition.protein;
         totalFreeWater = (totalVolume * (formula.composition.waterContent || 80)) / 100;
+        if (feedingRoutes.enteral && formula.residueInfo) {
+          const factor = totalVolume / 1000;
+          totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
+          totalResiduePaper += (formula.residueInfo.paper || 0) * factor;
+          totalResidueMetal += (formula.residueInfo.metal || 0) * factor;
+          totalResidueGlass += (formula.residueInfo.glass || 0) * factor;
+        }
       }
     }
 
@@ -282,6 +293,13 @@ const PrescriptionNew = () => {
           totalCalories += totalVolume * density;
           totalProtein += (totalVolume / 100) * formula.composition.protein;
           totalFreeWater += (totalVolume * (formula.composition.waterContent || 80)) / 100;
+          if (feedingRoutes.enteral && formula.residueInfo) {
+            const factor = totalVolume / 1000;
+            totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
+            totalResiduePaper += (formula.residueInfo.paper || 0) * factor;
+            totalResidueMetal += (formula.residueInfo.metal || 0) * factor;
+            totalResidueGlass += (formula.residueInfo.glass || 0) * factor;
+          }
         }
       });
     }
@@ -307,8 +325,15 @@ const PrescriptionNew = () => {
       proteinPerKg: Math.round((totalProtein / weight) * 10) / 10,
       freeWater: Math.round(totalFreeWater),
       freeWaterPerKg: Math.round((totalFreeWater / weight) * 10) / 10,
+      residues: {
+        plastic: Math.round(totalResiduePlastic * 10) / 10,
+        paper: Math.round(totalResiduePaper * 10) / 10,
+        metal: Math.round(totalResidueMetal * 10) / 10,
+        glass: Math.round(totalResidueGlass * 10) / 10,
+      },
+      residueTotal: Math.round((totalResiduePlastic + totalResiduePaper + totalResidueMetal + totalResidueGlass) * 10) / 10,
     };
-  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules]);
+  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes.enteral]);
 
   const bmi = useMemo(() => {
     if (!selectedPatient?.weight || !selectedPatient?.height) return null;
@@ -530,10 +555,10 @@ const PrescriptionNew = () => {
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-sm font-bold text-green-600">
-                        {feedingRoutes.enteral ? "0g" : "-"}
+                        {feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {feedingRoutes.enteral ? "residuos" : "residuos (somente via enteral)"}
+                        {feedingRoutes.enteral ? "residuos totais" : "residuos (somente via enteral)"}
                       </div>
                     </div>
                   </div>
@@ -775,9 +800,9 @@ const PrescriptionNew = () => {
                     <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.vetPerKg} kcal/kg)</p><p className="text-xs font-medium mt-1">VET</p></div>
                     <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.proteinPerKg} g/kg)</p><p className="text-xs font-medium mt-1">Proteinas</p></div>
                     <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.freeWaterPerKg} ml/kg)</p><p className="text-xs font-medium mt-1">Agua Livre</p></div>
-                    <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">0g</p><p className="text-xs font-medium mt-1">Residuos Reciclaveis</p></div>
+                    <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Residuos Reciclaveis" : "Residuos (somente enteral)"}</p></div>
                   </div>
-                  <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Formula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusao:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{modules.length > 0 && <p><strong>Modulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}</CollapsibleContent></Collapsible>
+                  <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Formula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusao:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{modules.length > 0 && <p><strong>Modulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}{feedingRoutes.enteral && <div className="pt-2"><p><strong>Residuos (g/dia):</strong></p><p className="text-sm text-muted-foreground">Plastico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g</p></div>}</CollapsibleContent></Collapsible>
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(feedingRoutes.enteral ? 7 : 2)}>Voltar</Button><Button onClick={handleSave} disabled={isSaving} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />{isSaving ? "Salvando..." : "Salvar Prescricao"}</Button></div>
                 </CardContent>
               </Card>

@@ -55,7 +55,7 @@ import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import { usePatients, useClinics, useHospitals, useWards } from "@/hooks/useDatabase";
+import { usePatients, useClinics, useHospitals, useWards, usePrescriptions } from "@/hooks/useDatabase";
 import { Patient } from "@/lib/database";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
@@ -96,6 +96,7 @@ const Patients = () => {
   });
 
   const { patients, isLoading, createPatient, updatePatient, deletePatient } = usePatients();
+  const { prescriptions } = usePrescriptions();
   const { clinics } = useClinics();
   const { hospitals } = useHospitals();
   // Fetch wards based on selected hospital in the form
@@ -254,6 +255,20 @@ const Patients = () => {
       jejum: <Badge variant="outline">Jejum</Badge>,
     };
     return badges[type as keyof typeof badges];
+  };
+
+  const buildPrescriptionUrl = (patientId?: string) => {
+    if (!patientId) return "/prescription";
+    const params = new URLSearchParams({ patient: patientId });
+    const activePrescription = prescriptions.find(
+      (prescription) => prescription.patientId === patientId && prescription.status === "active"
+    ) || prescriptions.find((prescription) => prescription.patientId === patientId);
+
+    if (activePrescription?.id) {
+      params.set("prescription", activePrescription.id);
+    }
+
+    return `/prescription?${params.toString()}`;
   };
 
   const formatDate = (dateStr: string) => {
@@ -542,7 +557,7 @@ const Patients = () => {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => navigate(`/prescription?patient=${patient.id}`)}
+                            onClick={() => navigate(buildPrescriptionUrl(patient.id))}
                           >
                             <FileText className="h-4 w-4 mr-1" />
                             Prescrever

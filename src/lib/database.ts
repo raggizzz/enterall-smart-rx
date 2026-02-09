@@ -353,6 +353,8 @@ export interface AppSettings {
     labelSettings?: {
         showConservation: boolean;
         defaultConservation: string;
+        openConservation?: string;
+        closedConservation?: string;
     };
     nursingCosts?: NursingCosts;
     indirectCosts?: IndirectCosts;

@@ -64,8 +64,6 @@ const Formulas = () => {
   const [moduleForm, setModuleForm] = useState({
     name: "",
     density: "",
-    referenceAmount: "",
-    referenceTimesPerDay: "",
     calories: "",
     protein: "",
     sodium: "",
@@ -113,8 +111,6 @@ const Formulas = () => {
     setModuleForm({
       name: "",
       density: "",
-      referenceAmount: "",
-      referenceTimesPerDay: "",
       calories: "",
       protein: "",
       sodium: "",
@@ -225,8 +221,6 @@ const Formulas = () => {
     setModuleForm({
       name: module.name,
       density: module.density?.toString() || "",
-      referenceAmount: module.referenceAmount?.toString() || "",
-      referenceTimesPerDay: module.referenceTimesPerDay?.toString() || "",
       calories: module.calories?.toString() || "",
       protein: module.protein?.toString() || "",
       sodium: module.sodium?.toString() || "",
@@ -253,8 +247,8 @@ const Formulas = () => {
     const moduleData = {
       name: moduleForm.name,
       density: parseFloat(moduleForm.density) || 0,
-      referenceAmount: parseFloat(moduleForm.referenceAmount) || 0,
-      referenceTimesPerDay: parseFloat(moduleForm.referenceTimesPerDay) || 0,
+      referenceAmount: 1,
+      referenceTimesPerDay: 1,
       calories: parseFloat(moduleForm.calories) || 0,
       protein: parseFloat(moduleForm.protein) || 0,
       sodium: parseFloat(moduleForm.sodium) || 0,
@@ -516,7 +510,7 @@ const Formulas = () => {
                       placeholder="Ex: Fresubin Protein"
                     />
                   </div>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <div className="space-y-2">
                       <Label>Densidade (kcal/g)</Label>
                       <Input
@@ -526,23 +520,10 @@ const Formulas = () => {
                         onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Quantidade de referencia</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.referenceAmount}
-                        onChange={(e) => setModuleForm({ ...moduleForm, referenceAmount: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Vezes ao dia (referencia)</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.referenceTimesPerDay}
-                        onChange={(e) => setModuleForm({ ...moduleForm, referenceTimesPerDay: e.target.value })}
-                      />
-                    </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    A quantidade e os horarios do modulo sao definidos na prescricao de cada paciente.
+                  </p>
                   <div className="grid grid-cols-4 gap-4">
                     <div className="space-y-2">
                       <Label>Kcal/dose</Label>
