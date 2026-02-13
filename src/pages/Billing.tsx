@@ -6,25 +6,39 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+// import { format } from "date-fns"; // Removed
+// import { ptBR } from "date-fns/locale"; // Removed
 import { Calendar as CalendarIcon, Printer, FileText, DollarSign, Clock, Building, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { usePatients, useClinics } from "@/hooks/useDatabase";
+import { usePatients, useClinics, useFormulas, useModules, useSupplies, useActivePrescriptions } from "@/hooks/useDatabase";
+import { generateRequisitionData } from "@/utils/requisitionGenerator";
+import { RequisitionData } from "@/types/requisition";
+import { RequisitionDocument } from "@/components/billing/RequisitionDocument";
+// Helper for date formatting
+const formatDate = (date: Date | undefined) => {
+    if (!date) return "-";
+    return new Intl.DateTimeFormat('pt-BR').format(date);
+};
 
 // Horários disponíveis das dietas
 const SCHEDULE_TIMES = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00"];
 
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
+    const { prescriptions, isLoading: prescriptionsLoading } = useActivePrescriptions();
+    const { formulas } = useFormulas();
+    const { modules } = useModules();
+    const { supplies } = useSupplies();
     const { clinics } = useClinics();
 
     const [startDate, setStartDate] = useState<Date | undefined>(new Date());
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
     const [unit, setUnit] = useState("all");
     const [selectedTimes, setSelectedTimes] = useState<string[]>([...SCHEDULE_TIMES]);
+    const [selectedPatients, setSelectedPatients] = useState<string[]>([]);
 
     // Configurações de assinaturas personalizáveis
     const [signatureConfig] = useState({
@@ -32,6 +46,40 @@ const Billing = () => {
         signature2: "Técnico em Nutrição",
         signature3: "Nutricionista Responsável Técnica"
     });
+
+    const [requisitionData, setRequisitionData] = useState<RequisitionData | null>(null);
+
+    const handleGenerateRequisition = () => {
+        if (!startDate || !endDate) return;
+
+        // Filter prescriptions based on selected patients
+        const validPrescriptions = selectedPatients.length > 0
+            ? prescriptions.filter(p => selectedPatients.includes(p.patientId))
+            : prescriptions;
+
+        const data = generateRequisitionData({
+            prescriptions: validPrescriptions,
+            formulas,
+            modules,
+            supplies,
+            unitName: unit,
+            startDate,
+            endDate,
+            selectedTimes,
+            signatures: {
+                prescriber: signatureConfig.signature1,
+                technician: signatureConfig.signature2,
+                manager: signatureConfig.signature3
+            }
+        });
+
+        setRequisitionData(data);
+
+        // Small delay to allow React to render the component before printing
+        setTimeout(() => {
+            window.print();
+        }, 100);
+    };
 
     // Obter lista única de setores/unidades
     const wards = useMemo(() => {
@@ -73,8 +121,16 @@ const Billing = () => {
         return summary;
     }, [patients]);
 
+    const totalGeneral = useMemo(() => {
+        return Object.values(summaryByUnit).reduce((acc: any, curr: any) => ({
+            patients: acc.patients + curr.patients,
+            enteral: acc.enteral + curr.enteral,
+            parenteral: acc.parenteral + curr.parenteral
+        }), { patients: 0, enteral: 0, parenteral: 0 });
+    }, [summaryByUnit]);
+
     const handlePrint = () => {
-        window.print();
+        handleGenerateRequisition();
     };
 
     const toggleTime = (time: string) => {
@@ -88,21 +144,39 @@ const Billing = () => {
     const selectAllTimes = () => setSelectedTimes([...SCHEDULE_TIMES]);
     const clearAllTimes = () => setSelectedTimes([]);
 
+    const togglePatient = (patientId: string) => {
+        if (selectedPatients.includes(patientId)) {
+            setSelectedPatients(selectedPatients.filter(id => id !== patientId));
+        } else {
+            setSelectedPatients([...selectedPatients, patientId]);
+        }
+    };
+
+    const toggleAllPatients = () => {
+        if (selectedPatients.length === filteredPatients.length) {
+            setSelectedPatients([]);
+        } else {
+            setSelectedPatients(filteredPatients.map(p => p.id));
+        }
+    };
+
     return (
         <div className="min-h-screen bg-background pb-20">
-            <Header />
-            <div className="container py-6 space-y-6">
+            <div className="print:hidden">
+                <Header />
+            </div>
+            <div className="container py-6 space-y-6 print:hidden">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Requisição e Faturamento</h1>
                         <p className="text-muted-foreground">Controle de insumos por unidade, data e horário</p>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={handlePrint}>
+                        <Button variant="outline" onClick={handlePrint} disabled={prescriptionsLoading}>
                             <Printer className="h-4 w-4 mr-2" />
                             Imprimir
                         </Button>
-                        <Button>
+                        <Button onClick={handlePrint} disabled={prescriptionsLoading}>
                             <FileText className="h-4 w-4 mr-2" />
                             Gerar PDF
                         </Button>
@@ -136,11 +210,11 @@ const Billing = () => {
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                                             <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : <span>Selecione</span>}
+                                            {startDate ? formatDate(startDate) : <span>Selecione</span>}
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0">
-                                        <Calendar mode="single" selected={startDate} onSelect={setStartDate} locale={ptBR} initialFocus />
+                                        <Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus />
                                     </PopoverContent>
                                 </Popover>
                             </div>
@@ -150,11 +224,11 @@ const Billing = () => {
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" className="w-full justify-start text-left font-normal">
                                             <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {endDate ? format(endDate, "dd/MM/yyyy", { locale: ptBR }) : <span>Selecione</span>}
+                                            {endDate ? formatDate(endDate) : <span>Selecione</span>}
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-auto p-0">
-                                        <Calendar mode="single" selected={endDate} onSelect={setEndDate} locale={ptBR} initialFocus />
+                                        <Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus />
                                     </PopoverContent>
                                 </Popover>
                             </div>
@@ -201,7 +275,7 @@ const Billing = () => {
                             Resumo do Período - Todas as Alas
                         </CardTitle>
                         <CardDescription>
-                            Visão geral de todas as unidades para o período: {startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : "-"} a {endDate ? format(endDate, "dd/MM/yyyy", { locale: ptBR }) : "-"}
+                            Visão geral de todas as unidades para o período: {startDate ? formatDate(startDate) : "-"} a {endDate ? formatDate(endDate) : "-"}
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -211,7 +285,7 @@ const Billing = () => {
                             <p className="text-center text-muted-foreground py-4">Nenhum paciente ativo encontrado</p>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {Object.entries(summaryByUnit).map(([unitName, data]) => (
+                                {Object.entries(summaryByUnit).map(([unitName, data]: [string, any]) => (
                                     <div key={unitName} className="p-4 bg-white rounded-lg border">
                                         <h4 className="font-semibold text-lg mb-2">{unitName}</h4>
                                         <div className="space-y-1 text-sm">
@@ -224,9 +298,9 @@ const Billing = () => {
                                 <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
                                     <h4 className="font-semibold text-lg mb-2 text-primary">Total Geral</h4>
                                     <div className="space-y-1 text-sm">
-                                        <p><span className="text-muted-foreground">Pacientes:</span> <span className="font-medium">{Object.values(summaryByUnit).reduce((sum, d) => sum + d.patients, 0)}</span></p>
-                                        <p><span className="text-muted-foreground">TNE:</span> <span className="font-medium">{Object.values(summaryByUnit).reduce((sum, d) => sum + d.enteral, 0)}</span></p>
-                                        <p><span className="text-muted-foreground">TNP:</span> <span className="font-medium">{Object.values(summaryByUnit).reduce((sum, d) => sum + d.parenteral, 0)}</span></p>
+                                        <p><span className="text-muted-foreground">Pacientes:</span> <span className="font-medium">{totalGeneral.patients}</span></p>
+                                        <p><span className="text-muted-foreground">TNE:</span> <span className="font-medium">{totalGeneral.enteral}</span></p>
+                                        <p><span className="text-muted-foreground">TNP:</span> <span className="font-medium">{totalGeneral.parenteral}</span></p>
                                     </div>
                                 </div>
                             </div>
@@ -238,7 +312,12 @@ const Billing = () => {
                     <div className="lg:col-span-2 space-y-6">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Pacientes com Terapia Nutricional</CardTitle>
+                                <div className="flex items-center justify-between">
+                                    <CardTitle>Pacientes com Terapia Nutricional</CardTitle>
+                                    <div className="text-sm text-muted-foreground">
+                                        {selectedPatients.length} selecionados
+                                    </div>
+                                </div>
                                 {selectedTimes.length < SCHEDULE_TIMES.length && (
                                     <CardDescription className="text-orange-600">
                                         ⚠️ Requisição parcial: {selectedTimes.length} de {SCHEDULE_TIMES.length} horários selecionados
@@ -262,6 +341,12 @@ const Billing = () => {
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
+                                                <TableHead className="w-[50px]">
+                                                    <Checkbox
+                                                        checked={selectedPatients.length === filteredPatients.length && filteredPatients.length > 0}
+                                                        onCheckedChange={toggleAllPatients}
+                                                    />
+                                                </TableHead>
                                                 <TableHead>Leito</TableHead>
                                                 <TableHead>Paciente</TableHead>
                                                 <TableHead>Prontuário</TableHead>
@@ -272,6 +357,12 @@ const Billing = () => {
                                         <TableBody>
                                             {filteredPatients.map(patient => (
                                                 <TableRow key={patient.id}>
+                                                    <TableCell>
+                                                        <Checkbox
+                                                            checked={selectedPatients.includes(patient.id)}
+                                                            onCheckedChange={() => togglePatient(patient.id)}
+                                                        />
+                                                    </TableCell>
                                                     <TableCell className="font-medium">{patient.bed || '-'}</TableCell>
                                                     <TableCell>{patient.name}</TableCell>
                                                     <TableCell>{patient.record}</TableCell>
@@ -317,31 +408,15 @@ const Billing = () => {
                 </div>
 
                 {/* Seção de Assinaturas - Apenas para impressão */}
-                <div className="print:block hidden mt-8">
-                    <Separator className="my-8" />
-                    <div className="grid grid-cols-3 gap-8 pt-16">
-                        <div className="text-center">
-                            <div className="border-t border-black pt-2">
-                                <p className="font-medium">{signatureConfig.signature1}</p>
-                            </div>
-                        </div>
-                        <div className="text-center">
-                            <div className="border-t border-black pt-2">
-                                <p className="font-medium">{signatureConfig.signature2}</p>
-                            </div>
-                        </div>
-                        <div className="text-center">
-                            <div className="border-t border-black pt-2">
-                                <p className="font-medium">{signatureConfig.signature3}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <p className="text-center text-xs text-muted-foreground mt-8">
-                        Documento gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                    </p>
-                </div>
+                {/* Removido o bloco antigo de assinaturas pois agora está dentro do componente RequisitionDocument */}
             </div>
-            <BottomNav />
+
+            {/* Componente de Impressão (Invisível na tela, visível na impressão) */}
+            <RequisitionDocument data={requisitionData} />
+
+            <div className="print:hidden">
+                <BottomNav />
+            </div>
         </div>
     );
 };

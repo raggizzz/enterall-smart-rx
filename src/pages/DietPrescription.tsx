@@ -171,7 +171,8 @@ const DietPrescription = () => {
                 const qtyPerTime = parseFloat(mod.quantity) || 0;
                 const totalQty = qtyPerTime * mod.times.length;
                 totalCalories += totalQty * module.density;
-                totalProtein += totalQty * (module.protein / module.referenceAmount);
+                const proteinRatio = (module.protein > 0 && module.referenceAmount > 0) ? (module.protein / module.referenceAmount) : 0;
+                totalProtein += totalQty * proteinRatio;
             }
         });
 

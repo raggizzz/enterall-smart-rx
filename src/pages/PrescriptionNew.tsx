@@ -136,12 +136,12 @@ const PrescriptionNew = () => {
       setOpenFormulas(
         prescription.formulas && prescription.formulas.length > 0
           ? prescription.formulas.map((formula, index) => ({
-              id: `loaded-formula-${index + 1}`,
-              formulaId: formula.formulaId,
-              volume: formula.volume ? String(formula.volume) : "",
-              diluteTo: "",
-              times: formula.schedules || [],
-            }))
+            id: `loaded-formula-${index + 1}`,
+            formulaId: formula.formulaId,
+            volume: formula.volume ? String(formula.volume) : "",
+            diluteTo: "",
+            times: formula.schedules || [],
+          }))
           : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]
       );
 
@@ -309,7 +309,8 @@ const PrescriptionNew = () => {
       if (module && mod.quantity && mod.times.length > 0) {
         const totalQty = parseFloat(mod.quantity) * mod.times.length;
         totalCalories += totalQty * module.density;
-        totalProtein += totalQty * (module.protein / module.referenceAmount);
+        const proteinRatio = (module.protein > 0 && module.referenceAmount > 0) ? (module.protein / module.referenceAmount) : 0;
+        totalProtein += totalQty * proteinRatio;
       }
     });
 
@@ -679,11 +680,11 @@ const PrescriptionNew = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className={`p-6 border-2 rounded-lg cursor-pointer ${systemType === "closed" ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setSystemType("closed")}>
                       <div className="flex items-center gap-3 mb-3"><div className={`w-5 h-5 rounded-full border-2 ${systemType === "closed" ? "border-primary bg-primary" : "border-muted-foreground"}`} /><span className="font-semibold text-lg">Sistema Fechado</span></div>
-                      
+
                     </div>
                     <div className={`p-6 border-2 rounded-lg cursor-pointer ${systemType === "open" ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setSystemType("open")}>
                       <div className="flex items-center gap-3 mb-3"><div className={`w-5 h-5 rounded-full border-2 ${systemType === "open" ? "border-primary bg-primary" : "border-muted-foreground"}`} /><span className="font-semibold text-lg">Sistema Aberto</span></div>
-                      
+
                     </div>
                   </div>
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(3)}>Voltar</Button><Button onClick={() => completeStep(4)} disabled={!canProceed(4)}>Proximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>

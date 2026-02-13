@@ -303,267 +303,239 @@ const Formulas = () => {
           <div className="flex gap-2">
             {/* New Formula Dialog */}
             {canManageFormulas && (
-            <Dialog open={isNewFormulaOpen} onOpenChange={(open) => {
-              setIsNewFormulaOpen(open);
-              if (!open) resetFormulaForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Nova Formula
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingFormula ? 'Editar' : 'Cadastrar Nova'} Formula</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Codigo *</Label>
-                      <Input
-                        value={formulaForm.code}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, code: e.target.value })}
-                        placeholder="Ex: FTNEA06"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Nome Comercial *</Label>
-                      <Input
-                        value={formulaForm.name}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, name: e.target.value })}
-                        placeholder="Ex: Novasource Senior"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Fabricante</Label>
-                      <Input
-                        value={formulaForm.manufacturer}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })}
-                        placeholder="Ex: Nestle"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Tipo</Label>
-                      <Select
-                        value={formulaForm.type}
-                        onValueChange={(val: Formula['type']) => setFormulaForm({ ...formulaForm, type: val })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="standard">Padrao</SelectItem>
-                          <SelectItem value="high-protein">Hiperproteica</SelectItem>
-                          <SelectItem value="high-calorie">Hipercalorica</SelectItem>
-                          <SelectItem value="diabetic">Diabetica</SelectItem>
-                          <SelectItem value="renal">Renal</SelectItem>
-                          <SelectItem value="peptide">Peptidica</SelectItem>
-                          <SelectItem value="fiber">Com Fibras</SelectItem>
-                          <SelectItem value="immune">Imunomoduladora</SelectItem>
-                          <SelectItem value="oral-supplement">Suplementos Via Oral</SelectItem>
-                          <SelectItem value="infant-formula">Formulas Infantis</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Sistema</Label>
-                      <Select
-                        value={formulaForm.systemType}
-                        onValueChange={(val: Formula['systemType']) => setFormulaForm({ ...formulaForm, systemType: val })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="open">Aberto</SelectItem>
-                          <SelectItem value="closed">Fechado</SelectItem>
-                          <SelectItem value="both">Ambos</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label>Kcal/100ml</Label>
-                      <Input
-                        type="number"
-                        value={formulaForm.caloriesPerUnit}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, caloriesPerUnit: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Densidade (kcal/ml)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formulaForm.density}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, density: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Proteina/100ml (g)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formulaForm.proteinPerUnit}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, proteinPerUnit: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Fibras/100ml (g)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={formulaForm.fiberPerUnit}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, fiberPerUnit: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>% Proteinas (VET)</Label>
-                      <Input
-                        type="number"
-                        value={formulaForm.proteinPct}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, proteinPct: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>% Carboidratos (VET)</Label>
-                      <Input
-                        type="number"
-                        value={formulaForm.carbPct}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, carbPct: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>% Lipideos (VET)</Label>
-                      <Input
-                        type="number"
-                        value={formulaForm.fatPct}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, fatPct: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Apresentacoes (mL)</Label>
-                      <Input
-                        value={formulaForm.presentations}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })}
-                        placeholder="100, 200, 500"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Unid. Faturamento</Label>
-                      <Select
-                        value={formulaForm.billingUnit}
-                        onValueChange={(val: Formula['billingUnit']) => setFormulaForm({ ...formulaForm, billingUnit: val })}
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ml">mL</SelectItem>
-                          <SelectItem value="g">g</SelectItem>
-                          <SelectItem value="unit">Unidade</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Valor (R$)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={formulaForm.billingPrice}
-                        onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <Button onClick={handleSaveFormula} className="w-full mt-4">
-                    {editingFormula ? 'Salvar Alteracoes' : 'Criar Formula'}
+              <Dialog open={isNewFormulaOpen} onOpenChange={(open) => {
+                setIsNewFormulaOpen(open);
+                if (!open) resetFormulaForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Nova Formula
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingFormula ? 'Editar' : 'Cadastrar Nova'} Formula</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Codigo *</Label>
+                        <Input
+                          value={formulaForm.code}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, code: e.target.value })}
+                          placeholder="Ex: FTNEA06"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Nome Comercial *</Label>
+                        <Input
+                          value={formulaForm.name}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, name: e.target.value })}
+                          placeholder="Ex: Novasource Senior"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Fabricante</Label>
+                        <Input
+                          value={formulaForm.manufacturer}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })}
+                          placeholder="Ex: Nestle"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Sistema</Label>
+                        <Select
+                          value={formulaForm.systemType}
+                          onValueChange={(val: Formula['systemType']) => setFormulaForm({ ...formulaForm, systemType: val })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="open">Aberto</SelectItem>
+                            <SelectItem value="closed">Fechado</SelectItem>
+                            <SelectItem value="both">Ambos</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4">
+
+                      <div className="space-y-2">
+                        <Label>Densidade (kcal/ml)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={formulaForm.density}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, density: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Proteina/100ml (g)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={formulaForm.proteinPerUnit}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, proteinPerUnit: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fibras/100ml (g)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={formulaForm.fiberPerUnit}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, fiberPerUnit: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>% Proteinas (VET)</Label>
+                        <Input
+                          type="number"
+                          value={formulaForm.proteinPct}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, proteinPct: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>% Carboidratos (VET)</Label>
+                        <Input
+                          type="number"
+                          value={formulaForm.carbPct}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, carbPct: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>% Lipideos (VET)</Label>
+                        <Input
+                          type="number"
+                          value={formulaForm.fatPct}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, fatPct: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Apresentacoes (mL)</Label>
+                        <Input
+                          value={formulaForm.presentations}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })}
+                          placeholder="100, 200, 500"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Unid. Faturamento</Label>
+                        <Select
+                          value={formulaForm.billingUnit}
+                          onValueChange={(val: Formula['billingUnit']) => setFormulaForm({ ...formulaForm, billingUnit: val })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ml">mL</SelectItem>
+                            <SelectItem value="g">g</SelectItem>
+                            <SelectItem value="unit">Unidade</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Valor (R$)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={formulaForm.billingPrice}
+                          onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <Button onClick={handleSaveFormula} className="w-full mt-4">
+                      {editingFormula ? 'Salvar Alteracoes' : 'Criar Formula'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
 
             {/* New Module Dialog */}
             {canManageFormulas && (
-            <Dialog open={isNewModuleOpen} onOpenChange={(open) => {
-              setIsNewModuleOpen(open);
-              if (!open) resetModuleForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <Plus className="h-4 w-4" />
-                  Novo Modulo
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingModule ? 'Editar' : 'Cadastrar Novo'} Modulo</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Nome *</Label>
-                    <Input
-                      value={moduleForm.name}
-                      onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })}
-                      placeholder="Ex: Fresubin Protein"
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-2">
-                      <Label>Densidade (kcal/g)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={moduleForm.density}
-                        onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    A quantidade e os horarios do modulo sao definidos na prescricao de cada paciente.
-                  </p>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label>Kcal/dose</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.calories}
-                        onChange={(e) => setModuleForm({ ...moduleForm, calories: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Proteina/dose (g)</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.protein}
-                        onChange={(e) => setModuleForm({ ...moduleForm, protein: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Fibra/dose (g)</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.fiber}
-                        onChange={(e) => setModuleForm({ ...moduleForm, fiber: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Agua Livre (mL)</Label>
-                      <Input
-                        type="number"
-                        value={moduleForm.freeWater}
-                        onChange={(e) => setModuleForm({ ...moduleForm, freeWater: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <Button onClick={handleSaveModule} className="w-full mt-4">
-                    {editingModule ? 'Salvar Alteracoes' : 'Criar Modulo'}
+              <Dialog open={isNewModuleOpen} onOpenChange={(open) => {
+                setIsNewModuleOpen(open);
+                if (!open) resetModuleForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Novo Modulo
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{editingModule ? 'Editar' : 'Cadastrar Novo'} Modulo</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="space-y-2">
+                      <Label>Nome *</Label>
+                      <Input
+                        value={moduleForm.name}
+                        onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })}
+                        placeholder="Ex: Fresubin Protein"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-2">
+                        <Label>Densidade (kcal/g)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={moduleForm.density}
+                          onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A quantidade e os horarios do modulo sao definidos na prescricao de cada paciente.
+                    </p>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label>Kcal/dose</Label>
+                        <Input
+                          type="number"
+                          value={moduleForm.calories}
+                          onChange={(e) => setModuleForm({ ...moduleForm, calories: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Proteina/dose (g)</Label>
+                        <Input
+                          type="number"
+                          value={moduleForm.protein}
+                          onChange={(e) => setModuleForm({ ...moduleForm, protein: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fibra/dose (g)</Label>
+                        <Input
+                          type="number"
+                          value={moduleForm.fiber}
+                          onChange={(e) => setModuleForm({ ...moduleForm, fiber: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Agua Livre (mL)</Label>
+                        <Input
+                          type="number"
+                          value={moduleForm.freeWater}
+                          onChange={(e) => setModuleForm({ ...moduleForm, freeWater: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <Button onClick={handleSaveModule} className="w-full mt-4">
+                      {editingModule ? 'Salvar Alteracoes' : 'Criar Modulo'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
           </div>
         </div>
@@ -649,19 +621,19 @@ const Formulas = () => {
                               </TableCell>
                               <TableCell className="text-right">
                                 {canManageFormulas && (
-                                <div className="flex justify-end gap-1">
-                                  <Button variant="ghost" size="icon" onClick={() => handleEditFormula(f)}>
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-destructive"
-                                    onClick={() => f.id && handleDeleteFormula(f.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                                  <div className="flex justify-end gap-1">
+                                    <Button variant="ghost" size="icon" onClick={() => handleEditFormula(f)}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-destructive"
+                                      onClick={() => f.id && handleDeleteFormula(f.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 )}
                               </TableCell>
                             </TableRow>
@@ -724,19 +696,19 @@ const Formulas = () => {
                               <TableCell className="text-center">{m.fiber || '-'}g</TableCell>
                               <TableCell className="text-right">
                                 {canManageFormulas && (
-                                <div className="flex justify-end gap-1">
-                                  <Button variant="ghost" size="icon" onClick={() => handleEditModule(m)}>
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-destructive"
-                                    onClick={() => m.id && handleDeleteModule(m.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                                  <div className="flex justify-end gap-1">
+                                    <Button variant="ghost" size="icon" onClick={() => handleEditModule(m)}>
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="text-destructive"
+                                      onClick={() => m.id && handleDeleteModule(m.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 )}
                               </TableCell>
                             </TableRow>

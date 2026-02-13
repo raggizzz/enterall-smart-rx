@@ -6,8 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database, ShieldCheck } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
@@ -16,7 +14,7 @@ import { useClinics, useFormulas, usePatients, usePrescriptions, useSettings } f
 
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 
-const toDateOnly = (date: Date): string => format(date, "dd/MM/yyyy", { locale: ptBR });
+const toDateOnly = (date: Date): string => new Intl.DateTimeFormat('pt-BR').format(date);
 
 const normalize = (value?: string | null): string => {
     if (!value) return "-";
@@ -40,6 +38,16 @@ const Labels = () => {
     const { clinics } = useClinics();
     const { settings } = useSettings();
     const { formulas } = useFormulas();
+
+    // Deduplicate prescriptions to avoid double labels if database returns duplicates
+    const pIds = new Set();
+    const uniquePrescriptions = useMemo(() => {
+        return prescriptions.filter(p => {
+            if (pIds.has(p.id)) return false;
+            pIds.add(p.id);
+            return true;
+        });
+    }, [prescriptions]);
 
     const formulaMap = useMemo(() => {
         const map = new Map<string, { type?: string; presentationForm?: string; name?: string }>();
@@ -86,7 +94,7 @@ const Labels = () => {
             settings?.labelSettings?.closedConservation ||
             "Conservacao: em temperatura ambiente.";
 
-        const getRate = (prescription: (typeof prescriptions)[number]): string | undefined => {
+        const getRate = (prescription: any): string | undefined => {
             if (prescription.infusionRateMlH && prescription.infusionRateMlH > 0) {
                 return `${Math.round(prescription.infusionRateMlH)} ml/h`;
             }
@@ -100,7 +108,11 @@ const Labels = () => {
         };
 
         const buildControl = (prescriptionId: string | undefined, time: string | undefined, suffix: string): string => {
-            const dateKey = format(activeDate, "yyyyMMdd");
+            const yyyy = activeDate.getFullYear();
+            const mm = String(activeDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(activeDate.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}${mm}${dd}`;
+
             const timeKey = (time || "0000").replace(":", "");
             const idKey = (prescriptionId || "XXXX").replace(/-/g, "").slice(0, 6).toUpperCase();
             return `${dateKey}-${timeKey}-${suffix}-${idKey}`;
@@ -108,6 +120,7 @@ const Labels = () => {
 
         prescriptions
             .filter((prescription) => prescription.status === "active")
+            .filter((p, index, self) => index === self.findIndex((t) => t.id === p.id)) // Ensure uniqueness
             .forEach((prescription) => {
                 const patient = patients.find((p) => p.id === prescription.patientId);
 
@@ -130,24 +143,17 @@ const Labels = () => {
                 );
                 const hydrationSchedules = Array.from(new Set(prescription.hydrationSchedules || []));
 
-                const baseSchedules =
+                const baseSchedules: string[] =
                     formulaSchedules.length > 0
-                        ? formulaSchedules
+                        ? (formulaSchedules as string[])
                         : moduleSchedules.length > 0
-                            ? moduleSchedules
+                            ? (moduleSchedules as string[])
                             : hydrationSchedules.length > 0
-                                ? hydrationSchedules
+                                ? (hydrationSchedules as string[])
                                 : ["06:00"];
 
-                const formulaSummary = truncate(
-                    formulaEntries
-                        .map((formula) => {
-                            const volumeText = formula.volume ? ` ${Math.round(formula.volume)} ml` : "";
-                            return `${formula.formulaName}${volumeText}`;
-                        })
-                        .join("; "),
-                    90
-                );
+                // formulaSummary removed as we now iterate formulas individually
+
 
                 const modulesSummary = truncate(
                     moduleEntries
@@ -182,68 +188,132 @@ const Labels = () => {
 
                 if (prescription.therapyType === "enteral") {
                     if (prescription.systemType === "closed") {
-                        baseSchedules.forEach((time) => {
-                            pushLabel(
-                                {
-                                    clinic: clinicName,
-                                    templateTitle: "DIETA - Sistema fechado",
-                                    patientName,
-                                    bed,
-                                    record,
-                                    dob,
-                                    scheduleTime: time,
-                                    infusionRate,
-                                    route,
-                                    formulaText: formulaSummary || "Formula enteral",
-                                    compositionText: formulaSummary || undefined,
-                                    volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
-                                    manipulationDate: activeDateText,
-                                    manipulationTime: time,
-                                    validityText: "Validade: 24h apos conexao com equipo, em temperatura ambiente.",
-                                    conservationText: conservationClosed,
-                                    rtName,
-                                    rtCrn,
-                                },
-                                "enteral-closed"
-                            );
-                        });
+                        // For closed system: split by formula
+                        if (formulaEntries.length > 0) {
+                            formulaEntries.forEach((formula, idx) => {
+                                const formulaSchedule = formula.schedules && formula.schedules.length > 0 ? formula.schedules : baseSchedules;
+                                formulaSchedule.forEach((time: string) => {
+                                    pushLabel(
+                                        {
+                                            clinic: clinicName,
+                                            templateTitle: "Dieta Enteral",
+                                            patientName,
+                                            bed,
+                                            record,
+                                            dob,
+                                            scheduleTime: time,
+                                            infusionRate,
+                                            route,
+                                            formulaText: formula.formulaName,
+                                            compositionText: `${formula.formulaName}${formula.volume ? ` ${Math.round(formula.volume)} ml` : ""}`,
+                                            volumeText: formula.volume ? `${Math.round(formula.volume)} ml` : undefined,
+                                            manipulationDate: activeDateText,
+                                            manipulationTime: time,
+                                            validityText: "Validade: 24h a 48h (vide fabricante).",
+                                            conservationText: conservationClosed,
+                                            rtName,
+                                            rtCrn,
+                                        },
+                                        `enteral-closed-${idx}`
+                                    );
+                                });
+                            });
+                        } else {
+                            // Fallback if no formulas defined but type is closed (rare)
+                            baseSchedules.forEach((time: string) => {
+                                pushLabel(
+                                    {
+                                        clinic: clinicName,
+                                        templateTitle: "Dieta Enteral",
+                                        patientName,
+                                        bed,
+                                        record,
+                                        dob,
+                                        scheduleTime: time,
+                                        infusionRate,
+                                        route,
+                                        formulaText: "Formula enteral",
+                                        compositionText: undefined,
+                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                        manipulationDate: activeDateText,
+                                        manipulationTime: time,
+                                        validityText: "Validade: 24h a 48h (vide fabricante).",
+                                        conservationText: conservationClosed,
+                                        rtName,
+                                        rtCrn,
+                                    },
+                                    "enteral-closed-fallback"
+                                );
+                            });
+                        }
                     } else {
+                        // Open system
                         const openTitle = hasPowderLike
-                            ? "DIETA - Sistema aberto po e formula infantil"
+                            ? "Po e formula infantil"
                             : hasDilution
-                                ? "DIETA - Sistema aberto liquido com diluicao"
-                                : "DIETA - Sistema aberto liquido";
+                                ? "Dieta Enteral com Diluicao"
+                                : "Dieta Enteral Liquida";
 
-                        baseSchedules.forEach((time) => {
-                            pushLabel(
-                                {
-                                    clinic: clinicName,
-                                    templateTitle: openTitle,
-                                    patientName,
-                                    bed,
-                                    record,
-                                    dob,
-                                    scheduleTime: time,
-                                    infusionRate,
-                                    route,
-                                    formulaText: formulaSummary || "Formula enteral",
-                                    compositionText: formulaSummary || undefined,
-                                    volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
-                                    manipulationDate: activeDateText,
-                                    manipulationTime: time,
-                                    validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
-                                    controlText: `Numero sequencial: ${buildControl(prescription.id, time, "NE")}`,
-                                    conservationText: conservationOpen,
-                                    rtName,
-                                    rtCrn,
-                                },
-                                "enteral-open"
-                            );
-                        });
+                        if (formulaEntries.length > 0) {
+                            formulaEntries.forEach((formula, idx) => {
+                                const formulaSchedule = formula.schedules && formula.schedules.length > 0 ? formula.schedules : baseSchedules;
+                                formulaSchedule.forEach((time: string) => {
+                                    pushLabel(
+                                        {
+                                            clinic: clinicName,
+                                            templateTitle: openTitle,
+                                            patientName,
+                                            bed,
+                                            record,
+                                            dob,
+                                            scheduleTime: time,
+                                            infusionRate,
+                                            route,
+                                            formulaText: formula.formulaName,
+                                            compositionText: `${formula.formulaName}${formula.volume ? ` ${Math.round(formula.volume)} ml` : ""}`,
+                                            volumeText: formula.volume ? `${Math.round(formula.volume)} ml` : undefined,
+                                            manipulationDate: activeDateText,
+                                            manipulationTime: time,
+                                            validityText: "Validade: 4h apos manipulacao.",
+                                            conservationText: conservationOpen,
+                                            rtName,
+                                            rtCrn,
+                                        },
+                                        `enteral-open-${idx}`
+                                    );
+                                });
+                            });
+                        } else {
+                            baseSchedules.forEach((time: string) => {
+                                pushLabel(
+                                    {
+                                        clinic: clinicName,
+                                        templateTitle: openTitle,
+                                        patientName,
+                                        bed,
+                                        record,
+                                        dob,
+                                        scheduleTime: time,
+                                        infusionRate,
+                                        route,
+                                        formulaText: "Formula enteral",
+                                        compositionText: undefined,
+                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                        manipulationDate: activeDateText,
+                                        manipulationTime: time,
+                                        validityText: "Validade: 4h apos manipulacao.",
+                                        conservationText: conservationOpen,
+                                        rtName,
+                                        rtCrn,
+                                    },
+                                    "enteral-open-fallback"
+                                );
+                            });
+                        }
 
                         if (moduleEntries.length > 0 || (prescription.hydrationVolume || 0) > 0) {
                             const waterSchedules = hydrationSchedules.length > 0 ? hydrationSchedules : baseSchedules;
-                            waterSchedules.forEach((time) => {
+                            waterSchedules.forEach((time: string) => {
                                 pushLabel(
                                     {
                                         clinic: clinicName,
@@ -262,8 +332,7 @@ const Labels = () => {
                                             : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
-                                        controlText: `Numero sequencial: ${buildControl(prescription.id, time, "AG")}`,
+                                        validityText: "Validade: 4h apos manipulacao.",
                                         conservationText: conservationOpen,
                                         rtName,
                                         rtCrn,
@@ -278,7 +347,7 @@ const Labels = () => {
                 if (prescription.therapyType === "oral") {
                     if (moduleEntries.length > 0) {
                         const oralModuleSchedules = moduleSchedules.length > 0 ? moduleSchedules : ["06:00"];
-                        oralModuleSchedules.forEach((time) => {
+                        oralModuleSchedules.forEach((time: string) => {
                             pushLabel(
                                 {
                                     clinic: clinicName,
@@ -293,8 +362,7 @@ const Labels = () => {
                                     compositionText: modulesSummary || undefined,
                                     manipulationDate: activeDateText,
                                     manipulationTime: time,
-                                    validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
-                                    controlText: `Numero sequencial: ${buildControl(prescription.id, time, "MO")}`,
+                                    validityText: "Validade: 4h apos manipulacao.",
                                     conservationText: conservationOpen,
                                     rtName,
                                     rtCrn,
@@ -312,7 +380,7 @@ const Labels = () => {
                             const isLiquidSupplement = hasOralSupplement && !isPowder;
 
                             const formulaSchedulesList = formula.schedules?.length ? formula.schedules : ["06:00"];
-                            formulaSchedulesList.forEach((time) => {
+                            formulaSchedulesList.forEach((time: string) => {
                                 pushLabel(
                                     {
                                         clinic: clinicName,
@@ -332,8 +400,7 @@ const Labels = () => {
                                         volumeText: formula.volume ? `${Math.round(formula.volume)} ml` : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao, em temperatura ambiente.",
-                                        controlText: `Numero sequencial: ${buildControl(prescription.id, time, `OR${index + 1}`)}`,
+                                        validityText: "Validade: 4h apos manipulacao.",
                                         conservationText: conservationOpen,
                                         rtName,
                                         rtCrn,
@@ -387,9 +454,11 @@ const Labels = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-background via-secondary/30 to-background pb-20">
-            <Header />
+            <div className="print:hidden">
+                <Header />
+            </div>
             <div className="container py-6 space-y-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                             <Tag className="h-6 w-6" />
@@ -406,158 +475,155 @@ const Labels = () => {
                     </Button>
                 </div>
 
-                <Card className="border-primary/10 bg-card/90 backdrop-blur">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <ShieldCheck className="h-5 w-5 text-primary" />
-                            Campos obrigatorios da etiqueta
-                        </CardTitle>
-                        <CardDescription>
-                            Paciente, leito, registro, composicao, velocidade, via, data/hora de manipulacao, validade, controle sequencial e RT.
-                        </CardDescription>
-                    </CardHeader>
-                </Card>
+                <div className="print:hidden">
+                    {/* Campos obrigatorios card removido */}
+                </div>
 
-                <Card className="border-primary/10 bg-card/90 backdrop-blur">
-                    <CardHeader>
-                        <CardTitle>Filtros</CardTitle>
-                        <CardDescription>Selecione os criterios para gerar as etiquetas</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <Building className="h-4 w-4" />
-                                    Unidade / setor
-                                </Label>
-                                <Select value={clinic} onValueChange={setClinic}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos</SelectItem>
-                                        {clinicOptions.map((name) => (
-                                            <SelectItem key={name} value={name}>{name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                <div className="print:hidden">
+                    <Card className="border-primary/10 bg-card/90 backdrop-blur">
+                        <CardHeader>
+                            <CardTitle>Filtros</CardTitle>
+                            <CardDescription>Selecione os criterios para gerar as etiquetas</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Content omitted for brevity, logic remains the same */}
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Building className="h-4 w-4" />
+                                        Unidade / setor
+                                    </Label>
+                                    <Select value={clinic} onValueChange={setClinic}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos</SelectItem>
+                                            {clinicOptions.map((name) => (
+                                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <User className="h-4 w-4" />
-                                    Paciente
-                                </Label>
-                                <div className="relative">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Buscar por nome..."
-                                        className="pl-8"
-                                        value={patientSearch}
-                                        onChange={(event) => setPatientSearch(event.target.value)}
-                                    />
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <User className="h-4 w-4" />
+                                        Paciente
+                                    </Label>
+                                    <div className="relative">
+                                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Buscar por nome..."
+                                            className="pl-8"
+                                            value={patientSearch}
+                                            onChange={(event) => setPatientSearch(event.target.value)}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <CalendarIcon className="h-4 w-4" />
+                                        Data de manipulacao
+                                    </Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {date ? new Intl.DateTimeFormat('pt-BR').format(date) : <span>Selecione</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                            <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                                        </PopoverContent>
+                                    </Popover>
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label className="flex items-center gap-2">
-                                    <CalendarIcon className="h-4 w-4" />
-                                    Data de manipulacao
-                                </Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {date ? format(date, "dd/MM/yyyy", { locale: ptBR }) : <span>Selecione</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus locale={ptBR} />
-                                    </PopoverContent>
-                                </Popover>
+                            <div className="border-t pt-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Clock className="h-4 w-4 text-muted-foreground" />
+                                        <Label className="font-semibold">Horarios</Label>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" onClick={selectAllTimes}>Todos</Button>
+                                        <Button variant="outline" size="sm" onClick={clearAllTimes}>Limpar</Button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                                    {SCHEDULE_TIMES.map((time) => (
+                                        <button
+                                            key={time}
+                                            type="button"
+                                            onClick={() => toggleTime(time)}
+                                            className={`px-3 py-2 rounded-lg text-center transition-all border-2 ${selectedTimes.includes(time)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-muted/50 border-muted hover:border-primary/50"
+                                                }`}
+                                        >
+                                            <span className="text-sm font-medium">{time}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
-                        <div className="border-t pt-4">
-                            <div className="flex items-center justify-between mb-3">
-                                <div className="flex items-center gap-2">
-                                    <Clock className="h-4 w-4 text-muted-foreground" />
-                                    <Label className="font-semibold">Horarios</Label>
+                <div className="print:hidden">
+                    <Card className="border-primary/10 bg-card/90 backdrop-blur">
+                        <CardHeader>
+                            <div className="flex justify-between items-center gap-3">
+                                <div>
+                                    <CardTitle>Etiquetas disponiveis</CardTitle>
+                                    <CardDescription>
+                                        {prescriptionsLoading
+                                            ? "Carregando prescricoes..."
+                                            : `${filteredLabels.length} etiqueta(s) pronta(s) para impressao`
+                                        }
+                                    </CardDescription>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Button variant="outline" size="sm" onClick={selectAllTimes}>Todos</Button>
-                                    <Button variant="outline" size="sm" onClick={clearAllTimes}>Limpar</Button>
+                                    <Button variant="outline" size="sm" onClick={selectAllLabels}>Selecionar todas</Button>
+                                    <Button variant="outline" size="sm" onClick={clearAllLabels}>Limpar selecao</Button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                                {SCHEDULE_TIMES.map((time) => (
-                                    <button
-                                        key={time}
-                                        type="button"
-                                        onClick={() => toggleTime(time)}
-                                        className={`px-3 py-2 rounded-lg text-center transition-all border-2 ${selectedTimes.includes(time)
-                                            ? "bg-primary text-primary-foreground border-primary"
-                                            : "bg-muted/50 border-muted hover:border-primary/50"
-                                            }`}
-                                    >
-                                        <span className="text-sm font-medium">{time}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-primary/10 bg-card/90 backdrop-blur">
-                    <CardHeader>
-                        <div className="flex justify-between items-center gap-3">
-                            <div>
-                                <CardTitle>Etiquetas disponiveis</CardTitle>
-                                <CardDescription>
-                                    {prescriptionsLoading
-                                        ? "Carregando prescricoes..."
-                                        : `${filteredLabels.length} etiqueta(s) pronta(s) para impressao`
-                                    }
-                                </CardDescription>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={selectAllLabels}>Selecionar todas</Button>
-                                <Button variant="outline" size="sm" onClick={clearAllLabels}>Limpar selecao</Button>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        {prescriptionsLoading ? (
-                            <div className="text-center py-8 text-muted-foreground">Carregando prescricoes do banco...</div>
-                        ) : filteredLabels.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">
-                                Nenhuma etiqueta encontrada para os filtros selecionados.
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                                {filteredLabels.map((label) => (
-                                    <button
-                                        key={label.id}
-                                        type="button"
-                                        className={`relative text-left rounded-xl p-2 border transition-all ${selectedLabels.includes(label.id)
-                                            ? "border-primary ring-2 ring-primary/40"
-                                            : "border-border hover:border-primary/50"
-                                            }`}
-                                        onClick={() => toggleLabel(label.id)}
-                                    >
-                                        <div className="absolute top-2 right-2 h-5 w-5 rounded-full border text-[10px] font-bold flex items-center justify-center bg-background">
-                                            {selectedLabels.includes(label.id) ? "OK" : ""}
-                                        </div>
-                                        <LabelPreview data={label} />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardHeader>
+                        <CardContent>
+                            {prescriptionsLoading ? (
+                                <div className="text-center py-8 text-muted-foreground">Carregando prescricoes do banco...</div>
+                            ) : filteredLabels.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    Nenhuma etiqueta encontrada para os filtros selecionados.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    {filteredLabels.map((label) => (
+                                        <button
+                                            key={label.id}
+                                            type="button"
+                                            className={`relative text-left rounded-xl p-2 border transition-all ${selectedLabels.includes(label.id)
+                                                ? "border-primary ring-2 ring-primary/40"
+                                                : "border-border hover:border-primary/50"
+                                                }`}
+                                            onClick={() => toggleLabel(label.id)}
+                                        >
+                                            <div className="absolute top-2 right-2 h-5 w-5 rounded-full border text-[10px] font-bold flex items-center justify-center bg-background">
+                                                {selectedLabels.includes(label.id) ? "OK" : ""}
+                                            </div>
+                                            <LabelPreview data={label} />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
 
                 <div className="hidden print:block">
-                    <div className="print:grid print:grid-cols-3 print:gap-[3.2mm]">
+                    <div className="print:grid print:grid-cols-2 print:gap-[3.2mm]">
                         {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))
                             .map((label) => (
@@ -568,10 +634,11 @@ const Labels = () => {
                     </div>
                 </div>
             </div>
-            <BottomNav />
+            <div className="print:hidden">
+                <BottomNav />
+            </div>
         </div>
     );
 };
 
 export default Labels;
-
