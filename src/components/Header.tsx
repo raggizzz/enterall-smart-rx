@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import logo from "@/assets/logoenmeta.png";
+import LogoEnmeta from "@/components/LogoEnmeta";
 import { toast } from "sonner";
 import { clearPermissionMatrix, ROLE_LABELS } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
@@ -12,21 +12,21 @@ import { useProfessionals } from "@/hooks/useDatabase";
 const Header = () => {
   const navigate = useNavigate();
   const role = useCurrentRole();
-  const [userName, setUserName] = useState("Usuario");
+  const [userName, setUserName] = useState("Usuário");
   const [userProfessionalId, setUserProfessionalId] = useState("");
   const [hospitalId, setHospitalId] = useState("");
-  const [hospitalName, setHospitalName] = useState("Unidade nao selecionada");
-  const [wardName, setWardName] = useState("Setor nao selecionado");
+  const [hospitalName, setHospitalName] = useState("Unidade não selecionada");
+  const [wardName, setWardName] = useState("Setor não selecionado");
   const { professionals } = useProfessionals(hospitalId || undefined);
 
   useEffect(() => {
     const syncSessionContext = () => {
       if (typeof window === "undefined") return;
-      setUserName(localStorage.getItem("userName") || "Usuario");
+      setUserName(localStorage.getItem("userName") || "Usuário");
       setUserProfessionalId(localStorage.getItem("userProfessionalId") || "");
       setHospitalId(localStorage.getItem("userHospitalId") || "");
-      setHospitalName(localStorage.getItem("userHospitalName") || "Unidade nao selecionada");
-      setWardName(localStorage.getItem("userWard") || "Setor nao selecionado");
+      setHospitalName(localStorage.getItem("userHospitalName") || "Unidade não selecionada");
+      setWardName(localStorage.getItem("userWard") || "Setor não selecionado");
     };
 
     syncSessionContext();
@@ -65,11 +65,11 @@ const Header = () => {
       <div className="container flex h-18 min-h-[72px] items-center justify-between px-4">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate("/dashboard")}>
           <div className="rounded-xl border border-primary/20 bg-primary/5 p-1.5">
-            <img src={logo} alt="ENMeta" className="h-9 w-9 object-contain" />
+            <LogoEnmeta size="sm" />
           </div>
           <div>
             <span className="block text-lg leading-none font-semibold text-medical-green-dark">ENMeta</span>
-            <span className="block text-[11px] text-muted-foreground">Prescricao e Gestao Nutricional</span>
+            <span className="block text-[11px] text-muted-foreground">Prescrição e Gestão Nutricional</span>
           </div>
         </div>
         <div className="flex items-center gap-3">

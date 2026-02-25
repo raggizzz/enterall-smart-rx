@@ -352,7 +352,7 @@ const Patients = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Via nutricional sera definida na prescricao, nao no cadastro inicial.
+                    Via nutricional será definida na prescrição, não no cadastro inicial.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

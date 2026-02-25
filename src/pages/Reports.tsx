@@ -364,7 +364,7 @@ const Reports = () => {
                                         Acompanhamento da TN / Meta (kcal)
                                     </CardTitle>
                                     <CardDescription>
-                                        Somatorio proporcional de NE infundida, NP infundida e calorias nao intencionais em relacao a meta
+                                        Somatório proporcional de NE infundida, NP infundida e calorias não intencionais em relação à meta
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="h-[320px]">
@@ -376,9 +376,9 @@ const Reports = () => {
                                             <Tooltip formatter={(value: number) => `${value}%`} />
                                             <Legend />
                                             <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" label="Meta" />
-                                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relacao a meta" radius={[4, 4, 0, 0]} />
-                                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relacao a meta" />
-                                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal nao intencionais em relacao a meta" />
+                                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relação à meta" radius={[4, 4, 0, 0]} />
+                                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relação à meta" />
+                                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal não intencionais em relação à meta" />
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </CardContent>

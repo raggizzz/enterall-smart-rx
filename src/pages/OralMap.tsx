@@ -55,7 +55,7 @@ const OralMap = () => {
     };
 
     const getDietCharacteristics = (nutritionType: string, observation?: string) => {
-        if (nutritionType === 'oral') return observation || 'Nao informado';
+        if (nutritionType === 'oral') return observation || 'Não informado';
         if (nutritionType === 'enteral') return observation || 'Terapia enteral';
         if (nutritionType === 'jejum') return observation || 'Jejum';
         return observation || '-';
@@ -75,7 +75,7 @@ const OralMap = () => {
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Mapa de Dieta Oral (Copa)</h1>
-                        <p className="text-muted-foreground">Resumo para distribuicao de dietas e suplementos</p>
+                        <p className="text-muted-foreground">Resumo para distribuição de dietas e suplementos</p>
                     </div>
                     <div className="flex gap-2">
                         <Select value={selectedClinic} onValueChange={setSelectedClinic}>
@@ -136,15 +136,21 @@ const OralMap = () => {
                                         <span className="text-muted-foreground">Setor:</span> {patient.ward || '-'}
                                     </div>
 
-                                    {patient.weight && patient.height && (
-                                        <div className="flex gap-4 text-sm">
-                                            <span><strong>Peso:</strong> {patient.weight}kg</span>
-                                            <span><strong>Altura:</strong> {patient.height}cm</span>
-                                        </div>
-                                    )}
+                                    <div className="text-sm">
+                                        <span className="text-muted-foreground">Data de Nascimento:</span> {patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}
+                                    </div>
+
+                                    <div className="flex gap-4 text-sm">
+                                        <span><strong>Consistência:</strong> {(patient as any).consistency || '-'}</span>
+                                        <span><strong>Nº de Refeições:</strong> {(patient as any).mealCount || '-'}</span>
+                                    </div>
+
+                                    <div className="text-sm">
+                                        <strong>Consistência Segura:</strong> {(patient as any).safeConsistency || ((patient as any).speechTherapyFollowUp ? (patient as any).safeConsistency : '–')}
+                                    </div>
 
                                     <div className="text-sm bg-green-50 p-2 rounded border border-green-200">
-                                        <p className="font-medium text-green-800">Caracteristicas da dieta</p>
+                                        <p className="font-medium text-green-800">Características da dieta</p>
                                         <p className="text-green-700">{getDietCharacteristics(patient.nutritionType, patient.observation)}</p>
                                     </div>
 
@@ -178,25 +184,29 @@ const OralMap = () => {
 
             <div className="hidden print:block p-4 text-black bg-white">
                 <h1 className="text-xl font-bold mb-1">Mapa da Copa - Dietas e Suplementos</h1>
-                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes: {oralMapPatients.length}</p>
+                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes (oral): {oralMapPatients.filter(p => p.nutritionType === 'oral').length}</p>
 
                 <table className="w-full border-collapse text-sm">
                     <thead>
                         <tr>
                             <th className="border border-black p-2 text-left">Leito</th>
                             <th className="border border-black p-2 text-left">Paciente</th>
-                            <th className="border border-black p-2 text-left">Prontuario</th>
+                            <th className="border border-black p-2 text-left">Data de Nascimento</th>
                             <th className="border border-black p-2 text-left">Via</th>
-                            <th className="border border-black p-2 text-left">Caracteristicas da dieta</th>
+                            <th className="border border-black p-2 text-left">Consistência</th>
+                            <th className="border border-black p-2 text-left">Consistência Segura</th>
+                            <th className="border border-black p-2 text-left">Características da dieta</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {oralMapPatients.map((patient) => (
+                        {oralMapPatients.filter(p => p.nutritionType === 'oral').map((patient) => (
                             <tr key={`print-${patient.id}`}>
                                 <td className="border border-black p-2">{patient.bed || '-'}</td>
                                 <td className="border border-black p-2">{patient.name}</td>
-                                <td className="border border-black p-2">{patient.record || '-'}</td>
+                                <td className="border border-black p-2">{patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}</td>
                                 <td className="border border-black p-2">{getDietLabel(patient.nutritionType)}</td>
+                                <td className="border border-black p-2">{(patient as any).consistency || '-'}</td>
+                                <td className="border border-black p-2">{(patient as any).safeConsistency || '–'}</td>
                                 <td className="border border-black p-2">{getDietCharacteristics(patient.nutritionType, patient.observation)}</td>
                             </tr>
                         ))}

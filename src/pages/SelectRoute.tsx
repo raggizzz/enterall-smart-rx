@@ -6,7 +6,7 @@ export default function SelectRoute() {
 
   return (
     <div className="h-screen flex flex-col items-center justify-center gap-6">
-      <h1 className="text-3xl font-bold">Escolher Via de Alimentacao</h1>
+      <h1 className="text-3xl font-bold">Escolher Via de Alimentação</h1>
 
       <div className="flex flex-col gap-4 w-80">
         <Button onClick={() => navigate("/oral-therapy")}>Oral</Button>

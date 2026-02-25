@@ -5,10 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, EyeOff, Activity } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import logo from "@/assets/logoenmeta.png";
-import { useProfessionals, useHospitals, useWards } from "@/hooks/useDatabase";
+import LogoEnmeta from "@/components/LogoEnmeta";
+import { useProfessionals, useHospitals } from "@/hooks/useDatabase";
 import { rolePermissionsService } from "@/lib/database";
 import {
   applyRolePermissionsFromDatabase,
@@ -23,7 +23,6 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     hospital: "",
-    ward: "",
     identifier: "",
     password: "",
     role: "nutritionist",
@@ -31,7 +30,7 @@ const Login = () => {
   const { professionals } = useProfessionals(formData.hospital || undefined);
   const { hospitals } = useHospitals();
 
-  const { wards } = useWards(formData.hospital);
+
   const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
   const hospitalProfessionals = professionals;
 
@@ -48,28 +47,28 @@ const Login = () => {
         applyRolePermissionsFromDatabase(rows);
       }
     } catch (error) {
-      console.warn("Nao foi possivel carregar permissoes do banco. Usando matriz padrao.", error);
+      console.warn("Não foi possível carregar permissões do banco. Usando matriz padrão.", error);
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.hospital || !formData.ward || !formData.identifier || !formData.password) {
-      toast.error("Preencha todos os campos");
+    if (!formData.hospital || !formData.identifier || !formData.password) {
+      toast.error("Preencha todos os campos.");
       return;
     }
 
     const normalizedRole = normalizeRole(formData.role);
 
     if (hospitalProfessionals.length === 0 && normalizedRole === "general_manager") {
-      toast.info("Modo de inicializacao da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
+      toast.info("Modo de inicialização da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
       localStorage.setItem("userRole", normalizedRole);
       localStorage.setItem("userName", "Gestor Inicial");
       localStorage.removeItem("userProfessionalId");
       localStorage.setItem("userHospitalId", formData.hospital);
       localStorage.setItem("userHospitalName", selectedHospitalName);
-      localStorage.setItem("userWard", formData.ward);
+
       window.dispatchEvent(new Event("enmeta-session-updated"));
       await syncRolePermissions();
       navigate("/dashboard");
@@ -84,7 +83,7 @@ const Login = () => {
 
     if (user) {
       if (user.isActive === false) {
-        toast.error("Usuario inativo. Contate o gestor.");
+        toast.error("Usuário inativo. Contate o gestor.");
         return;
       }
 
@@ -97,7 +96,7 @@ const Login = () => {
       }
       localStorage.setItem("userHospitalId", formData.hospital);
       localStorage.setItem("userHospitalName", selectedHospitalName);
-      localStorage.setItem("userWard", formData.ward);
+
       window.dispatchEvent(new Event("enmeta-session-updated"));
       await syncRolePermissions();
       toast.success(`Bem-vindo(a), ${user.name}!`);
@@ -106,9 +105,9 @@ const Login = () => {
     }
 
     if (normalizedRole !== "general_manager") {
-      toast.error(`Acesso negado. ${ROLE_LABELS[normalizedRole]} deve ser cadastrado pelo gestor.`);
+      toast.error(`Acesso negado. ${ROLE_LABELS[normalizedRole]} deve ser cadastrado(a) pelo gestor.`);
     } else {
-      toast.error("Gestor nao encontrado. Verifique suas credenciais.");
+      toast.error("Gestor não encontrado. Verifique suas credenciais.");
     }
   };
 
@@ -117,17 +116,10 @@ const Login = () => {
       <div className="w-full max-w-5xl">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
           <div className="rounded-2xl border border-medical-green/20 bg-card/70 p-8 shadow-sm backdrop-blur">
-            <img src={logo} alt="ENMeta Logo" className="h-48 w-auto mx-auto mb-5 object-contain" />
+            <LogoEnmeta size="lg" className="mx-auto mb-5" />
             <h1 className="text-center text-3xl font-bold text-medical-green-dark leading-tight">
-              Nutricao Enteral Inteligente e Sustentavel
+              Nutrição Enteral Inteligente e Sustentável.
             </h1>
-            <p className="mt-3 text-center text-muted-foreground">
-              Plataforma clinica para prescricao, evolucao e acompanhamento nutricional por unidade hospitalar
-            </p>
-            <div className="mt-6 flex items-center justify-center text-sm text-muted-foreground">
-              <Activity className="inline-block h-4 w-4 mr-1" />
-              Sistema de prescricao e analise de nutricao enteral
-            </div>
           </div>
 
           <Card className="border-border shadow-lg">
@@ -138,13 +130,13 @@ const Login = () => {
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="hospital">Escolher Hospital</Label>
+                  <Label htmlFor="hospital">Escolher Unidade</Label>
                   <Select
                     value={formData.hospital}
-                    onValueChange={(value) => setFormData({ ...formData, hospital: value, ward: "" })}
+                    onValueChange={(value) => setFormData({ ...formData, hospital: value })}
                   >
                     <SelectTrigger id="hospital">
-                      <SelectValue placeholder="Selecione o hospital" />
+                      <SelectValue placeholder="Selecione a unidade" />
                     </SelectTrigger>
                     <SelectContent>
                       {hospitals.map((hospital) => (
@@ -153,43 +145,21 @@ const Login = () => {
                         </SelectItem>
                       ))}
                       {hospitals.length === 0 && (
-                        <SelectItem value="manual" disabled>Nenhum hospital cadastrado</SelectItem>
+                        <SelectItem value="manual" disabled>Nenhuma unidade cadastrada</SelectItem>
                       )}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="ward">Escolher Unidade</Label>
-                  <Select
-                    value={formData.ward}
-                    onValueChange={(value) => setFormData({ ...formData, ward: value })}
-                    disabled={!formData.hospital}
-                  >
-                    <SelectTrigger id="ward">
-                      <SelectValue placeholder={!formData.hospital ? "Selecione o hospital primeiro" : "Selecione a unidade"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {wards.map((ward) => (
-                        <SelectItem key={ward.id} value={ward.name}>
-                          {ward.name}
-                        </SelectItem>
-                      ))}
-                      {wards.length === 0 && (
-                        <SelectItem value="no-ward" disabled>Nenhuma unidade cadastrada</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="role">Funcao</Label>
+                  <Label htmlFor="role">Função</Label>
                   <Select
                     value={formData.role}
                     onValueChange={(value) => setFormData({ ...formData, role: value })}
                   >
                     <SelectTrigger id="role">
-                      <SelectValue placeholder="Selecione sua funcao" />
+                      <SelectValue placeholder="Selecione sua função" />
                     </SelectTrigger>
                     <SelectContent>
                       {ROLE_OPTIONS.map((role) => (
@@ -202,7 +172,7 @@ const Login = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="identifier">Matricula</Label>
+                  <Label htmlFor="identifier">Matrícula</Label>
                   <Input
                     id="identifier"
                     type="text"
@@ -219,7 +189,7 @@ const Login = () => {
                       type="button"
                       variant="link"
                       className="text-xs text-primary p-0 h-auto"
-                      onClick={() => toast.info("Recuperacao de senha em desenvolvimento")}
+                      onClick={() => toast.info("Recuperação de senha em desenvolvimento")}
                     >
                       Esqueceu a senha?
                     </Button>

@@ -17,7 +17,7 @@ const NotFound = () => {
           <AlertTriangle className="h-6 w-6 text-destructive" />
         </div>
         <h1 className="mb-2 text-3xl font-bold">404</h1>
-        <p className="mb-6 text-muted-foreground">Pagina nao encontrada</p>
+        <p className="mb-6 text-muted-foreground">Página não encontrada</p>
         <Button asChild className="w-full">
           <a href="/">Voltar para o login</a>
         </Button>

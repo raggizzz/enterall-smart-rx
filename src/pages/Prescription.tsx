@@ -41,7 +41,7 @@ interface FormulaEntry {
   volume: string; // volume por administração (mL)
   hours: string[]; // horários selecionados
   diluteUntilMl?: string; // "Diluir até" por fórmula (ml)
-  
+
 }
 
 type ModuleType =
@@ -106,17 +106,18 @@ interface PrescriptionState {
   modules: ModuleEntry[];
 }
 
+import { getAllFormulas } from "@/lib/formulasDatabase";
+
 /* ===========================
    Dados estáticos (exemplo)
    =========================== */
-const ALL_FORMULAS = [
-  { id: "1", name: "Nutrison Advanced Diason", calories: 1.0, protein: 4.0, type: "fechado" },
-  { id: "2", name: "Fresubin Original", calories: 1.0, protein: 3.8, type: "fechado" },
-  { id: "3", name: "Peptamen", calories: 1.0, protein: 4.0, type: "fechado" },
-  { id: "4", name: "Nutridrink", calories: 1.5, protein: 6.0, type: "fechado" },
-  { id: "5", name: "Fórmula Artesanal", calories: 1.0, protein: 3.5, type: "aberto" },
-  { id: "6", name: "Caseira Exemplo", calories: 0.9, protein: 3.0, type: "aberto" },
-];
+const ALL_FORMULAS = getAllFormulas().map(f => ({
+  id: f.id,
+  name: f.name,
+  calories: (f.composition.density || f.composition.calories / 100),
+  protein: f.composition.protein,
+  type: f.systemType === "closed" ? "fechado" : "aberto" as string,
+}));
 
 const MODULE_OPTIONS: { value: ModuleType; label: string; unit: "g" | "kcal" }[] = [
   { value: "moduliprotein", label: "Moduliprotein", unit: "g" },
@@ -170,18 +171,18 @@ export default function Prescription() {
   const systemTriggerRef = useRef<HTMLDivElement | null>(null);
 
   const [calculations, setCalculations] = useState<{
-  totalCalories: number;
-  totalProtein: number;
-  totalVolume: number;
-  infusionRate: number;
-  infusionRateLabel: "ml/h" | "gotas/min" | "";
-}>({
-  totalCalories: 0,
-  totalProtein: 0,
-  totalVolume: 0,
-  infusionRate: 0,
-  infusionRateLabel: "",
-});
+    totalCalories: number;
+    totalProtein: number;
+    totalVolume: number;
+    infusionRate: number;
+    infusionRateLabel: "ml/h" | "gotas/min" | "";
+  }>({
+    totalCalories: 0,
+    totalProtein: 0,
+    totalVolume: 0,
+    infusionRate: 0,
+    infusionRateLabel: "",
+  });
 
 
   const availableFormulas = prescription.system
@@ -252,13 +253,13 @@ export default function Prescription() {
     setPrescription((p) => ({ ...p, routeSelections: { ...p.routeSelections, [route]: !p.routeSelections[route] } }));
   }
   useEffect(() => {
-  if (!prescription.routeSelections.enteral) {
-    setPrescription((p) => ({
-      ...p,
-      enteralAccess: "",
-    }));
-  }
-}, [prescription.routeSelections.enteral]);
+    if (!prescription.routeSelections.enteral) {
+      setPrescription((p) => ({
+        ...p,
+        enteralAccess: "",
+      }));
+    }
+  }, [prescription.routeSelections.enteral]);
   function addFormulaEntry() {
     if (prescription.system === "fechado") return;
     setPrescription((p) => ({ ...p, formulas: [...p.formulas, { id: Date.now().toString(), formulaId: "", volume: "", hours: [], diluteUntilMl: "" }] }));
@@ -315,22 +316,22 @@ export default function Prescription() {
     for (const f of prescription.formulas) {
       const horarioCount = Math.max(1, (f.hours || []).length);
       const dietaPorEtapa = Number(f.volume || 0);
-const diluicaoPorEtapa = Number(f.diluteUntilMl || 0);
+      const diluicaoPorEtapa = Number(f.diluteUntilMl || 0);
 
-// volume da DIETA (entra em kcal/proteína)
-const volumeDietaTotal = dietaPorEtapa * horarioCount;
-totalVolume += volumeDietaTotal;
+      // volume da DIETA (entra em kcal/proteína)
+      const volumeDietaTotal = dietaPorEtapa * horarioCount;
+      totalVolume += volumeDietaTotal;
 
-// água livre da diluição (SÓ sistema aberto)
-if (
-  prescription.system === "aberto" &&
-  diluicaoPorEtapa > dietaPorEtapa
-) {
-  const aguaLivreTotal =
-    (diluicaoPorEtapa - dietaPorEtapa) * horarioCount;
-  totalVolume += aguaLivreTotal;
-}
-    
+      // água livre da diluição (SÓ sistema aberto)
+      if (
+        prescription.system === "aberto" &&
+        diluicaoPorEtapa > dietaPorEtapa
+      ) {
+        const aguaLivreTotal =
+          (diluicaoPorEtapa - dietaPorEtapa) * horarioCount;
+        totalVolume += aguaLivreTotal;
+      }
+
 
       if (f.formulaId) {
         const fo = ALL_FORMULAS.find((a) => a.id === f.formulaId);
@@ -399,34 +400,34 @@ if (
     }
 
     let infusionRate = 0;
-let infusionRateLabel: "ml/h" | "gotas/min" | "" = "";
+    let infusionRateLabel: "ml/h" | "gotas/min" | "" = "";
 
-if (
-  prescription.infusionMode !== "bolus" &&
-  Number(prescription.infusionTime) > 0
-) {
-  const hours = Number(prescription.infusionTime);
+    if (
+      prescription.infusionMode !== "bolus" &&
+      Number(prescription.infusionTime) > 0
+    ) {
+      const hours = Number(prescription.infusionTime);
 
-  if (prescription.infusionMode === "bomba") {
-    infusionRate = totalVolume / hours;
-    infusionRateLabel = "ml/h";
-  }
+      if (prescription.infusionMode === "bomba") {
+        infusionRate = totalVolume / hours;
+        infusionRateLabel = "ml/h";
+      }
 
-  if (prescription.infusionMode === "grav") {
-    // 1 ml = 20 gotas
-    infusionRate = (totalVolume * 20) / (hours * 60);
-    infusionRateLabel = "gotas/min";
-  }
-}
+      if (prescription.infusionMode === "grav") {
+        // 1 ml = 20 gotas
+        infusionRate = (totalVolume * 20) / (hours * 60);
+        infusionRateLabel = "gotas/min";
+      }
+    }
 
 
-   setCalculations({
-  totalCalories: Math.round(totalCalories * 100) / 100,
-  totalProtein: Math.round(totalProtein * 100) / 100,
-  infusionRate: Math.round(infusionRate * 100) / 100,
-  infusionRateLabel,
-  totalVolume: Math.round(totalVolume * 100) / 100,
-});
+    setCalculations({
+      totalCalories: Math.round(totalCalories * 100) / 100,
+      totalProtein: Math.round(totalProtein * 100) / 100,
+      infusionRate: Math.round(infusionRate * 100) / 100,
+      infusionRateLabel,
+      totalVolume: Math.round(totalVolume * 100) / 100,
+    });
 
   }, [prescription.formulas, prescription.modules, prescription.waterVolume, prescription.infusionTime, prescription.system]);
 
@@ -434,32 +435,32 @@ if (
      Horários conflitando -> aviso
      ------------------------- */
   useEffect(() => {
-  const hourCount: Record<string, number> = {};
+    const hourCount: Record<string, number> = {};
 
-  // SOMENTE FÓRMULAS
-  for (const f of prescription.formulas) {
-    for (const h of f.hours || []) {
-      hourCount[h] = (hourCount[h] || 0) + 1;
+    // SOMENTE FÓRMULAS
+    for (const f of prescription.formulas) {
+      for (const h of f.hours || []) {
+        hourCount[h] = (hourCount[h] || 0) + 1;
+      }
     }
-  }
 
-  const conflicts = Object.entries(hourCount)
-    .filter(([, count]) => count > 1)
-    .map(([hour]) => hour);
+    const conflicts = Object.entries(hourCount)
+      .filter(([, count]) => count > 1)
+      .map(([hour]) => hour);
 
-  if (conflicts.length > 0 && !warnedFormulaConflictsRef.current) {
-    toast.warning(
-      `Atenção: mais de uma fórmula programada no mesmo horário: ${conflicts.join(", ")}`
-    );
-    warnedFormulaConflictsRef.current = true;
-  }
+    if (conflicts.length > 0 && !warnedFormulaConflictsRef.current) {
+      toast.warning(
+        `Atenção: mais de uma fórmula programada no mesmo horário: ${conflicts.join(", ")}`
+      );
+      warnedFormulaConflictsRef.current = true;
+    }
 
-  if (conflicts.length === 0) {
-    warnedFormulaConflictsRef.current = false;
-  }
-}, [
-  prescription.formulas.map((f) => (f.hours || []).join(",")).join("|"),
-]);
+    if (conflicts.length === 0) {
+      warnedFormulaConflictsRef.current = false;
+    }
+  }, [
+    prescription.formulas.map((f) => (f.hours || []).join(",")).join("|"),
+  ]);
 
   /* -------------------------
      Salvar prescrição (monta payload)
@@ -694,75 +695,75 @@ if (
 
                   <CardContent className="space-y-4">
                     <div>
-  <Label>Acesso Enteral</Label>
-  <Select
-    value={prescription.enteralAccess ?? ""}
-    onValueChange={(v) => setField("enteralAccess", v)}
-  >
-    <SelectTrigger>
-      <SelectValue placeholder="Selecione o acesso enteral" />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value="SOE">Sonda Oroenteral (SOE)</SelectItem>
-      <SelectItem value="SNE">Sonda Nasoenteral (SNE)</SelectItem>
-      <SelectItem value="SNG">Sonda Nasogástrica (SNG)</SelectItem>
-      <SelectItem value="GTT">Gastrostomia (GTT / PEG)</SelectItem>
-      <SelectItem value="JTT">Jejunostomia (JTT)</SelectItem>
-    </SelectContent>
-  </Select>
-</div>
+                      <Label>Acesso Enteral</Label>
+                      <Select
+                        value={prescription.enteralAccess ?? ""}
+                        onValueChange={(v) => setField("enteralAccess", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o acesso enteral" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SOE">Sonda Oroenteral (SOE)</SelectItem>
+                          <SelectItem value="SNE">Sonda Nasoenteral (SNE)</SelectItem>
+                          <SelectItem value="SNG">Sonda Nasogástrica (SNG)</SelectItem>
+                          <SelectItem value="GTT">Gastrostomia (GTT / PEG)</SelectItem>
+                          <SelectItem value="JTT">Jejunostomia (JTT)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-<Separator />
- <div className="relative">
-                        <Label>Sistema</Label>
-                        <div className="mt-2">
-                          <button onClick={() => setSystemMenuOpen((s) => !s)} className="w-full border rounded px-3 py-2 text-left">
-                            <div className="flex justify-between items-center">
-                              <span>{prescription.system ? (prescription.system === "aberto" ? "Sistema: Aberto" : "Sistema: Fechado") : "Sistema"}</span>
-                              <span className="text-sm opacity-60">{systemMenuOpen ? "▲" : "▼"}</span>
-                            </div>
-                          </button>
-                        </div>
-                        {systemMenuOpen && (
-                          <div className="absolute z-20 mt-2 w-full bg-white border rounded shadow">
-                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50" onClick={() => { setField("system", "aberto"); setSystemMenuOpen(false); }}>Sistema Aberto</button>
-                            <button className="w-full text-left px-3 py-2 hover:bg-gray-50" onClick={() => { setField("system", "fechado"); setSystemMenuOpen(false); }}>Sistema Fechado</button>
+                    <Separator />
+                    <div className="relative">
+                      <Label>Sistema</Label>
+                      <div className="mt-2">
+                        <button onClick={() => setSystemMenuOpen((s) => !s)} className="w-full border rounded px-3 py-2 text-left">
+                          <div className="flex justify-between items-center">
+                            <span>{prescription.system ? (prescription.system === "aberto" ? "Sistema: Aberto" : "Sistema: Fechado") : "Sistema"}</span>
+                            <span className="text-sm opacity-60">{systemMenuOpen ? "▲" : "▼"}</span>
                           </div>
-                        )}
+                        </button>
                       </div>
+                      {systemMenuOpen && (
+                        <div className="absolute z-20 mt-2 w-full bg-white border rounded shadow">
+                          <button className="w-full text-left px-3 py-2 hover:bg-gray-50" onClick={() => { setField("system", "aberto"); setSystemMenuOpen(false); }}>Sistema Aberto</button>
+                          <button className="w-full text-left px-3 py-2 hover:bg-gray-50" onClick={() => { setField("system", "fechado"); setSystemMenuOpen(false); }}>Sistema Fechado</button>
+                        </div>
+                      )}
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>
                         <Label>Modo de infusão</Label>
                         <Select value={prescription.infusionMode ?? ""} onValueChange={(v) => setField("infusionMode", v)}>
                           <SelectTrigger><SelectValue placeholder="Modo de infusão" /></SelectTrigger>
                           <SelectContent>
-  <SelectItem value="bomba">Bomba de Infusão</SelectItem>
-  <SelectItem value="grav">Gravitacional</SelectItem>
-  {prescription.system === "aberto" && (
-    <SelectItem value="bolus">Bolus</SelectItem>
-  )}
-</SelectContent>
+                            <SelectItem value="bomba">Bomba de Infusão</SelectItem>
+                            <SelectItem value="grav">Gravitacional</SelectItem>
+                            {prescription.system === "aberto" && (
+                              <SelectItem value="bolus">Bolus</SelectItem>
+                            )}
+                          </SelectContent>
                         </Select>
                       </div>
 
-                     
+
 
                       <div>
                         <Label>Tempo de infusão (horas)</Label>
                         <Input
-  type="number"
-  disabled={prescription.infusionMode === "bolus"}
-  placeholder={prescription.infusionMode === "bolus" ? "Não se aplica ao bolus" : ""}
-  value={prescription.infusionTime ?? ""}
-  onChange={(e) => setField("infusionTime", e.target.value)}
-/>
+                          type="number"
+                          disabled={prescription.infusionMode === "bolus"}
+                          placeholder={prescription.infusionMode === "bolus" ? "Não se aplica ao bolus" : ""}
+                          value={prescription.infusionTime ?? ""}
+                          onChange={(e) => setField("infusionTime", e.target.value)}
+                        />
 
                       </div>
                       {prescription.infusionMode === "bolus" && (
-  <p className="text-sm text-muted-foreground">
-    Administração em bolus: não há velocidade de infusão.
-  </p>
-)}
+                        <p className="text-sm text-muted-foreground">
+                          Administração em bolus: não há velocidade de infusão.
+                        </p>
+                      )}
 
                     </div>
 
@@ -843,10 +844,10 @@ if (
                                     <p className="font-semibold">
                                       {selectedFormula && entry.volume ? `Total: ${Math.round(subtotalKcal * 100) / 100} kcal • ${Math.round(subtotalProtein * 100) / 100} g` : "—"}
                                       {prescription.system === "fechado" && entry.volume && (
-  <p className="text-xs text-muted-foreground">
-    A fórmula solicitada possui {entry.volume} mL por bolsa
-  </p>
-)}
+                                        <p className="text-xs text-muted-foreground">
+                                          A fórmula solicitada possui {entry.volume} mL por bolsa
+                                        </p>
+                                      )}
                                     </p>
                                   </div>
 
@@ -1078,61 +1079,61 @@ if (
                   <p className="text-xl font-bold">{calculations.totalProtein} g</p>
                 </div>
 
-           <div>
-  <p className="text-muted-foreground text-sm">
-    Velocidade da infusão
-  </p>
+                <div>
+                  <p className="text-muted-foreground text-sm">
+                    Velocidade da infusão
+                  </p>
 
-  <p className="text-xl font-bold">
-    {prescription.infusionMode === "bolus"
-      ? "Bolus"
-      : calculations.infusionRateLabel
-      ? `${calculations.infusionRate} ${calculations.infusionRateLabel}`
-      : "—"}
-  </p>
-</div>
+                  <p className="text-xl font-bold">
+                    {prescription.infusionMode === "bolus"
+                      ? "Bolus"
+                      : calculations.infusionRateLabel
+                        ? `${calculations.infusionRate} ${calculations.infusionRateLabel}`
+                        : "—"}
+                  </p>
+                </div>
 
               </div>
 
-              
+
               <div className="space-y-1">
-  <p className="text-muted-foreground text-sm">
-    Tempo de infusão
-  </p>
+                <p className="text-muted-foreground text-sm">
+                  Tempo de infusão
+                </p>
 
-  <p className="text-base">
-    Infundir em <strong>{prescription.infusionTime}</strong> horas/dia
-  </p>
-
-  
-
-  {prescription.system === "fechado" &&
-  (() => {
-    const closedFormula = ALL_FORMULAS.find(
-      (f) => f.id === prescription.formulas[0]?.formulaId
-    ) as (typeof ALL_FORMULAS[number] & { bagVolume?: number }) | undefined;
-
-    if (!closedFormula?.bagVolume) return null;
-
-    return (
-      <p className="text-sm text-muted-foreground">
-        A fórmula solicitada possui{" "}
-        <strong>{closedFormula.bagVolume}</strong> ml em cada bolsa
-      </p>
-    );
-  })()}
+                <p className="text-base">
+                  Infundir em <strong>{prescription.infusionTime}</strong> horas/dia
+                </p>
 
 
-</div>
+
+                {prescription.system === "fechado" &&
+                  (() => {
+                    const closedFormula = ALL_FORMULAS.find(
+                      (f) => f.id === prescription.formulas[0]?.formulaId
+                    ) as (typeof ALL_FORMULAS[number] & { bagVolume?: number }) | undefined;
+
+                    if (!closedFormula?.bagVolume) return null;
+
+                    return (
+                      <p className="text-sm text-muted-foreground">
+                        A fórmula solicitada possui{" "}
+                        <strong>{closedFormula.bagVolume}</strong> ml em cada bolsa
+                      </p>
+                    );
+                  })()}
+
+
+              </div>
 
               <div>
-  <p className="text-muted-foreground text-sm">
-    Volume prescrito para 24 horas
-  </p>
-  <p className="text-xl font-bold">
-    {calculations.totalVolume} mL
-  </p>
-</div>
+                <p className="text-muted-foreground text-sm">
+                  Volume prescrito para 24 horas
+                </p>
+                <p className="text-xl font-bold">
+                  {calculations.totalVolume} mL
+                </p>
+              </div>
 
 
 

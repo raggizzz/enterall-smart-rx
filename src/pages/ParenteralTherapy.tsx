@@ -217,7 +217,7 @@ export default function ParenteralTherapyPage() {
                                 <div className="flex items-center gap-2 text-amber-700">
                                     <AlertCircle className="h-4 w-4" />
                                     <span className="text-sm font-medium">
-                                        Atencao: Acesso periferico limita osmolaridade da solucao
+                                        Atenção: Acesso periférico limita osmolaridade da solução
                                     </span>
                                 </div>
                             </div>

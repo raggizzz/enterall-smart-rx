@@ -10,9 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Save } from "lucide-react";
+import { Plus, Trash2, Edit, Save, Search, Clock, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
 import { toast } from "sonner";
+import { getAllFormulas } from "@/lib/formulasDatabase";
 
 // --- Types for Predictive Equations ---
 type EquationType = "weight" | "height";
@@ -106,6 +107,8 @@ const GIDS_THREAT_OPTIONS: Array<{ key: GidsThreateningKey; label: string }> = [
 
 const Tools = () => {
   const { tools } = useAppTools();
+  const catalogFormulas = getAllFormulas();
+  const [catalogSearch, setCatalogSearch] = useState("");
 
   // --- PREDICTIVE EQUATIONS STATE ---
   const [equations, setEquations] = useState<PredictiveEquation[]>(() => {
@@ -128,6 +131,10 @@ const Tools = () => {
     const knee = numberOrZero(predKnee);
     const arm = numberOrZero(predArm);
 
+    const hasAge = predAge !== "" && age > 0;
+    const hasKnee = predKnee !== "" && knee > 0;
+    const hasArm = predArm !== "" && arm > 0;
+
     // Find best match for HEIGHT equation
     const heightEq = equations.find(e =>
       e.isActive &&
@@ -146,20 +153,52 @@ const Tools = () => {
       age >= e.minAge && age <= e.maxAge
     );
 
-    const estHeight = heightEq
-      ? heightEq.constant + (heightEq.coefKnee * knee) + (heightEq.coefArm * arm) + (heightEq.coefAge * age)
-      : 0;
+    // --- HEIGHT: requires sex, age, race, knee (all filled) ---
+    let estHeight = 0;
+    let heightMissingFields = false;
+    let heightInvalidError = false;
 
-    const estWeight = weightEq
-      ? weightEq.constant + (weightEq.coefKnee * knee) + (weightEq.coefArm * arm) + (weightEq.coefAge * age)
-      : 0;
+    if (!hasAge || !hasKnee) {
+      heightMissingFields = true;
+    } else if (heightEq) {
+      const rawHeight = heightEq.constant + (heightEq.coefKnee * knee) + (heightEq.coefArm * arm) + (heightEq.coefAge * age);
+      if (rawHeight <= 0) {
+        heightInvalidError = true;
+      } else {
+        estHeight = rawHeight;
+      }
+    }
+
+    // --- WEIGHT: requires sex, age, race, knee, arm (all filled) ---
+    let estWeight = 0;
+    let weightMissingArm = false;
+    let weightMissingFields = false;
+    let weightNegativeError = false;
+
+    if (!hasAge || !hasKnee) {
+      weightMissingFields = true;
+    } else if (!hasArm) {
+      weightMissingArm = true;
+    } else if (weightEq) {
+      const rawWeight = weightEq.constant + (weightEq.coefKnee * knee) + (weightEq.coefArm * arm) + (weightEq.coefAge * age);
+      if (rawWeight <= 0) {
+        weightNegativeError = true;
+      } else {
+        estWeight = rawWeight;
+      }
+    }
 
     return {
       estHeightCm: Number(estHeight.toFixed(2)),
       estHeightM: Number((estHeight / 100).toFixed(2)),
       estWeightKg: Number(estWeight.toFixed(2)),
-      heightEqName: heightEq?.name || "Nenhuma equacao encontrada",
-      weightEqName: weightEq?.name || "Nenhuma equacao encontrada"
+      heightEqName: heightEq?.name || "Nenhuma equação encontrada",
+      weightEqName: weightEq?.name || "Nenhuma equação encontrada",
+      heightMissingFields,
+      heightInvalidError,
+      weightMissingArm,
+      weightMissingFields,
+      weightNegativeError,
     };
   }, [equations, predSex, predRace, predAge, predKnee, predArm]);
 
@@ -174,7 +213,7 @@ const Tools = () => {
     localStorage.setItem('predictive_equations', JSON.stringify(newEquations));
     setEditingEquation(null);
     setIsEquationEditorOpen(false);
-    toast.success("Equacao salva com sucesso!");
+    toast.success("Equação salva com sucesso!");
   };
 
   const handleResetEquations = () => {
@@ -207,9 +246,9 @@ const Tools = () => {
       severity = isSevere ? "Desnutricao Grave" : "Desnutricao Moderada";
 
       const diseaseMap: Record<string, string> = {
-        cronica_com_inflamacao: "relacionada a doenca cronica com inflamacao",
-        cronica_minima: "relacionada a doenca cronica com inflamacao minima",
-        aguda_grave: "relacionada a doenca aguda ou injuria com inflamacao grave",
+        cronica_com_inflamacao: "relacionada a doença crônica com inflamação",
+        cronica_minima: "relacionada a doença crônica com inflamação mínima",
+        aguda_grave: "relacionada a doença aguda ou injúria com inflamação grave",
         social_ambiental: "relacionada a circunstancias sociais ou ambientais",
       };
       diagnosis = `${severity} ${diseaseMap[glimDisease] || ""}`;
@@ -292,17 +331,20 @@ const Tools = () => {
       <div className="container px-4 py-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Ferramentas Clinicas</h1>
-          <p className="text-muted-foreground">Calculadoras e utilitarios para avaliacao nutricional.</p>
+          <p className="text-muted-foreground">Calculadoras e utilitários para avaliação nutricional.</p>
         </div>
 
         <Tabs defaultValue="peso_altura" className="space-y-4">
-          <TabsList className="bg-card border w-full justify-start overflow-x-auto">
+          <TabsList className="bg-card border w-full justify-start overflow-x-auto flex-wrap">
             <TabsTrigger value="peso_altura">Peso e Altura</TabsTrigger>
             <TabsTrigger value="glim">GLIM</TabsTrigger>
             <TabsTrigger value="gids">GIDS</TabsTrigger>
             <TabsTrigger value="dva">Drogas Vasoativas</TabsTrigger>
             <TabsTrigger value="nrs">NRS 2002</TabsTrigger>
-            <TabsTrigger value="catalogo">Catalogo</TabsTrigger>
+            <TabsTrigger value="catalogo_produtos">Catálogo de Produtos</TabsTrigger>
+            <TabsTrigger value="balanco_n">Balanço Nitrogenado</TabsTrigger>
+            <TabsTrigger value="gasto_energetico">Gasto Energético</TabsTrigger>
+            <TabsTrigger value="catalogo">Links e Ferramentas</TabsTrigger>
           </TabsList>
 
           {/* === GLIM TAB === */}
@@ -365,7 +407,7 @@ const Tools = () => {
                     <div className="flex items-center space-x-2 border p-3 rounded hover:bg-muted/50 transition-colors">
                       <Checkbox id="inflam" checked={glimInflammation} onCheckedChange={(v) => setGlimInflammation(!!v)} />
                       <Label htmlFor="inflam" className="cursor-pointer font-normal">
-                        Inflamacao / Doenca aguda ou cronica
+                        Inflamação / Doença aguda ou crônica
                       </Label>
                     </div>
                   </div>
@@ -375,9 +417,9 @@ const Tools = () => {
                     <Select value={glimDisease} onValueChange={setGlimDisease}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="cronica_com_inflamacao">Doenca cronica com inflamacao</SelectItem>
-                        <SelectItem value="cronica_minima">Doenca cronica com inflamacao minima</SelectItem>
-                        <SelectItem value="aguda_grave">Doenca aguda/injuria com inflamacao grave</SelectItem>
+                        <SelectItem value="cronica_com_inflamacao">Doença crônica com inflamação</SelectItem>
+                        <SelectItem value="cronica_minima">Doença crônica com inflamação mínima</SelectItem>
+                        <SelectItem value="aguda_grave">Doença aguda/injúria com inflamação grave</SelectItem>
                         <SelectItem value="social_ambiental">Circunstancias sociais/ambientais</SelectItem>
                       </SelectContent>
                     </Select>
@@ -393,24 +435,24 @@ const Tools = () => {
             </Card>
           </TabsContent>
 
-          {/* === WEIGHT/HEIGHT PREDICTION TAB === */}
+          {/* === WEIGHT/HEIGHT PREDICTION TAB (SIMPLIFIED CHUMLEA) === */}
           <TabsContent value="peso_altura" className="space-y-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Estimativa de Peso e Altura</CardTitle>
-                  <CardDescription>Calculo automatico baseado em formulas configuraveis (Idade, Raca, Sexo).</CardDescription>
+                  <CardDescription>Preencha os campos para estimar peso e altura.</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setIsEquationEditorOpen(true)}>
                     <Edit className="h-4 w-4 mr-2" />
-                    Configurar Formulas
+                    Configurar Fórmulas
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="space-y-1">
                       <Label>Sexo</Label>
                       <Select value={predSex} onValueChange={(v: any) => setPredSex(v)}>
@@ -422,42 +464,71 @@ const Tools = () => {
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label>Raca cor</Label>
+                      <Label>Idade (anos)</Label>
+                      <Input type="number" value={predAge} onChange={e => setPredAge(e.target.value)} placeholder="Ex: 65" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Raça/Cor</Label>
                       <Select value={predRace} onValueChange={(v: any) => setPredRace(v)}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="white">Branca</SelectItem>
-                          <SelectItem value="black">Negra</SelectItem>
+                          <SelectItem value="white">Branco(a)</SelectItem>
+                          <SelectItem value="black">Negro(a)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-1">
-                      <Label>Idade</Label>
-                      <Input type="number" value={predAge} onChange={e => setPredAge(e.target.value)} />
+                      <Label>Altura do Joelho (cm)</Label>
+                      <Input type="number" value={predKnee} onChange={e => setPredKnee(e.target.value)} placeholder="Ex: 50" />
                     </div>
                     <div className="space-y-1">
-                      <Label>Altura Joelho (cm)</Label>
-                      <Input type="number" value={predKnee} onChange={e => setPredKnee(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Circunf. Braco (cm)</Label>
-                      <Input type="number" value={predArm} onChange={e => setPredArm(e.target.value)} />
+                      <Label>Circunferência do Braço (cm)</Label>
+                      <Input type="number" value={predArm} onChange={e => setPredArm(e.target.value)} placeholder="Ex: 28" />
                     </div>
                   </div>
+                  <p className="text-xs text-muted-foreground">Para altura: preencha sexo, idade, raça/cor e altura do joelho. Para peso: informe também a circunferência do braço.</p>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="p-4 bg-muted/30 rounded-lg space-y-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase">Formula de Altura Identificada</p>
-                      <p className="text-sm font-medium">{predictionResult.heightEqName}</p>
-                      <div className="text-2xl font-bold mt-1 text-primary">{predictionResult.estHeightM} m <span className="text-sm text-foreground font-normal">({predictionResult.estHeightCm} cm)</span></div>
-                    </div>
-                    <div className="border-t pt-3">
-                      <p className="text-xs text-muted-foreground uppercase">Formula de Peso Identificada</p>
-                      <p className="text-sm font-medium">{predictionResult.weightEqName}</p>
-                      <div className="text-2xl font-bold mt-1 text-primary">{predictionResult.estWeightKg} kg</div>
-                    </div>
+                  <div className="p-6 bg-muted/30 rounded-lg text-center space-y-4">
+                    {/* Profile label */}
+                    <p className="text-lg font-semibold text-foreground">
+                      {predSex === "male"
+                        ? (predRace === "white" ? "Homem Branco" : "Homem Negro")
+                        : (predRace === "white" ? "Mulher Branca" : "Mulher Negra")}
+                    </p>
+
+                    {(predictionResult.heightMissingFields && predictionResult.weightMissingFields) ? (
+                      <p className="text-sm text-amber-600">Preencha todos os campos para calcular.</p>
+                    ) : (
+                      <>
+                        {/* Height */}
+                        <div>
+                          <p className="text-sm text-muted-foreground">Altura estimada</p>
+                          {predictionResult.heightMissingFields ? (
+                            <p className="text-sm text-amber-600">Preencha todos os campos para calcular.</p>
+                          ) : predictionResult.heightInvalidError ? (
+                            <p className="text-sm text-red-600">Verifique os dados informados.</p>
+                          ) : (
+                            <p className="text-3xl font-bold text-primary">{predictionResult.estHeightM} m</p>
+                          )}
+                        </div>
+
+                        {/* Weight */}
+                        <div className="border-t pt-4">
+                          <p className="text-sm text-muted-foreground">Peso estimado</p>
+                          {predictionResult.weightMissingFields ? (
+                            <p className="text-sm text-amber-600">Preencha todos os campos para calcular.</p>
+                          ) : predictionResult.weightMissingArm ? (
+                            <p className="text-sm text-amber-600">Informe a circunferência do braço para estimar o peso.</p>
+                          ) : predictionResult.weightNegativeError ? (
+                            <p className="text-sm text-red-600">Verifique os dados informados.</p>
+                          ) : (
+                            <p className="text-3xl font-bold text-primary">{predictionResult.estWeightKg} kg</p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -467,7 +538,7 @@ const Tools = () => {
             <Dialog open={isEquationEditorOpen} onOpenChange={setIsEquationEditorOpen}>
               <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Configuracao de Formulas Preditivas</DialogTitle>
+                  <DialogTitle>Configuração de Fórmulas Preditivas</DialogTitle>
                 </DialogHeader>
 
                 <div className="space-y-4">
@@ -488,7 +559,7 @@ const Tools = () => {
                           <th className="p-2 text-right">AJ</th>
                           <th className="p-2 text-right">CB</th>
                           <th className="p-2 text-right">Idade</th>
-                          <th className="p-2 text-center">Acao</th>
+                          <th className="p-2 text-center">Ação</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -652,7 +723,7 @@ const Tools = () => {
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ4} onCheckedChange={v => setNrsQ4(!!v)} /> Paciente gravemente doente?</label>
                   </div>
                   <div className="space-y-2 border p-3 rounded">
-                    <p className="font-semibold text-sm">Pontuacao Final</p>
+                    <p className="font-semibold text-sm">Pontuação Final</p>
                     <Label>Idade</Label>
                     <Input type="number" value={nrsAge} onChange={e => setNrsAge(e.target.value)} />
                     <Label>Escore Nutricional (0-3)</Label>
@@ -669,7 +740,117 @@ const Tools = () => {
             </Card>
           </TabsContent>
 
-          {/* === CATALOG TAB === */}
+          {/* === PRODUCT CATALOG TAB === */}
+          <TabsContent value="catalogo_produtos">
+            <Card>
+              <CardHeader>
+                <CardTitle>Catálogo de Produtos</CardTitle>
+                <CardDescription>Tabela consultiva de fórmulas enterais disponíveis. Sem integração automática com prescrição.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 max-w-md">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por nome do produto..."
+                      value={catalogSearch}
+                      onChange={e => setCatalogSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="border rounded-md overflow-auto max-h-[600px]">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-muted text-muted-foreground sticky top-0">
+                      <tr>
+                        <th className="p-3 font-medium">Nome</th>
+                        <th className="p-3 font-medium">Tipo</th>
+                        <th className="p-3 font-medium">Sistema</th>
+                        <th className="p-3 font-medium text-right">Volume (ml)</th>
+                        <th className="p-3 font-medium text-right">Calorias (kcal/100ml)</th>
+                        <th className="p-3 font-medium text-right">Proteína (g/100ml)</th>
+                        <th className="p-3 font-medium">Observações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {catalogFormulas
+                        .filter(f => !catalogSearch || f.name.toLowerCase().includes(catalogSearch.toLowerCase()) || f.manufacturer.toLowerCase().includes(catalogSearch.toLowerCase()))
+                        .map(f => (
+                          <tr key={f.id} className="border-t hover:bg-muted/20">
+                            <td className="p-3 font-medium">{f.name}</td>
+                            <td className="p-3">
+                              <Badge variant="outline" className="text-xs capitalize">{f.type.replace('-', ' ')}</Badge>
+                            </td>
+                            <td className="p-3 text-xs">{f.systemType === 'open' ? 'Aberto' : f.systemType === 'closed' ? 'Fechado' : 'Ambos'}</td>
+                            <td className="p-3 text-right">{f.presentations.join(', ')}</td>
+                            <td className="p-3 text-right font-mono">{f.composition.calories}</td>
+                            <td className="p-3 text-right font-mono">{f.composition.protein}</td>
+                            <td className="p-3 text-xs text-muted-foreground max-w-[200px] truncate" title={f.descriptionForEvolution || f.description || '-'}>{f.descriptionForEvolution || f.description || '-'}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">{catalogFormulas.length} produtos cadastrados</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* === NITROGEN BALANCE PLACEHOLDER === */}
+          <TabsContent value="balanco_n">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <CardTitle>Balanço Nitrogenado</CardTitle>
+                    <CardDescription>Cálculo do balanço nitrogenado para avaliação do estado metabólico.</CardDescription>
+                  </div>
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Em breve
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="rounded-full bg-muted p-6 mb-4">
+                    <Calculator className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">Funcionalidade em Desenvolvimento</h3>
+                  <p className="text-muted-foreground max-w-md">O cálculo de balanço nitrogenado estará disponível em breve. Permitirá avaliar a ingestão proteica versus as perdas nitrogenadas do paciente.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* === ENERGY EXPENDITURE PLACEHOLDER === */}
+          <TabsContent value="gasto_energetico">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <CardTitle>Estimativa de Gasto Energético</CardTitle>
+                    <CardDescription>Equações preditivas para estimativa de gasto energético basal e total.</CardDescription>
+                  </div>
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Em breve
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="rounded-full bg-muted p-6 mb-4">
+                    <Calculator className="h-10 w-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-semibold text-lg mb-2">Funcionalidade em Desenvolvimento</h3>
+                  <p className="text-muted-foreground max-w-md">A estimativa de gasto energético estará disponível em breve. Incluirá equações como Harris-Benedict, Mifflin-St Jeor e fatores de correção.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* === LINKS & TOOLS CATALOG TAB === */}
           <TabsContent value="catalogo">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {toolsCatalog.map(tool => (
@@ -683,7 +864,7 @@ const Tools = () => {
               ))}
             </div>
             <div className="mt-8">
-              <h3 className="font-bold mb-4">Links Uteis</h3>
+              <h3 className="font-bold mb-4">Links Úteis</h3>
               <div className="grid grid-cols-1 gap-2">
                 {linksToShow.map(l => (
                   <a key={l.link} href={l.link} target="_blank" className="text-primary hover:underline block p-2 border rounded hover:bg-muted/50">

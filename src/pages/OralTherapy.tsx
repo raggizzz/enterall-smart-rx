@@ -47,8 +47,8 @@ import { usePatients, useFormulas, useModules, usePrescriptions } from "@/hooks/
 
 const MEAL_SCHEDULES = [
     { key: 'breakfast', label: 'Desjejum' },
-    { key: 'midMorning', label: 'Colacao' },
-    { key: 'lunch', label: 'Almoco' },
+    { key: 'midMorning', label: 'Colação' },
+    { key: 'lunch', label: 'Almoço' },
     { key: 'afternoon', label: 'Merenda' },
     { key: 'dinner', label: 'Jantar' },
     { key: 'supper', label: 'Ceia' },
@@ -303,7 +303,7 @@ export default function OralTherapyPage() {
         const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
 
         if (!resolvedHospitalId) {
-            toast.error("Hospital da sessao nao identificado. Refaca o login.");
+            toast.error("Hospital da sessão não identificado. Refaça o login.");
             return;
         }
 
@@ -341,7 +341,7 @@ export default function OralTherapyPage() {
             dietCharacteristics ? `Caracteristicas: ${dietCharacteristics}` : "",
             `Refeicoes/dia: ${mealsPerDay}`,
             speechTherapy ? "Acompanhamento fonoaudiologico: sim" : "Acompanhamento fonoaudiologico: nao",
-            speechTherapy && needsThickener ? `Agua com espessante: sim (${safeConsistency || "consistencia nao informada"})` : "",
+            speechTherapy && needsThickener ? `Água com espessante: sim (${safeConsistency || "consistência não informada"})` : "",
             speechTherapy && !needsThickener ? "Agua com espessante: nao" : "",
             observations ? `Observacoes: ${observations}` : "",
         ].filter(Boolean);
@@ -578,7 +578,7 @@ export default function OralTherapyPage() {
                 <Card>
                     <CardHeader>
                         <CardTitle>Estimativas da Dieta</CardTitle>
-                        <CardDescription>Valor estimado da alimentacao oral (sem suplementos)</CardDescription>
+                        <CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-2 gap-4">
@@ -852,7 +852,7 @@ export default function OralTherapyPage() {
                                     <Textarea
                                         value={observations}
                                         onChange={(e) => setObservations(e.target.value)}
-                                        placeholder="Preferencias, alergias alimentares, aceitacao..."
+                                        placeholder="Preferências, alergias alimentares, aceitação..."
                                         rows={4}
                                     />
                                 </div>

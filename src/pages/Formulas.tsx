@@ -298,7 +298,7 @@ const Formulas = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Catalogo de Nutricao</h1>
-            <p className="text-muted-foreground">Formulas Enterais e Modulos - Banco de Dados Local</p>
+            <p className="text-muted-foreground">Fórmulas Enterais e Módulos - Banco de Dados Local</p>
           </div>
           <div className="flex gap-2">
             {/* New Formula Dialog */}
@@ -554,7 +554,7 @@ const Formulas = () => {
 
         <Tabs defaultValue="formulas" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="formulas">Formulas e Suplementos ({filteredFormulas.length})</TabsTrigger>
+            <TabsTrigger value="formulas">Fórmulas e Suplementos ({filteredFormulas.length})</TabsTrigger>
             <TabsTrigger value="modules">Modulos ({filteredModules.length})</TabsTrigger>
           </TabsList>
 
@@ -562,7 +562,7 @@ const Formulas = () => {
           <TabsContent value="formulas">
             <Card>
               <CardHeader>
-                <CardTitle>Formulas Enterais</CardTitle>
+                <CardTitle>Fórmulas Enterais</CardTitle>
               </CardHeader>
               <CardContent>
                 {formulasLoading ? (

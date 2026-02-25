@@ -73,11 +73,11 @@ const Settings = () => {
     const [openConservation, setOpenConservation] = useState(
         settings?.labelSettings?.openConservation ||
         settings?.labelSettings?.defaultConservation ||
-        "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente."
+        "Conservação: usar em até 4h após manipulação, em temperatura ambiente."
     );
     const [closedConservation, setClosedConservation] = useState(
         settings?.labelSettings?.closedConservation ||
-        "Conservacao: em temperatura ambiente."
+        "Conservação: em temperatura ambiente."
     );
     // Estados para Custos de Enfermagem
     const [nursingCosts, setNursingCosts] = useState<NursingCosts>({
@@ -105,11 +105,11 @@ const Settings = () => {
             setOpenConservation(
                 settings.labelSettings?.openConservation ||
                 settings.labelSettings?.defaultConservation ||
-                "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente."
+                "Conservação: usar em até 4h após manipulação, em temperatura ambiente."
             );
             setClosedConservation(
                 settings.labelSettings?.closedConservation ||
-                "Conservacao: em temperatura ambiente."
+                "Conservação: em temperatura ambiente."
             );
 
             // Atualizar custos de enfermagem
@@ -211,7 +211,7 @@ const Settings = () => {
                             Status do Banco de Dados por Unidade
                         </CardTitle>
                         <CardDescription>
-                            Dados salvos no Supabase com segregacao por hospital (hospital_id)
+                            Dados salvos no Supabase com segregação por hospital (hospital_id)
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -243,217 +243,217 @@ const Settings = () => {
 
                 {/* Configuracoes do Hospital */}
                 {(canManageUnits || canManageWards) && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Building2 className="h-5 w-5" />
-                            Assinatura e Etiquetas
-                        </CardTitle>
-                        <CardDescription>
-                            Defina assinatura e conservacao da unidade selecionada
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-<div className="space-y-2">
-                            <Label className="text-sm font-semibold">Assinatura Padrao para Etiquetas</Label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Nome do RT</Label>
-                                    <Input
-                                        value={rtName}
-                                        onChange={(e) => setRtName(e.target.value)}
-                                        placeholder="Nome do Responsavel Tecnico"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>CRN</Label>
-                                    <Input
-                                        value={rtCrn}
-                                        onChange={(e) => setRtCrn(e.target.value)}
-                                        placeholder="CRN-0000"
-                                    />
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Building2 className="h-5 w-5" />
+                                Assinatura e Etiquetas
+                            </CardTitle>
+                            <CardDescription>
+                                Defina assinatura e conservação da unidade selecionada
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold">Assinatura Padrao para Etiquetas</Label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Nome do RT</Label>
+                                        <Input
+                                            value={rtName}
+                                            onChange={(e) => setRtName(e.target.value)}
+                                            placeholder="Nome do Responsavel Tecnico"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>CRN</Label>
+                                        <Input
+                                            value={rtCrn}
+                                            onChange={(e) => setRtCrn(e.target.value)}
+                                            placeholder="CRN-0000"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="space-y-2">
-                            <Label>Texto de Conservacao - Sistema Aberto</Label>
-                            <Input
-                                value={openConservation}
-                                onChange={(e) => setOpenConservation(e.target.value)}
-                                placeholder="Ex: Validade de 4h apos manipulacao, em temperatura ambiente."
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                Via oral e formulas infantis seguem este mesmo texto.
-                            </p>
-                        </div>
+                            <div className="space-y-2">
+                                <Label>Texto de Conservação - Sistema Aberto</Label>
+                                <Input
+                                    value={openConservation}
+                                    onChange={(e) => setOpenConservation(e.target.value)}
+                                    placeholder="Ex: Validade de 4h após manipulação, em temperatura ambiente."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Via oral e formulas infantis seguem este mesmo texto.
+                                </p>
+                            </div>
 
-                        <div className="space-y-2">
-                            <Label>Texto de Conservacao - Sistema Fechado</Label>
-                            <Input
-                                value={closedConservation}
-                                onChange={(e) => setClosedConservation(e.target.value)}
-                                placeholder="Ex: Validade de 24h apos conexao com equipo, em temperatura ambiente."
-                            />
-                        </div>
+                            <div className="space-y-2">
+                                <Label>Texto de Conservação - Sistema Fechado</Label>
+                                <Input
+                                    value={closedConservation}
+                                    onChange={(e) => setClosedConservation(e.target.value)}
+                                    placeholder="Ex: Validade de 24h apos conexao com equipo, em temperatura ambiente."
+                                />
+                            </div>
 
-                        <Button onClick={handleSaveSettings} className="w-full">
-                            <Save className="h-4 w-4 mr-2" />
-                            Salvar Configuracoes
-                        </Button>
-                    </CardContent>
-                </Card>
+                            <Button onClick={handleSaveSettings} className="w-full">
+                                <Save className="h-4 w-4 mr-2" />
+                                Salvar Configuracoes
+                            </Button>
+                        </CardContent>
+                    </Card>
                 )}
 
                 {/* Custos Indiretos - Tempo de Enfermagem */}
                 {canManageCosts && (
-                <Card className="border-purple-200">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-purple-700">
-                            <Clock className="h-5 w-5" />
-                            Custos Indiretos - Tempo de Enfermagem
-                        </CardTitle>
-                        <CardDescription>
-                            Configure os tempos de instalacao e custos de enfermagem para calculo de custos
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        {/* Tempos de instalacao */}
-                        <div className="space-y-4">
-                            <Label className="text-sm font-semibold">Tempos de Instalacao (em segundos)</Label>
+                    <Card className="border-purple-200">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-purple-700">
+                                <Clock className="h-5 w-5" />
+                                Custos Indiretos - Tempo de Enfermagem
+                            </CardTitle>
+                            <CardDescription>
+                                Configure os tempos de instalação e custos de enfermagem para cálculo de custos
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Tempos de instalacao */}
+                            <div className="space-y-4">
+                                <Label className="text-sm font-semibold">Tempos de Instalação (em segundos)</Label>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-sm text-muted-foreground">
-                                        Sistema Aberto em Bomba
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={nursingCosts.timeOpenSystemPump || ''}
-                                        onChange={(e) => setNursingCosts({
-                                            ...nursingCosts,
-                                            timeOpenSystemPump: parseInt(e.target.value) || 0
-                                        })}
-                                        placeholder="Ex: 180"
-                                    />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm text-muted-foreground">
+                                            Sistema Aberto em Bomba
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            value={nursingCosts.timeOpenSystemPump || ''}
+                                            onChange={(e) => setNursingCosts({
+                                                ...nursingCosts,
+                                                timeOpenSystemPump: parseInt(e.target.value) || 0
+                                            })}
+                                            placeholder="Ex: 180"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-sm text-muted-foreground">
+                                            Sistema Fechado em Bomba
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            value={nursingCosts.timeClosedSystemPump || ''}
+                                            onChange={(e) => setNursingCosts({
+                                                ...nursingCosts,
+                                                timeClosedSystemPump: parseInt(e.target.value) || 0
+                                            })}
+                                            placeholder="Ex: 120"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-sm text-muted-foreground">
+                                            Sistema Aberto Gravitacional
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            value={nursingCosts.timeOpenSystemGravity || ''}
+                                            onChange={(e) => setNursingCosts({
+                                                ...nursingCosts,
+                                                timeOpenSystemGravity: parseInt(e.target.value) || 0
+                                            })}
+                                            placeholder="Ex: 150"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-sm text-muted-foreground">
+                                            Sistema Fechado Gravitacional
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            value={nursingCosts.timeClosedSystemGravity || ''}
+                                            onChange={(e) => setNursingCosts({
+                                                ...nursingCosts,
+                                                timeClosedSystemGravity: parseInt(e.target.value) || 0
+                                            })}
+                                            placeholder="Ex: 100"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label className="text-sm text-muted-foreground">
+                                            Frasco em Bolus (agua ou dieta)
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            value={nursingCosts.timeBolus || ''}
+                                            onChange={(e) => setNursingCosts({
+                                                ...nursingCosts,
+                                                timeBolus: parseInt(e.target.value) || 0
+                                            })}
+                                            placeholder="Ex: 60"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-sm text-muted-foreground">
-                                        Sistema Fechado em Bomba
-                                    </Label>
+                            </div>
+
+                            <Separator />
+
+                            {/* Custo por hora */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                    <DollarSign className="h-4 w-4" />
+                                    Custo da Hora de Trabalho de Enfermagem
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-muted-foreground">R$</span>
                                     <Input
                                         type="number"
-                                        value={nursingCosts.timeClosedSystemPump || ''}
+                                        step="0.01"
+                                        value={nursingCosts.hourlyRate || ''}
                                         onChange={(e) => setNursingCosts({
                                             ...nursingCosts,
-                                            timeClosedSystemPump: parseInt(e.target.value) || 0
+                                            hourlyRate: parseFloat(e.target.value) || 0
                                         })}
-                                        placeholder="Ex: 120"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-sm text-muted-foreground">
-                                        Sistema Aberto Gravitacional
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={nursingCosts.timeOpenSystemGravity || ''}
-                                        onChange={(e) => setNursingCosts({
-                                            ...nursingCosts,
-                                            timeOpenSystemGravity: parseInt(e.target.value) || 0
-                                        })}
-                                        placeholder="Ex: 150"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-sm text-muted-foreground">
-                                        Sistema Fechado Gravitacional
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={nursingCosts.timeClosedSystemGravity || ''}
-                                        onChange={(e) => setNursingCosts({
-                                            ...nursingCosts,
-                                            timeClosedSystemGravity: parseInt(e.target.value) || 0
-                                        })}
-                                        placeholder="Ex: 100"
-                                    />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label className="text-sm text-muted-foreground">
-                                        Frasco em Bolus (agua ou dieta)
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        value={nursingCosts.timeBolus || ''}
-                                        onChange={(e) => setNursingCosts({
-                                            ...nursingCosts,
-                                            timeBolus: parseInt(e.target.value) || 0
-                                        })}
-                                        placeholder="Ex: 60"
+                                        placeholder="Ex: 45.00"
+                                        className="max-w-[200px]"
                                     />
                                 </div>
                             </div>
-                        </div>
 
-                        <Separator />
+                            <Separator />
 
-                        {/* Custo por hora */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-semibold flex items-center gap-2">
-                                <DollarSign className="h-4 w-4" />
-                                Custo da Hora de Trabalho de Enfermagem
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground">R$</span>
-                                <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={nursingCosts.hourlyRate || ''}
-                                    onChange={(e) => setNursingCosts({
-                                        ...nursingCosts,
-                                        hourlyRate: parseFloat(e.target.value) || 0
-                                    })}
-                                    placeholder="Ex: 45.00"
-                                    className="max-w-[200px]"
-                                />
+                            {/* Custos indiretos - outros */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-semibold flex items-center gap-2">
+                                    <Users className="h-4 w-4" />
+                                    Custos Indiretos - Outros
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Mao-de-obra de manipuladores, estoquistas e outros custos determinados pela unidade
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-muted-foreground">R$</span>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        value={indirectCosts.laborCosts || ''}
+                                        onChange={(e) => setIndirectCosts({
+                                            ...indirectCosts,
+                                            laborCosts: parseFloat(e.target.value) || 0
+                                        })}
+                                        placeholder="Ex: 25.00"
+                                        className="max-w-[200px]"
+                                    />
+                                    <span className="text-xs text-muted-foreground">/dia por paciente</span>
+                                </div>
                             </div>
-                        </div>
 
-                        <Separator />
-
-                        {/* Custos indiretos - outros */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-semibold flex items-center gap-2">
-                                <Users className="h-4 w-4" />
-                                Custos Indiretos - Outros
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                                Mao-de-obra de manipuladores, estoquistas e outros custos determinados pela unidade
-                            </p>
-                            <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground">R$</span>
-                                <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={indirectCosts.laborCosts || ''}
-                                    onChange={(e) => setIndirectCosts({
-                                        ...indirectCosts,
-                                        laborCosts: parseFloat(e.target.value) || 0
-                                    })}
-                                    placeholder="Ex: 25.00"
-                                    className="max-w-[200px]"
-                                />
-                                <span className="text-xs text-muted-foreground">/dia por paciente</span>
-                            </div>
-                        </div>
-
-                        <Button onClick={handleSaveSettings} className="w-full" variant="outline">
-                            <Save className="h-4 w-4 mr-2" />
-                            Salvar Custos
-                        </Button>
-                    </CardContent>
-                </Card>
+                            <Button onClick={handleSaveSettings} className="w-full" variant="outline">
+                                <Save className="h-4 w-4 mr-2" />
+                                Salvar Custos
+                            </Button>
+                        </CardContent>
+                    </Card>
                 )}
 
                 {(canManageUnits || canManageWards) && (
@@ -465,7 +465,7 @@ const Settings = () => {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <HardDrive className="h-5 w-5" />
-                            Backup e Restauracao
+                            Backup e Restauração
                         </CardTitle>
                         <CardDescription>
                             Exporte seus dados para backup ou importe de outro dispositivo
@@ -544,9 +544,9 @@ const Settings = () => {
                                 <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
                                 <div>
                                     <p className="text-sm font-semibold text-amber-800">Importante sobre Backups</p>
-                                <p className="text-sm text-amber-700">
+                                    <p className="text-sm text-amber-700">
                                         Recomendamos fazer backup regularmente. Apesar de os dados estarem no Supabase,
-                                        o backup facilita auditoria, migracao e recuperacao operacional.
+                                        o backup facilita auditoria, migração e recuperação operacional.
                                     </p>
                                 </div>
                             </div>
@@ -603,7 +603,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
             toast.error("Sem permissao para gerenciar hospitais");
             return;
         }
-        if (!confirm("Excluir hospital? Isso nao excluira as alas automaticamente (ainda).")) return;
+        if (!confirm("Excluir hospital? Isso não excluirá as alas automaticamente (ainda).")) return;
         try {
             await deleteHospital(id);
             toast.success("Hospital excluido");

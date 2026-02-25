@@ -84,15 +84,15 @@ const Labels = () => {
     const labels = useMemo<LabelData[]>(() => {
         const list: LabelData[] = [];
 
-        const rtName = settings?.defaultSignatures?.rtName || "RT nao cadastrado";
-        const rtCrn = settings?.defaultSignatures?.rtCrn || "CRN nao cadastrado";
+        const rtName = settings?.defaultSignatures?.rtName || "RT não cadastrado";
+        const rtCrn = settings?.defaultSignatures?.rtCrn || "CRN não cadastrado";
         const conservationOpen =
             settings?.labelSettings?.openConservation ||
             settings?.labelSettings?.defaultConservation ||
-            "Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente.";
+            "Conservação: usar em até 4h após manipulação, em temperatura ambiente.";
         const conservationClosed =
             settings?.labelSettings?.closedConservation ||
-            "Conservacao: em temperatura ambiente.";
+            "Conservação: em temperatura ambiente.";
 
         const getRate = (prescription: any): string | undefined => {
             if (prescription.infusionRateMlH && prescription.infusionRateMlH > 0) {
@@ -274,7 +274,7 @@ const Labels = () => {
                                             volumeText: formula.volume ? `${Math.round(formula.volume)} ml` : undefined,
                                             manipulationDate: activeDateText,
                                             manipulationTime: time,
-                                            validityText: "Validade: 4h apos manipulacao.",
+                                            validityText: "Validade: 4h após manipulação.",
                                             conservationText: conservationOpen,
                                             rtName,
                                             rtCrn,
@@ -301,7 +301,7 @@ const Labels = () => {
                                         volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao.",
+                                        validityText: "Validade: 4h após manipulação.",
                                         conservationText: conservationOpen,
                                         rtName,
                                         rtCrn,

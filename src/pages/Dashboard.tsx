@@ -9,11 +9,11 @@ import {
   UserPlus,
   Building2,
   Utensils,
-  Droplet,
   Syringe,
   BanIcon,
-  Pill,
 } from "lucide-react";
+import SupplementIcon from "@/components/icons/SupplementIcon";
+import EnteralIcon from "@/components/icons/EnteralIcon";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
@@ -108,7 +108,7 @@ const Dashboard = () => {
       const patientPrescription = prescriptions.find((p) => p.patientId === patient.id && p.status === "active")
         || prescriptions.find((p) => p.patientId === patient.id);
 
-      let feedingRoute = 'oral';
+      let feedingRoute: WardBed["feedingRoute"] = 'oral';
       if (patient.nutritionType === 'enteral') feedingRoute = 'enteral';
       else if (patient.nutritionType === 'parenteral') feedingRoute = 'parenteral';
       else if (patient.nutritionType === 'jejum') feedingRoute = 'fasting';
@@ -155,9 +155,9 @@ const Dashboard = () => {
       case "oral":
         return <Utensils className="h-6 w-6 text-green-600" />;
       case "oral-supplement":
-        return <Pill className="h-6 w-6 text-blue-600" />;
+        return <SupplementIcon className="h-6 w-6" />;
       case "enteral":
-        return <Droplet className="h-6 w-6 text-purple-600" />;
+        return <EnteralIcon className="h-6 w-6" />;
       case "parenteral":
         return <Syringe className="h-6 w-6 text-orange-600" />;
       case "fasting":
@@ -172,7 +172,7 @@ const Dashboard = () => {
       case "oral":
         return <Badge className="bg-green-600">Oral</Badge>;
       case "oral-supplement":
-        return <Badge className="bg-blue-600">Suplementacao Oral</Badge>;
+        return <Badge className="bg-blue-600">Suplementação Oral</Badge>;
       case "enteral":
         return <Badge className="bg-purple-600">Enteral</Badge>;
       case "parenteral":
@@ -186,14 +186,33 @@ const Dashboard = () => {
     }
   };
 
-  const getStatusBadge = (status: string | null) => {
+  const getStatusBadge = (status: string | null, feedingRoute?: string) => {
+    const routeLabel: Record<string, string> = {
+      oral: "Oral",
+      "oral-supplement": "Supl. Oral",
+      enteral: "Enteral",
+      parenteral: "Parenteral",
+    };
+    const routeColor: Record<string, string> = {
+      oral: "bg-green-500 hover:bg-green-600",
+      "oral-supplement": "bg-blue-500 hover:bg-blue-600",
+      enteral: "bg-purple-500 hover:bg-purple-600",
+      parenteral: "bg-orange-500 hover:bg-orange-600",
+    };
     switch (status) {
-      case "goal_met":
-        return <Badge className="bg-green-500 hover:bg-green-600">Meta Atingida</Badge>;
+      case "goal_met": {
+        const label = feedingRoute && routeLabel[feedingRoute]
+          ? `Meta Atingida (${routeLabel[feedingRoute]})`
+          : "Meta Atingida";
+        const color = feedingRoute && routeColor[feedingRoute]
+          ? routeColor[feedingRoute]
+          : "bg-green-500 hover:bg-green-600";
+        return <Badge className={color}>{label}</Badge>;
+      }
       case "below_goal":
         return <Badge className="bg-yellow-500 hover:bg-yellow-600">Abaixo da Meta</Badge>;
       case "warning":
-        return <Badge className="bg-orange-500 hover:bg-orange-600">Atencao</Badge>;
+        return <Badge className="bg-orange-500 hover:bg-orange-600">Atenção</Badge>;
       case "no_diet":
         return <Badge variant="secondary">Sem Dieta</Badge>;
       default:
@@ -235,16 +254,16 @@ const Dashboard = () => {
         {/* Welcome Section */}
         <div className="flex flex-col gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Ola, {userName}</h1>
-            <p className="text-muted-foreground">Bem-vindo ao sistema de nutricao enteral</p>
+            <h1 className="text-3xl font-bold text-foreground">Olá, {userName}</h1>
+            <p className="text-muted-foreground">Bem-vindo ao ENMet@: sistema de prescrição e gestão da terapia nutricional enteral.</p>
           </div>
         </div>
 
         {/* Quick Actions */}
         <Card className="bg-card/90 backdrop-blur border-primary/10">
           <CardHeader>
-            <CardTitle>Acoes Rapidas</CardTitle>
-            <CardDescription>Acesso rapido as principais funcionalidades</CardDescription>
+            <CardTitle>Ações Rápidas</CardTitle>
+            <CardDescription>Acesso rápido às principais funcionalidades</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -255,7 +274,7 @@ const Dashboard = () => {
                   setSelectedHospital(val);
                   setSelectedWard("");
                   localStorage.setItem("userHospitalId", val);
-                  localStorage.setItem("userHospitalName", selected?.name || "Unidade nao selecionada");
+                  localStorage.setItem("userHospitalName", selected?.name || "Unidade não selecionada");
                   localStorage.removeItem("userWard");
                   window.dispatchEvent(new Event("enmeta-session-updated"));
                 }}>
@@ -320,7 +339,7 @@ const Dashboard = () => {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Buscar Paciente</DialogTitle>
-                    <DialogDescription>Busque por nome, data de nascimento ou Numero de Prontuario</DialogDescription>
+                    <DialogDescription>Busque por nome, data de nascimento ou Número de Prontuário</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -342,7 +361,7 @@ const Dashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="search-record">Numero de Prontuario</Label>
+                      <Label htmlFor="search-record">Número de Prontuário</Label>
                       <Input
                         id="search-record"
                         placeholder="Digite o prontuario"
@@ -380,7 +399,7 @@ const Dashboard = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle>Mapa do Setor - {selectedWard}</CardTitle>
-                  <CardDescription>Visualizacao dos leitos e pacientes com vias alimentares</CardDescription>
+                  <CardDescription>Visualização dos leitos e pacientes com vias alimentares</CardDescription>
                 </div>
                 <div className="flex gap-2">
                   <Input
@@ -402,11 +421,11 @@ const Dashboard = () => {
                     <span className="text-sm">Oral</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Pill className="h-5 w-5 text-blue-600" />
-                    <span className="text-sm">Suplementacao</span>
+                    <SupplementIcon className="h-5 w-5" />
+                    <span className="text-sm">Suplementação</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Droplet className="h-5 w-5 text-purple-600" />
+                    <EnteralIcon className="h-5 w-5" />
                     <span className="text-sm">Enteral</span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -451,7 +470,7 @@ const Dashboard = () => {
                             <p className="text-xs text-muted-foreground">Pront: {bed.record}</p>
                             <div className="pt-2 flex flex-wrap gap-2">
                               {getFeedingBadge(bed.feedingRoute)}
-                              {getStatusBadge(bed.status)}
+                              {getStatusBadge(bed.status, bed.feedingRoute)}
                             </div>
                             <div className="flex gap-2 mt-2">
                               <Button
@@ -467,14 +486,19 @@ const Dashboard = () => {
                               <Button
                                 variant="link"
                                 className="p-0 h-auto text-primary text-sm"
-                                onClick={(e) => handleOpenEvolution(e, bed)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (bed.patientId) {
+                                    navigate(`/patient-monitoring?patient=${bed.patientId}`);
+                                  }
+                                }}
                               >
-                                Evoluir
+                                Acompanhamento
                               </Button>
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground">Leito disponivel</p>
+                          <p className="text-sm text-muted-foreground">Leito disponível</p>
                         )}
                       </CardContent>
                     </Card>
