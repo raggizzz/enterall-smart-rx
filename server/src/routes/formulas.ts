@@ -10,6 +10,15 @@ const toJsonString = (value: unknown) => {
     return undefined;
 };
 
+const toNumber = (value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value.replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+};
+
 const mapFormulaToClient = (formula: any) => ({
     ...formula,
     presentations: formula.presentations ? JSON.parse(formula.presentations) : [],
@@ -34,33 +43,33 @@ const buildFormulaPayload = (payload: any) => ({
     presentationDescription: payload.presentationDescription || undefined,
     description: payload.description || undefined,
     billingUnit: payload.billingUnit || undefined,
-    conversionFactor: typeof payload.conversionFactor === 'number' ? payload.conversionFactor : undefined,
-    billingPrice: typeof payload.billingPrice === 'number' ? payload.billingPrice : undefined,
-    density: typeof payload.density === 'number' ? payload.density : undefined,
-    caloriesPerUnit: payload.caloriesPerUnit,
-    proteinPerUnit: payload.proteinPerUnit,
-    proteinPct: typeof payload.proteinPct === 'number' ? payload.proteinPct : undefined,
-    carbPerUnit: typeof payload.carbPerUnit === 'number' ? payload.carbPerUnit : undefined,
-    carbPct: typeof payload.carbPct === 'number' ? payload.carbPct : undefined,
-    fatPerUnit: typeof payload.fatPerUnit === 'number' ? payload.fatPerUnit : undefined,
-    fatPct: typeof payload.fatPct === 'number' ? payload.fatPct : undefined,
-    fiberPerUnit: typeof payload.fiberPerUnit === 'number' ? payload.fiberPerUnit : undefined,
+    conversionFactor: toNumber(payload.conversionFactor),
+    billingPrice: toNumber(payload.billingPrice),
+    density: toNumber(payload.density),
+    caloriesPerUnit: toNumber(payload.caloriesPerUnit) ?? 0,
+    proteinPerUnit: toNumber(payload.proteinPerUnit) ?? 0,
+    proteinPct: toNumber(payload.proteinPct),
+    carbPerUnit: toNumber(payload.carbPerUnit),
+    carbPct: toNumber(payload.carbPct),
+    fatPerUnit: toNumber(payload.fatPerUnit),
+    fatPct: toNumber(payload.fatPct),
+    fiberPerUnit: toNumber(payload.fiberPerUnit),
     fiberType: payload.fiberType || undefined,
-    sodiumPerUnit: typeof payload.sodiumPerUnit === 'number' ? payload.sodiumPerUnit : undefined,
-    potassiumPerUnit: typeof payload.potassiumPerUnit === 'number' ? payload.potassiumPerUnit : undefined,
-    calciumPerUnit: typeof payload.calciumPerUnit === 'number' ? payload.calciumPerUnit : undefined,
-    phosphorusPerUnit: typeof payload.phosphorusPerUnit === 'number' ? payload.phosphorusPerUnit : undefined,
-    waterContent: typeof payload.waterContent === 'number' ? payload.waterContent : undefined,
-    osmolality: typeof payload.osmolality === 'number' ? payload.osmolality : undefined,
+    sodiumPerUnit: toNumber(payload.sodiumPerUnit),
+    potassiumPerUnit: toNumber(payload.potassiumPerUnit),
+    calciumPerUnit: toNumber(payload.calciumPerUnit),
+    phosphorusPerUnit: toNumber(payload.phosphorusPerUnit),
+    waterContent: toNumber(payload.waterContent),
+    osmolality: toNumber(payload.osmolality),
     proteinSources: payload.proteinSources || undefined,
     carbSources: payload.carbSources || undefined,
     fatSources: payload.fatSources || undefined,
     fiberSources: payload.fiberSources || undefined,
     specialCharacteristics: payload.specialCharacteristics || undefined,
-    plasticG: typeof payload.plasticG === 'number' ? payload.plasticG : undefined,
-    paperG: typeof payload.paperG === 'number' ? payload.paperG : undefined,
-    metalG: typeof payload.metalG === 'number' ? payload.metalG : undefined,
-    glassG: typeof payload.glassG === 'number' ? payload.glassG : undefined,
+    plasticG: toNumber(payload.plasticG),
+    paperG: toNumber(payload.paperG),
+    metalG: toNumber(payload.metalG),
+    glassG: toNumber(payload.glassG),
     isActive: payload.isActive !== false,
 });
 

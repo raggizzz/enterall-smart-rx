@@ -30,6 +30,41 @@ const mapSettingsToClient = (settings: any) => ({
     updatedAt: settings.updatedAt,
 });
 
+const buildDefaultSettingsResponse = async (hospitalId: string) => {
+    const hospital = await prisma.hospital.findUnique({
+        where: { id: hospitalId },
+    });
+
+    return {
+        id: undefined,
+        hospitalId,
+        hospitalName: hospital?.name || 'Unidade',
+        defaultSignatures: {
+            rtName: 'RT nao cadastrado',
+            rtCrn: 'CRN nao cadastrado',
+        },
+        labelSettings: {
+            showConservation: true,
+            defaultConservation: 'Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente.',
+            openConservation: 'Conservacao: usar em ate 4h apos manipulacao, em temperatura ambiente.',
+            closedConservation: 'Conservacao: em temperatura ambiente.',
+        },
+        nursingCosts: {
+            timeOpenSystemPump: 0,
+            timeClosedSystemPump: 0,
+            timeOpenSystemGravity: 0,
+            timeClosedSystemGravity: 0,
+            timeBolus: 0,
+            hourlyRate: 0,
+        },
+        indirectCosts: {
+            laborCosts: 0,
+        },
+        createdAt: undefined,
+        updatedAt: undefined,
+    };
+};
+
 const buildSettingsPayload = (payload: any) => ({
     defaultSignatures: stringifyJson(payload.defaultSignatures),
     labelSettings: stringifyJson(payload.labelSettings),
@@ -66,7 +101,7 @@ router.get('/:hospitalId', async (req, res) => {
         });
 
         if (!settings) {
-            res.status(404).json({ error: 'Settings not found' });
+            res.json(await buildDefaultSettingsResponse(hospitalId));
             return;
         }
 

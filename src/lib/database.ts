@@ -903,20 +903,29 @@ const mapPatientPayload = (data: any) => ({
 
 const mapPrescriptionPayload = (data: any) => ({
     ...data,
+    hospitalId: data.hospitalId ?? (typeof window !== 'undefined' ? localStorage.getItem('userHospitalId') || undefined : undefined),
     startDate: toDateOnly(data.startDate),
     endDate: toDateOnly(data.endDate),
     enteralDetails: data.enteralDetails,
     oralDetails: data.oralDetails,
     parenteralDetails: data.parenteralDetails,
     hydrationSchedules: Array.isArray(data.hydrationSchedules) ? data.hydrationSchedules : undefined,
-    formulas: Array.isArray(data.formulas) ? data.formulas.map((formula: any) => ({
-        ...formula,
-        schedules: Array.isArray(formula.schedules) ? formula.schedules : [],
-    })) : [],
-    modules: Array.isArray(data.modules) ? data.modules.map((module: any) => ({
-        ...module,
-        schedules: Array.isArray(module.schedules) ? module.schedules : [],
-    })) : [],
+    formulas: Array.isArray(data.formulas)
+        ? data.formulas
+            .filter((formula: any) => typeof formula?.formulaId === 'string' && formula.formulaId.trim() !== '' && !formula.formulaId.startsWith('local-'))
+            .map((formula: any) => ({
+                ...formula,
+                schedules: Array.isArray(formula.schedules) ? formula.schedules : [],
+            }))
+        : [],
+    modules: Array.isArray(data.modules)
+        ? data.modules
+            .filter((module: any) => typeof module?.moduleId === 'string' && module.moduleId.trim() !== '' && !module.moduleId.startsWith('local-'))
+            .map((module: any) => ({
+                ...module,
+                schedules: Array.isArray(module.schedules) ? module.schedules : [],
+            }))
+        : [],
 });
 
 const mapEvolutionPayload = (data: any) => ({
@@ -926,9 +935,15 @@ const mapEvolutionPayload = (data: any) => ({
 
 const mapFormulaPayload = (data: any) => ({
     ...data,
+    hospitalId: data.hospitalId ?? (typeof window !== 'undefined' ? localStorage.getItem('userHospitalId') || undefined : undefined),
     formulaTypes: Array.isArray(data.formulaTypes) ? data.formulaTypes : undefined,
     administrationRoutes: Array.isArray(data.administrationRoutes) ? data.administrationRoutes : undefined,
     presentations: Array.isArray(data.presentations) ? data.presentations : undefined,
+});
+
+const mapModulePayload = (data: any) => ({
+    ...data,
+    hospitalId: data.hospitalId ?? (typeof window !== 'undefined' ? localStorage.getItem('userHospitalId') || undefined : undefined),
 });
 
 const nowIso = () => new Date().toISOString();
@@ -1125,10 +1140,10 @@ export const modulesService = {
         return normalizeModule(await apiClient.get(`/modules/${id}`));
     },
     async create(data: any) {
-        const result = await queueCreate('modules', '/modules', data, normalizeModule);
+        const result = await queueCreate('modules', '/modules', mapModulePayload(data), normalizeModule);
         return String(result.entityId ?? result.id);
     },
-    async update(id: string, data: any) { return queueUpdate('modules', `/modules/${id}`, id, data, normalizeModule); },
+    async update(id: string, data: any) { return queueUpdate('modules', `/modules/${id}`, id, mapModulePayload(data), normalizeModule); },
     async delete(id: string) { return queueDelete('modules', `/modules/${id}`, id); },
     async search(query: string) { 
         const all = await this.getAll();

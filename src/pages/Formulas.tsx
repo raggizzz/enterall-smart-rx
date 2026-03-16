@@ -357,7 +357,11 @@ const Formulas = () => {
       return;
     }
 
+    const sessionHospitalId =
+      typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+
     const payload: Omit<Formula, "id" | "createdAt" | "updatedAt"> = {
+      hospitalId: editingFormula?.hospitalId || sessionHospitalId,
       code: formulaForm.code.trim(),
       name: formulaForm.name.trim(),
       manufacturer: formulaForm.manufacturer.trim(),
@@ -478,7 +482,11 @@ const Formulas = () => {
       return;
     }
 
+    const sessionHospitalId =
+      typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+
     const payload: Omit<Module, "id" | "createdAt" | "updatedAt"> = {
+      hospitalId: editingModule?.hospitalId || sessionHospitalId,
       name: moduleForm.name.trim(),
       description: moduleForm.description.trim() || undefined,
       density: toRequiredNumber(moduleForm.density),

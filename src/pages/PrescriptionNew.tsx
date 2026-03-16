@@ -40,6 +40,8 @@ interface HydrationEntry {
   times: string[];
 }
 
+const isPersistedDbId = (value?: string) => Boolean(value && !value.startsWith("local-"));
+
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 type TherapyType = Prescription["therapyType"];
 type ExtendedCatalogFormula = CatalogFormula & {
@@ -1210,17 +1212,39 @@ const PrescriptionNew = () => {
       return;
     }
 
-    const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
-    const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
-    const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
+    const sessionProfessionalName = typeof window !== "undefined" ? localStorage.getItem("userName") || undefined : undefined;
+    const resolvedHospitalId = selectedPatient.hospitalId || undefined;
 
     if (!resolvedHospitalId) {
-      toast.error("Unidade da sessão não identificada. Refaça o login.");
+      toast.error("Paciente sem unidade vinculada. Atualize o cadastro do paciente antes de prescrever.");
       return;
     }
 
     setIsSaving(true);
     try {
+      const hasPendingClosedFormula =
+        feedingRoutes.enteral &&
+        systemType === "closed" &&
+        closedFormula.formulaId &&
+        !isPersistedDbId(closedFormula.formulaId);
+
+      const hasPendingOpenFormula = openFormulas.some((formula) => formula.formulaId && !isPersistedDbId(formula.formulaId));
+      const hasPendingEnteralModule = modules.some((module) => module.moduleId && !isPersistedDbId(module.moduleId));
+      const hasPendingOralFormula = oralSupplements.some((supplement) => supplement.supplementId && !isPersistedDbId(supplement.supplementId));
+      const hasPendingOralModule = oralTherapyModules.some((module) => module.moduleId && !isPersistedDbId(module.moduleId));
+
+      if (
+        hasPendingClosedFormula ||
+        hasPendingOpenFormula ||
+        hasPendingEnteralModule ||
+        hasPendingOralFormula ||
+        hasPendingOralModule
+      ) {
+        toast.error("Sincronize formulas e modulos cadastrados antes de salvar a prescricao.");
+        setIsSaving(false);
+        return;
+      }
+
       const enteralFormulas = feedingRoutes.enteral
         ? (systemType === 'closed' && closedFormula.formulaId ? [{
           formulaId: closedFormula.formulaId,
@@ -1228,7 +1252,7 @@ const PrescriptionNew = () => {
           volume: parseFloat(closedFormula.rate) * parseFloat(closedFormula.duration) || 0,
           timesPerDay: Object.keys(closedFormula.bagQuantities).length || 1,
           schedules: Object.keys(closedFormula.bagQuantities)
-        }] : openFormulas.filter(f => f.formulaId).map(f => ({
+        }] : openFormulas.filter(f => isPersistedDbId(f.formulaId)).map(f => ({
           formulaId: f.formulaId,
           formulaName: availableFormulas.find(af => af.id === f.formulaId)?.name || '',
           volume: parseFloat(f.volume) || 0,
@@ -1238,7 +1262,7 @@ const PrescriptionNew = () => {
         : [];
 
       const enteralModules = feedingRoutes.enteral
-        ? modules.filter(m => m.moduleId).map(m => ({
+        ? modules.filter(m => isPersistedDbId(m.moduleId)).map(m => ({
           moduleId: m.moduleId,
           moduleName: availableModules.find(am => am.id === m.moduleId)?.name || '',
           amount: parseFloat(m.quantity) || 0,
@@ -1251,7 +1275,7 @@ const PrescriptionNew = () => {
       const mealLabelByKey = Object.fromEntries(ORAL_MEAL_SCHEDULES.map((entry) => [entry.key, entry.label]));
       const oralFormulas = feedingRoutes.oral
         ? oralSupplements
-          .filter((supplement) => supplement.supplementId)
+          .filter((supplement) => isPersistedDbId(supplement.supplementId))
           .map((supplement) => {
             const activeSchedules = Object.entries(supplement.schedules || {})
               .filter(([, enabled]) => enabled === true)
@@ -1268,7 +1292,7 @@ const PrescriptionNew = () => {
 
       const oralModulesPayload = feedingRoutes.oral
         ? oralTherapyModules
-          .filter((module) => module.moduleId)
+          .filter((module) => isPersistedDbId(module.moduleId))
           .map((module) => {
             const activeSchedules = Object.entries(module.schedules || {})
               .filter(([, enabled]) => enabled === true)
@@ -1286,7 +1310,8 @@ const PrescriptionNew = () => {
 
       const basePrescriptionData = {
         hospitalId: resolvedHospitalId,
-        professionalId: sessionProfessionalId,
+        professionalId: undefined,
+        professionalName: sessionProfessionalName,
         patientId: selectedPatient.id,
         patientName: selectedPatient.name,
         patientRecord: selectedPatient.record,

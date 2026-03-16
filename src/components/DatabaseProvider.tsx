@@ -1,5 +1,6 @@
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, ReactNode, useEffect } from "react";
 import { useDatabaseInit } from "@/hooks/useDatabase";
+import { hospitalsService } from "@/lib/database";
 
 interface DatabaseContextType {
   isReady: boolean;
@@ -19,6 +20,41 @@ interface DatabaseProviderProps {
 
 export const DatabaseProvider: React.FC<DatabaseProviderProps> = ({ children }) => {
   const { isReady, error } = useDatabaseInit();
+
+  useEffect(() => {
+    if (!isReady || typeof window === "undefined") return;
+
+    const syncSessionHospital = async () => {
+      const currentHospitalId = localStorage.getItem("userHospitalId");
+      if (!currentHospitalId) return;
+
+      try {
+        const hospitals = await hospitalsService.getAll();
+        if (hospitals.length === 0) return;
+
+        const currentHospital = hospitals.find((hospital) => hospital.id === currentHospitalId);
+        if (currentHospital) {
+          if (currentHospital.name) {
+            localStorage.setItem("userHospitalName", currentHospital.name);
+            window.dispatchEvent(new Event("enmeta-session-updated"));
+          }
+          return;
+        }
+
+        const fallbackHospital = hospitals[0];
+        if (!fallbackHospital?.id) return;
+
+        localStorage.setItem("userHospitalId", fallbackHospital.id);
+        localStorage.setItem("userHospitalName", fallbackHospital.name || "Unidade");
+        localStorage.removeItem("userWard");
+        window.dispatchEvent(new Event("enmeta-session-updated"));
+      } catch (syncError) {
+        console.warn("Nao foi possivel validar a unidade da sessao.", syncError);
+      }
+    };
+
+    syncSessionHospital();
+  }, [isReady]);
 
   if (error) {
     return (
