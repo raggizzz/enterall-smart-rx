@@ -10,11 +10,18 @@ export type PermissionKey =
   | "manage_wards"
   | "manage_professionals"
   | "manage_managers"
+  | "manage_role_permissions"
   | "manage_supplies"
   | "manage_formulas"
   | "manage_costs"
   | "manage_patients"
   | "move_patients"
+  | "manage_prescriptions"
+  | "manage_monitoring"
+  | "manage_billing"
+  | "manage_labels"
+  | "manage_oral_map"
+  | "manage_tools"
   | "manage_reports";
 
 type PermissionMatrix = Partial<Record<UserRole, Partial<Record<PermissionKey, boolean>>>>;
@@ -26,63 +33,126 @@ const DEFAULT_PERMISSION_MATRIX: Record<UserRole, Partial<Record<PermissionKey, 
     manage_units: true,
     manage_wards: true,
     manage_managers: true,
+    manage_role_permissions: true,
     manage_professionals: true,
     manage_supplies: true,
     manage_formulas: true,
     manage_costs: true,
     manage_patients: true,
     move_patients: true,
+    manage_prescriptions: true,
+    manage_monitoring: true,
+    manage_billing: true,
+    manage_labels: true,
+    manage_oral_map: true,
+    manage_tools: true,
     manage_reports: true,
   },
   local_manager: {
     manage_units: false,
     manage_wards: true,
     manage_managers: false,
+    manage_role_permissions: true,
     manage_professionals: true,
     manage_supplies: true,
     manage_formulas: true,
     manage_costs: true,
     manage_patients: true,
     move_patients: true,
+    manage_prescriptions: true,
+    manage_monitoring: true,
+    manage_billing: true,
+    manage_labels: true,
+    manage_oral_map: true,
+    manage_tools: true,
     manage_reports: true,
   },
   nutritionist: {
     manage_units: false,
     manage_wards: false,
     manage_managers: false,
-    manage_professionals: true,
+    manage_role_permissions: false,
+    manage_professionals: false,
     manage_supplies: false,
     manage_formulas: false,
     manage_costs: false,
     manage_patients: true,
     move_patients: true,
+    manage_prescriptions: true,
+    manage_monitoring: true,
+    manage_billing: true,
+    manage_labels: true,
+    manage_oral_map: true,
+    manage_tools: true,
     manage_reports: true,
   },
   technician: {
     manage_units: false,
     manage_wards: false,
     manage_managers: false,
-    manage_professionals: true,
+    manage_role_permissions: false,
+    manage_professionals: false,
     manage_supplies: false,
     manage_formulas: false,
     manage_costs: false,
-    manage_patients: true,
+    manage_patients: false,
     move_patients: false,
-    manage_reports: true,
+    manage_prescriptions: false,
+    manage_monitoring: false,
+    manage_billing: true,
+    manage_labels: true,
+    manage_oral_map: true,
+    manage_tools: false,
+    manage_reports: false,
   },
   manager: {
     manage_units: true,
     manage_wards: true,
     manage_managers: true,
+    manage_role_permissions: true,
     manage_professionals: true,
     manage_supplies: true,
     manage_formulas: true,
     manage_costs: true,
     manage_patients: true,
     move_patients: true,
+    manage_prescriptions: true,
+    manage_monitoring: true,
+    manage_billing: true,
+    manage_labels: true,
+    manage_oral_map: true,
+    manage_tools: true,
     manage_reports: true,
   },
 };
+
+export const getDefaultPermissionsForRole = (
+  role: UserRole,
+): Partial<Record<PermissionKey, boolean>> => ({ ...(DEFAULT_PERMISSION_MATRIX[normalizeRole(role)] || {}) });
+
+export const PERMISSION_DEFINITIONS: Array<{
+  key: PermissionKey;
+  label: string;
+  description: string;
+}> = [
+  { key: "manage_units", label: "Unidades", description: "Cadastrar e editar unidades hospitalares." },
+  { key: "manage_wards", label: "Alas e setores", description: "Cadastrar e editar alas/setores." },
+  { key: "manage_managers", label: "Gestores", description: "Cadastrar gestores gerais e locais." },
+  { key: "manage_role_permissions", label: "Perfis e permissoes", description: "Configurar o que cada perfil pode fazer." },
+  { key: "manage_professionals", label: "Profissionais", description: "Cadastrar nutricionistas e tecnicos." },
+  { key: "manage_supplies", label: "Insumos", description: "Cadastrar frascos, equipos e demais insumos." },
+  { key: "manage_formulas", label: "Formulas e modulos", description: "Cadastrar formulas, suplementos e modulos." },
+  { key: "manage_costs", label: "Custos", description: "Alterar custos e parametros gerenciais." },
+  { key: "manage_patients", label: "Pacientes", description: "Cadastrar e editar pacientes." },
+  { key: "move_patients", label: "Mover pacientes", description: "Alterar unidade e setor do paciente." },
+  { key: "manage_prescriptions", label: "Prescricoes", description: "Criar e editar prescricoes nutricionais." },
+  { key: "manage_monitoring", label: "Acompanhamento", description: "Registrar evolucao e monitoramento nutricional." },
+  { key: "manage_billing", label: "Faturamento", description: "Gerar requisicoes, faturamento e cancelamento tecnico." },
+  { key: "manage_labels", label: "Etiquetas", description: "Gerar e imprimir etiquetas." },
+  { key: "manage_oral_map", label: "Mapa da copa", description: "Visualizar e imprimir mapa da dieta oral." },
+  { key: "manage_tools", label: "Ferramentas", description: "Usar calculadoras e ferramentas clinicas." },
+  { key: "manage_reports", label: "Relatorios", description: "Visualizar e exportar relatorios gerenciais." },
+];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   general_manager: "Gestor geral",

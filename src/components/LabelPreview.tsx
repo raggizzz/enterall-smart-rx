@@ -28,6 +28,9 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
         <article className="w-[80mm] h-[50mm] bg-white text-black p-2 overflow-hidden font-sans text-xs print:shadow-none shadow-md rounded relative box-border border-2 border-black">
             {/* Header: Patient Name, Bed, DOB */}
             <header className="flex flex-col border-b border-black pb-1 mb-1 -mx-2 px-2 pt-1 -mt-2 bg-gray-50">
+                <div className="text-[9px] uppercase tracking-wide text-gray-700 mb-0.5 truncate">
+                    {data.clinic}
+                </div>
                 <div className="flex justify-between items-start">
                     <div className="font-extrabold text-sm uppercase truncate w-3/4 leading-tight">
                         {data.patientName}
@@ -44,6 +47,14 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                         Via: {data.route}
                     </div>
                 </div>
+                <div className="text-[10px] text-gray-800 mt-0.5 truncate">
+                    Pront: <span className="font-bold text-black">{data.record}</span>
+                </div>
+                {data.controlText && (
+                    <div className="text-[9px] text-gray-800 mt-0.5 truncate">
+                        Lote/Controle: <span className="font-bold text-black">{data.controlText}</span>
+                    </div>
+                )}
             </header>
 
             {/* Diet / Formula */}
@@ -51,9 +62,16 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                 <div className="font-bold text-xs uppercase truncate">
                     {data.templateTitle}
                 </div>
-                <div className="text-[11px] leading-tight line-clamp-2">
-                    {data.formulaText || data.compositionText}
-                </div>
+                {data.formulaText && (
+                    <div className="text-[11px] leading-tight font-semibold line-clamp-2">
+                        {data.formulaText}
+                    </div>
+                )}
+                {data.compositionText && (
+                    <div className="text-[9px] leading-tight line-clamp-3 text-gray-800">
+                        <span className="font-semibold text-black">Composicao:</span> {data.compositionText}
+                    </div>
+                )}
                 {data.volumeText && (
                     <div className="font-bold text-sm mt-1">
                         Volume: {data.volumeText}
@@ -62,7 +80,7 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
             </div>
 
             {/* Infusion Rate & Schedule */}
-            <div className="flex justify-between items-end py-1 mt-1 pb-10">
+            <div className="flex justify-between items-end py-1 mt-1 pb-12">
                 <div className="flex flex-col">
                     {data.infusionRate && (
                         <div className="text-[11px] font-bold px-1 rounded inline-block mb-1 border border-dashed border-gray-400">
@@ -78,11 +96,13 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
             </div>
 
             {/* Footer: Manipulation / Validity / RT */}
-            <footer className="absolute bottom-0 left-0 right-0 bg-gray-100 p-1 text-[9px] leading-tight grid grid-cols-[1fr_auto] gap-x-2 h-[13mm]">
+            <footer className="absolute bottom-0 left-0 right-0 bg-gray-100 p-1 text-[8px] leading-tight grid grid-cols-[1fr_auto] gap-x-2 h-[15mm]">
                 <div className="flex flex-col justify-center">
                     <div><span className="font-bold">Manip:</span> {data.manipulationDate} {data.manipulationTime}</div>
                     <div className="font-bold truncate mt-0.5">{data.validityText}</div>
-                    {/* Control text removed */}
+                    {data.conservationText && (
+                        <div className="truncate mt-0.5"><span className="font-bold">Conserv.:</span> {data.conservationText}</div>
+                    )}
                 </div>
                 <div className="text-right flex flex-col justify-center min-w-[30mm]">
                     <div className="font-bold uppercase text-[8px]">Resp. Técnico</div>

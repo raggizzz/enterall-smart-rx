@@ -1,5 +1,3 @@
-import { supabase } from "@/lib/supabase";
-
 export interface PrescriptionData {
     patient_name: string;
     patient_record: string;
@@ -17,24 +15,10 @@ export interface PrescriptionData {
 }
 
 export const savePrescription = async (data: PrescriptionData) => {
-    // Check if Supabase is configured
-    if (!import.meta.env.VITE_SUPABASE_URL) {
-        console.warn("Supabase not configured. Mocking save.");
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return { data: { id: 'mock-id-' + Date.now() }, error: null };
-    }
+    const id = `local-prescription-${Date.now()}`;
+    const existing = JSON.parse(localStorage.getItem("legacy_prescriptions") || "[]");
+    const record = { id, ...data, created_at: data.created_at || new Date().toISOString() };
 
-    const { data: result, error } = await supabase
-        .from('prescriptions')
-        .insert([data])
-        .select()
-        .single();
-
-    if (error) {
-        console.error("Error saving prescription:", error);
-        throw error;
-    }
-
-    return { data: result, error: null };
+    localStorage.setItem("legacy_prescriptions", JSON.stringify([...existing, record]));
+    return { data: record, error: null };
 };

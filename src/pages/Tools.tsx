@@ -8,11 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit, Save, Search, Clock, Calculator } from "lucide-react";
+import { Search, Clock, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
-import { toast } from "sonner";
 import { getAllFormulas } from "@/lib/formulasDatabase";
 
 // --- Types for Predictive Equations ---
@@ -59,20 +56,20 @@ const numberOrZero = (value: string | number): number => {
 const TOOLS_FALLBACK = [
   { code: "PESO_ALTURA", name: "Estimativa de peso e altura", category: "antropometria" },
   { code: "GIDS", name: "Escore GIDS", category: "triagem" },
-  { code: "DVA_NOR", name: "Calculadora de Noradrenalina", category: "critico" },
-  { code: "DVA_VASO", name: "Calculadora de Vasopressina", category: "critico" },
+  { code: "DVA_NOR", name: "Calculadora de Noradrenalina", category: "crítico" },
+  { code: "DVA_VASO", name: "Calculadora de Vasopressina", category: "crítico" },
   { code: "NRS", name: "Triagem NRS 2002", category: "triagem" },
-  { code: "BALANCO_N", name: "Balanco nitrogenado", category: "metabolico" },
-  { code: "GASTO_ENERGETICO", name: "Estimativa de gasto energetico", category: "metabolico" },
-  { code: "GLIM", name: "Diagnostico GLIM", category: "triagem" },
+  { code: "BALANCO_N", name: "Balanço nitrogenado", category: "metabólico" },
+  { code: "GASTO_ENERGETICO", name: "Estimativa de gasto energético", category: "metabólico" },
+  { code: "GLIM", name: "Diagnóstico GLIM", category: "triagem" },
 ];
 
 const LINKS_FALLBACK = [
   { name: "Diretrizes SBNPE", link: "https://www.sbnpe.org.br/diretrizes" },
   { name: "Guidelines ESPEN", link: "https://www.espen.org/guidelines-home/espen-guidelines" },
   { name: "Guidelines ASPEN", link: "https://nutritioncare.org/clinical-resources/guidelines-standards/" },
-  { name: "Formulario MAN", link: "https://www.mna-elderly.com/sites/default/files/2024-10/MNA_AU2.0_%20por-BR_nonMapi.pdf" },
-  { name: "GMFCS em portugues", link: "https://canchild.ca/wp-content/uploads/2025/03/GMFCS-ER_Translation-Portuguese2.pdf" },
+  { name: "Formulário MAN", link: "https://www.mna-elderly.com/sites/default/files/2024-10/MNA_AU2.0_%20por-BR_nonMapi.pdf" },
+  { name: "GMFCS em português", link: "https://canchild.ca/wp-content/uploads/2025/03/GMFCS-ER_Translation-Portuguese2.pdf" },
   { name: "Curvas OMS", link: "https://www.sbp.com.br/departamentos/endocrinologia/graficos-de-crescimento/" },
   { name: "Curvas para paralisia cerebral", link: "https://www.lifeexpectancy.org/Articles/NewGrowthCharts.shtml" },
   { name: "Global GLIM Leadership", link: "https://www.glim-initiative.org/" },
@@ -84,25 +81,25 @@ type GidsSevereKey = "severeDiarrhea" | "giBleedWithTransfusion" | "prokinetics"
 type GidsThreateningKey = "hemorrhagicShock" | "mesentericIschemia" | "abdominalCompartment";
 
 const GIDS_MILD_OPTIONS: Array<{ key: GidsMildKey; label: string }> = [
-  { key: "absentBowelSounds", label: "Ausencia de ruidos intestinais" },
-  { key: "vomiting", label: "Vomitos" },
-  { key: "residualVolume", label: "Aumento do volume residual gastrico" },
-  { key: "ileus", label: "Ileo paralitico" },
-  { key: "distension", label: "Distensao abdominal" },
+  { key: "absentBowelSounds", label: "Ausência de ruídos intestinais" },
+  { key: "vomiting", label: "Vômitos" },
+  { key: "residualVolume", label: "Aumento do volume residual gástrico" },
+  { key: "ileus", label: "Íleo paralítico" },
+  { key: "distension", label: "Distensão abdominal" },
   { key: "mildDiarrhea", label: "Diarreia leve" },
-  { key: "giBleedNoTransfusion", label: "Sangramento gastrointestinal sem transfusao" },
+  { key: "giBleedNoTransfusion", label: "Sangramento gastrointestinal sem transfusão" },
   { key: "pia12to20", label: "PIA entre 12 e 20 mmHg" },
 ];
 const GIDS_SEVERE_OPTIONS: Array<{ key: GidsSevereKey; label: string }> = [
   { key: "severeDiarrhea", label: "Diarreia grave" },
-  { key: "giBleedWithTransfusion", label: "Sangramento gastrointestinal com transfusao" },
-  { key: "prokinetics", label: "Uso de procineticos para tolerancia" },
+  { key: "giBleedWithTransfusion", label: "Sangramento gastrointestinal com transfusão" },
+  { key: "prokinetics", label: "Uso de procinéticos para tolerância" },
   { key: "piaAbove20", label: "PIA acima de 20 mmHg" },
 ];
 const GIDS_THREAT_OPTIONS: Array<{ key: GidsThreateningKey; label: string }> = [
-  { key: "hemorrhagicShock", label: "Choque hemorragico" },
-  { key: "mesentericIschemia", label: "Isquemia mesenterica" },
-  { key: "abdominalCompartment", label: "Sindrome compartimental abdominal" },
+  { key: "hemorrhagicShock", label: "Choque hemorrágico" },
+  { key: "mesentericIschemia", label: "Isquemia mesentérica" },
+  { key: "abdominalCompartment", label: "Síndrome compartimental abdominal" },
 ];
 
 const Tools = () => {
@@ -111,13 +108,10 @@ const Tools = () => {
   const [catalogSearch, setCatalogSearch] = useState("");
 
   // --- PREDICTIVE EQUATIONS STATE ---
-  const [equations, setEquations] = useState<PredictiveEquation[]>(() => {
+  const [equations] = useState<PredictiveEquation[]>(() => {
     const saved = localStorage.getItem('predictive_equations');
     return saved ? JSON.parse(saved) : DEFAULT_EQUATIONS;
   });
-
-  const [isEquationEditorOpen, setIsEquationEditorOpen] = useState(false);
-  const [editingEquation, setEditingEquation] = useState<PredictiveEquation | null>(null);
 
   // Form inputs for Prediction
   const [predSex, setPredSex] = useState<Sex>("male");
@@ -202,27 +196,6 @@ const Tools = () => {
     };
   }, [equations, predSex, predRace, predAge, predKnee, predArm]);
 
-  const handleSaveEquation = (eq: PredictiveEquation) => {
-    let newEquations;
-    if (equations.find(e => e.id === eq.id)) {
-      newEquations = equations.map(e => e.id === eq.id ? eq : e);
-    } else {
-      newEquations = [...equations, eq];
-    }
-    setEquations(newEquations);
-    localStorage.setItem('predictive_equations', JSON.stringify(newEquations));
-    setEditingEquation(null);
-    setIsEquationEditorOpen(false);
-    toast.success("Equação salva com sucesso!");
-  };
-
-  const handleResetEquations = () => {
-    setEquations(DEFAULT_EQUATIONS);
-    localStorage.setItem('predictive_equations', JSON.stringify(DEFAULT_EQUATIONS));
-    toast.success("Equacoes restauradas para o padrao.");
-  }
-
-
   // --- GLIM STATE (Manual) ---
   const [glimWeightLoss, setGlimWeightLoss] = useState<"none" | "moderate" | "severe">("none");
   const [glimMuscleLoss, setGlimMuscleLoss] = useState<"none" | "moderate" | "severe">("none");
@@ -237,19 +210,19 @@ const Tools = () => {
     const phenoPositive = glimWeightLoss !== "none" || glimBmi !== "none" || glimMuscleLoss !== "none";
     const etioPositive = glimReducedIntake || glimInflammation;
 
-    let diagnosis = "Sem diagnostico de desnutricao (GLIM)";
+    let diagnosis = "Sem diagnóstico de desnutrição (GLIM)";
     let severity = "";
 
     if (phenoPositive && etioPositive) {
       // Determine severity based on PHENOTYPIC
       const isSevere = glimWeightLoss === "severe" || glimBmi === "severe" || glimMuscleLoss === "severe";
-      severity = isSevere ? "Desnutricao Grave" : "Desnutricao Moderada";
+      severity = isSevere ? "Desnutrição Grave" : "Desnutrição Moderada";
 
       const diseaseMap: Record<string, string> = {
         cronica_com_inflamacao: "relacionada a doença crônica com inflamação",
         cronica_minima: "relacionada a doença crônica com inflamação mínima",
         aguda_grave: "relacionada a doença aguda ou injúria com inflamação grave",
-        social_ambiental: "relacionada a circunstancias sociais ou ambientais",
+        social_ambiental: "relacionada a circunstâncias sociais ou ambientais",
       };
       diagnosis = `${severity} ${diseaseMap[glimDisease] || ""}`;
     }
@@ -277,9 +250,9 @@ const Tools = () => {
     const threateningCount = Object.values(gidsThreatening).filter(Boolean).length;
     let score = 0; let interpretation = "Sem risco";
 
-    if (threateningCount > 0) { score = 4; interpretation = "Ameaca a vida"; }
-    else if (severeCount >= 3) { score = 3; interpretation = "Falencia do trato gastrointestinal"; }
-    else if ((!gidsOralDiet && mildCount >= 2) || (severeCount >= 1 && severeCount <= 2)) { score = 2; interpretation = "Disfuncao do trato gastrointestinal"; }
+    if (threateningCount > 0) { score = 4; interpretation = "Ameaça à vida"; }
+    else if (severeCount >= 3) { score = 3; interpretation = "Falência do trato gastrointestinal"; }
+    else if ((!gidsOralDiet && mildCount >= 2) || (severeCount >= 1 && severeCount <= 2)) { score = 2; interpretation = "Disfunção do trato gastrointestinal"; }
     else if (!gidsOralDiet && mildCount >= 1 && mildCount <= 2) { score = 1; interpretation = "Risco aumentado"; }
     else if (gidsOralDiet && mildCount <= 1) { score = 0; interpretation = "Sem risco"; }
 
@@ -330,8 +303,8 @@ const Tools = () => {
       <Header />
       <div className="container px-4 py-6 space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Ferramentas Clinicas</h1>
-          <p className="text-muted-foreground">Calculadoras e utilitários para avaliação nutricional.</p>
+          <h1 className="text-2xl font-bold">Ferramentas Clínicas</h1>
+          <p className="text-muted-foreground">Calculadoras e utilidades para avaliação nutricional.</p>
         </div>
 
         <Tabs defaultValue="peso_altura" className="space-y-4">
@@ -351,15 +324,15 @@ const Tools = () => {
           <TabsContent value="glim" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Diagnostico Nutricional (GLIM)</CardTitle>
-                <CardDescription>Criterios fenotipicos e etiologicos para diagnostico de desnutricao.</CardDescription>
+                <CardTitle>Diagnóstico Nutricional (GLIM)</CardTitle>
+                <CardDescription>Critérios fenotípicos e etiológicos para diagnóstico de desnutrição.</CardDescription>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-sm uppercase text-muted-foreground border-b pb-1">Dominio Fenotipico</h3>
+                  <h3 className="font-semibold text-sm uppercase text-muted-foreground border-b pb-1">Domínio Fenotípico</h3>
 
                   <div className="space-y-1">
-                    <Label>Perda de Peso Involuntaria</Label>
+                    <Label>Perda de Peso Involuntária</Label>
                     <Select value={glimWeightLoss} onValueChange={(v: any) => setGlimWeightLoss(v)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -383,25 +356,25 @@ const Tools = () => {
                   </div>
 
                   <div className="space-y-1">
-                    <Label>Reducao da Massa Muscular</Label>
+                    <Label>Redução da Massa Muscular</Label>
                     <Select value={glimMuscleLoss} onValueChange={(v: any) => setGlimMuscleLoss(v)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Ausente</SelectItem>
-                        <SelectItem value="moderate">Moderada (Deficit leve por metodo validado)</SelectItem>
-                        <SelectItem value="severe">Grave (Deficit grave por metodo validado)</SelectItem>
+                        <SelectItem value="moderate">Moderada (Déficit leve por método validado)</SelectItem>
+                        <SelectItem value="severe">Grave (Déficit grave por método validado)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <h3 className="font-semibold text-sm uppercase text-muted-foreground border-b pb-1">Dominio Etiologico</h3>
+                  <h3 className="font-semibold text-sm uppercase text-muted-foreground border-b pb-1">Domínio Etiológico</h3>
                   <div className="space-y-2 pt-2">
                     <div className="flex items-center space-x-2 border p-3 rounded hover:bg-muted/50 transition-colors">
                       <Checkbox id="intake" checked={glimReducedIntake} onCheckedChange={(v) => setGlimReducedIntake(!!v)} />
                       <Label htmlFor="intake" className="cursor-pointer font-normal">
-                        Ingestao reduzida (&lt;50% &gt;1 sem) ou ma absorcao
+                        Ingestão reduzida (&lt;50% &gt;1 sem) ou má absorção
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 border p-3 rounded hover:bg-muted/50 transition-colors">
@@ -413,14 +386,14 @@ const Tools = () => {
                   </div>
 
                   <div className="space-y-1 pt-2">
-                    <Label>Contexto da Doenca</Label>
+                    <Label>Contexto da Doença</Label>
                     <Select value={glimDisease} onValueChange={setGlimDisease}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="cronica_com_inflamacao">Doença crônica com inflamação</SelectItem>
                         <SelectItem value="cronica_minima">Doença crônica com inflamação mínima</SelectItem>
                         <SelectItem value="aguda_grave">Doença aguda/injúria com inflamação grave</SelectItem>
-                        <SelectItem value="social_ambiental">Circunstancias sociais/ambientais</SelectItem>
+                        <SelectItem value="social_ambiental">Circunstâncias sociais/ambientais</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -428,7 +401,7 @@ const Tools = () => {
                 </div>
 
                 <div className="md:col-span-2 mt-4 p-4 border-2 border-primary/20 rounded-lg bg-primary/5 text-center">
-                  <p className="text-xs uppercase text-muted-foreground mb-1">Diagnostico Final</p>
+                  <p className="text-xs uppercase text-muted-foreground mb-1">Diagnóstico Final</p>
                   <p className="text-xl font-bold text-primary">{glimResult}</p>
                 </div>
               </CardContent>
@@ -441,14 +414,9 @@ const Tools = () => {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Estimativa de Peso e Altura</CardTitle>
-                  <CardDescription>Preencha os campos para estimar peso e altura.</CardDescription>
+                  <CardDescription>Preencha os campos para estimar peso e altura usando as equações padrão já validadas.</CardDescription>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setIsEquationEditorOpen(true)}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Configurar Fórmulas
-                  </Button>
-                </div>
+                <Badge variant="secondary">Equações padronizadas</Badge>
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -533,84 +501,13 @@ const Tools = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Equation Editor Dialog */}
-            <Dialog open={isEquationEditorOpen} onOpenChange={setIsEquationEditorOpen}>
-              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Configuração de Fórmulas Preditivas</DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-muted-foreground">Formulas cadastradas e seus coeficientes.</p>
-                    <Button size="sm" variant="secondary" onClick={handleResetEquations}>Restaurar Padrao</Button>
-                  </div>
-
-                  <div className="border rounded-md overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-muted text-muted-foreground">
-                        <tr>
-                          <th className="p-2">Nome</th>
-                          <th className="p-2">Tipo</th>
-                          <th className="p-2">Sexo/Raca</th>
-                          <th className="p-2">Idade</th>
-                          <th className="p-2 text-right">Const.</th>
-                          <th className="p-2 text-right">AJ</th>
-                          <th className="p-2 text-right">CB</th>
-                          <th className="p-2 text-right">Idade</th>
-                          <th className="p-2 text-center">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {equations.map(eq => (
-                          <tr key={eq.id} className="border-t hover:bg-muted/20">
-                            <td className="p-2 font-medium">{eq.name}</td>
-                            <td className="p-2 uppercase text-xs">{eq.type === 'height' ? 'Alt' : 'Peso'}</td>
-                            <td className="p-2 text-xs">{eq.sex === 'male' ? 'M' : 'F'} / {eq.race === 'white' ? 'B' : 'N'}</td>
-                            <td className="p-2 text-xs">{eq.minAge}-{eq.maxAge}</td>
-                            <td className="p-2 text-right font-mono text-xs">{eq.constant}</td>
-                            <td className="p-2 text-right font-mono text-xs">{eq.coefKnee}</td>
-                            <td className="p-2 text-right font-mono text-xs">{eq.coefArm}</td>
-                            <td className="p-2 text-right font-mono text-xs">{eq.coefAge}</td>
-                            <td className="p-2 text-center">
-                              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
-                                setEditingEquation(eq);
-                              }}>
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {editingEquation && (
-                    <div className="p-4 border rounded-md bg-secondary/10 space-y-3">
-                      <h4 className="font-semibold text-sm">Editar: {editingEquation.name}</h4>
-                      <div className="grid grid-cols-4 gap-3">
-                        <div><Label>Constante</Label><Input type="number" step="0.01" value={editingEquation.constant} onChange={e => setEditingEquation({ ...editingEquation, constant: Number(e.target.value) })} /></div>
-                        <div><Label>Coef. Alt. Joelho</Label><Input type="number" step="0.01" value={editingEquation.coefKnee} onChange={e => setEditingEquation({ ...editingEquation, coefKnee: Number(e.target.value) })} /></div>
-                        <div><Label>Coef. Circ. Braco</Label><Input type="number" step="0.01" value={editingEquation.coefArm} onChange={e => setEditingEquation({ ...editingEquation, coefArm: Number(e.target.value) })} /></div>
-                        <div><Label>Coef. Idade</Label><Input type="number" step="0.01" value={editingEquation.coefAge} onChange={e => setEditingEquation({ ...editingEquation, coefAge: Number(e.target.value) })} /></div>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setEditingEquation(null)}>Cancelar</Button>
-                        <Button size="sm" onClick={() => editingEquation && handleSaveEquation(editingEquation)}><Save className="h-3 w-3 mr-2" /> Salvar</Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
           </TabsContent>
 
           {/* === GIDS TAB === */}
           <TabsContent value="gids">
             <Card>
               <CardHeader>
-                <CardTitle>GIDS - Escore de Disfuncao Gastrointestinal</CardTitle>
+                <CardTitle>GIDS - Escore de Disfunção Gastrointestinal</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2 mb-4">
@@ -642,7 +539,7 @@ const Tools = () => {
                       ))}
                     </div>
 
-                    <h4 className="font-medium mt-6 mb-3 text-red-600">Ameaca a Vida (4 pontos)</h4>
+                    <h4 className="font-medium mt-6 mb-3 text-red-600">Ameaça à Vida (4 pontos)</h4>
                     <div className="space-y-2">
                       {GIDS_THREAT_OPTIONS.map(({ key, label }) => (
                         <div key={key} className="flex items-center gap-2">
@@ -668,16 +565,16 @@ const Tools = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Noradrenalina</CardTitle>
-                  <CardDescription>Calculo em mcg/kg/min</CardDescription>
+                  <CardDescription>Cálculo em mcg/kg/min</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Label>Peso (kg)</Label>
                   <Input type="number" value={dvaWeight} onChange={e => setDvaWeight(e.target.value)} />
                   <Label>Velocidade (ml/h)</Label>
                   <Input type="number" value={norRate} onChange={e => setNorRate(e.target.value)} />
-                  <Label>Diluicao: Volume Total (ml)</Label>
+                  <Label>Diluição: Volume Total (ml)</Label>
                   <Input type="number" value={norDilution} onChange={e => setNorDilution(e.target.value)} />
-                  <Label>Numero de Ampolas (4mg)</Label>
+                  <Label>Número de Ampolas (4mg)</Label>
                   <Input type="number" value={norAmpoules} onChange={e => setNorAmpoules(e.target.value)} />
 
                   <div className="mt-4 p-3 bg-blue-50 text-blue-800 rounded text-center">
@@ -690,14 +587,14 @@ const Tools = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Vasopressina</CardTitle>
-                  <CardDescription>Calculo em UI/min (Sem peso)</CardDescription>
+                  <CardDescription>Cálculo em UI/min (Sem peso)</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Label>Velocidade (ml/h)</Label>
                   <Input type="number" value={vasoRate} onChange={e => setVasoRate(e.target.value)} />
-                  <Label>Diluicao: Volume Total (ml)</Label>
+                  <Label>Diluição: Volume Total (ml)</Label>
                   <Input type="number" value={vasoDilution} onChange={e => setVasoDilution(e.target.value)} />
-                  <Label>Numero de Ampolas (20 UI)</Label>
+                  <Label>Número de Ampolas (20 UI)</Label>
                   <Input type="number" value={vasoAmpoules} onChange={e => setVasoAmpoules(e.target.value)} />
 
                   <div className="mt-4 p-3 bg-purple-50 text-purple-800 rounded text-center">
@@ -718,8 +615,8 @@ const Tools = () => {
                   <div className="space-y-2 border p-3 rounded">
                     <p className="font-semibold text-sm">Triagem Inicial</p>
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ1} onCheckedChange={v => setNrsQ1(!!v)} /> IMC &lt; 20.5?</label>
-                    <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ2} onCheckedChange={v => setNrsQ2(!!v)} /> Perda de peso nos ultimos 3 meses?</label>
-                    <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ3} onCheckedChange={v => setNrsQ3(!!v)} /> Reducao da ingestao na ultima semana?</label>
+                    <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ2} onCheckedChange={v => setNrsQ2(!!v)} /> Perda de peso nos últimos 3 meses?</label>
+                    <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ3} onCheckedChange={v => setNrsQ3(!!v)} /> Redução da ingestão na última semana?</label>
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ4} onCheckedChange={v => setNrsQ4(!!v)} /> Paciente gravemente doente?</label>
                   </div>
                   <div className="space-y-2 border p-3 rounded">

@@ -15,8 +15,8 @@ import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules } from "@/hooks/useDatabase";
+import { getAllFormulas, getAllModules, Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
+import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
 
 interface FormulaEntry {
@@ -41,6 +41,232 @@ interface HydrationEntry {
 }
 
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
+type TherapyType = Prescription["therapyType"];
+type ExtendedCatalogFormula = CatalogFormula & {
+  macronutrientComplexity?: "polymeric" | "oligomeric";
+  ageGroup?: "adult" | "pediatric" | "infant";
+  administrationRoutes?: Array<"enteral" | "oral" | "translactation">;
+  fiberType?: string;
+  specialCharacteristics?: string;
+};
+
+const sortByMostRecentStartDate = (left: Prescription, right: Prescription) =>
+  (right.startDate || "").localeCompare(left.startDate || "");
+
+const normalizeCatalogKey = (value?: string | null) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+
+const normalizeFormulaType = (type?: string): CatalogFormula["type"] => {
+  switch (type) {
+    case "high-protein":
+    case "high-calorie":
+    case "diabetic":
+    case "renal":
+    case "peptide":
+    case "fiber":
+    case "immune":
+    case "standard":
+    case "oral-supplement":
+    case "infant-formula":
+      return type;
+    case "supplement":
+      return "high-calorie";
+    default:
+      return "standard";
+  }
+};
+
+const normalizeSystemType = (systemType?: string, formulaTypes?: string[]): CatalogFormula["systemType"] => {
+  if (systemType === "open" || systemType === "closed" || systemType === "both") {
+    return systemType;
+  }
+
+  if (formulaTypes?.includes("closed") && formulaTypes?.includes("open")) return "both";
+  if (formulaTypes?.includes("closed")) return "closed";
+  return "open";
+};
+
+const getPatientAgeYears = (patient?: Patient | null) => {
+  if (!patient?.dob) return undefined;
+  const birth = new Date(patient.dob);
+  if (Number.isNaN(birth.getTime())) return undefined;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return age;
+};
+
+const getSuggestedAgeGroup = (patient?: Patient | null): ExtendedCatalogFormula["ageGroup"] | undefined => {
+  const age = getPatientAgeYears(patient);
+  if (age === undefined) return undefined;
+  if (age < 2) return "infant";
+  if (age < 18) return "pediatric";
+  return "adult";
+};
+
+const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
+  const density = formula.density || formula.caloriesPerUnit || 1;
+  const proteinPer100 = typeof formula.proteinPerUnit === "number"
+    ? (formula.proteinPerUnit <= 1 ? formula.proteinPerUnit * 100 : formula.proteinPerUnit)
+    : 0;
+
+  return {
+    id: formula.id,
+    code: formula.code,
+    name: formula.name || "",
+    manufacturer: formula.manufacturer || "",
+    type: normalizeFormulaType(formula.type),
+    classification: formula.classification,
+    macronutrientComplexity: formula.macronutrientComplexity,
+    ageGroup: formula.ageGroup,
+    systemType: normalizeSystemType(formula.systemType, formula.formulaTypes),
+    formulaTypes: formula.formulaTypes,
+    administrationRoutes: formula.administrationRoutes,
+    presentationForm: formula.presentationForm,
+    presentations: Array.isArray(formula.presentations) && formula.presentations.length > 0 ? formula.presentations : [1000],
+    presentationDescription: formula.presentationDescription,
+    description: formula.description,
+    billingUnit: formula.billingUnit,
+    conversionFactor: formula.conversionFactor,
+    billingPrice: formula.billingPrice,
+    fiberType: formula.fiberType,
+    specialCharacteristics: formula.specialCharacteristics,
+    composition: {
+      calories: Math.round(density * 100),
+      density,
+      protein: proteinPer100,
+      carbohydrates: typeof formula.carbPerUnit === "number"
+        ? (formula.carbPerUnit <= 1 ? formula.carbPerUnit * 100 : formula.carbPerUnit)
+        : undefined,
+      fat: typeof formula.fatPerUnit === "number"
+        ? (formula.fatPerUnit <= 1 ? formula.fatPerUnit * 100 : formula.fatPerUnit)
+        : undefined,
+      fiber: typeof formula.fiberPerUnit === "number"
+        ? (formula.fiberPerUnit <= 1 ? formula.fiberPerUnit * 100 : formula.fiberPerUnit)
+        : undefined,
+      sodium: formula.sodiumPerUnit,
+      potassium: formula.potassiumPerUnit,
+      calcium: formula.calciumPerUnit,
+      phosphorus: formula.phosphorusPerUnit,
+      waterContent: formula.waterContent,
+      osmolality: formula.osmolality,
+    },
+    residueInfo: {
+      plastic: formula.plasticG || 0,
+      paper: formula.paperG || 0,
+      metal: formula.metalG || 0,
+      glass: formula.glassG || 0,
+    },
+  };
+};
+
+const mergeFormulasWithCatalog = (dbFormulas: any[], staticFormulas: CatalogFormula[]): ExtendedCatalogFormula[] => {
+  if (dbFormulas.length === 0) return staticFormulas;
+
+  return dbFormulas.map((dbFormula) => {
+    const dbKey = normalizeCatalogKey(dbFormula.code || dbFormula.name);
+    const staticMatch = staticFormulas.find((formula) =>
+      normalizeCatalogKey(formula.code) === dbKey || normalizeCatalogKey(formula.name) === dbKey,
+    );
+
+    if (!staticMatch) return buildFallbackCatalogFormula(dbFormula);
+
+    return {
+      ...staticMatch,
+      id: dbFormula.id || staticMatch.id,
+      code: dbFormula.code || staticMatch.code,
+      manufacturer: dbFormula.manufacturer || staticMatch.manufacturer,
+      type: normalizeFormulaType(dbFormula.type || staticMatch.type),
+      classification: dbFormula.classification || staticMatch.classification,
+      macronutrientComplexity: dbFormula.macronutrientComplexity ?? (staticMatch as ExtendedCatalogFormula).macronutrientComplexity,
+      ageGroup: dbFormula.ageGroup ?? (staticMatch as ExtendedCatalogFormula).ageGroup,
+      systemType: normalizeSystemType(dbFormula.systemType || staticMatch.systemType, dbFormula.formulaTypes || staticMatch.formulaTypes),
+      formulaTypes: dbFormula.formulaTypes?.length ? dbFormula.formulaTypes : staticMatch.formulaTypes,
+      administrationRoutes: dbFormula.administrationRoutes?.length ? dbFormula.administrationRoutes : (staticMatch as ExtendedCatalogFormula).administrationRoutes,
+      presentationForm: dbFormula.presentationForm || staticMatch.presentationForm,
+      presentations: dbFormula.presentations?.length ? dbFormula.presentations : staticMatch.presentations,
+      presentationDescription: dbFormula.presentationDescription || staticMatch.presentationDescription,
+      description: dbFormula.description || staticMatch.description,
+      billingUnit: dbFormula.billingUnit || staticMatch.billingUnit,
+      conversionFactor: dbFormula.conversionFactor ?? staticMatch.conversionFactor,
+      billingPrice: dbFormula.billingPrice ?? staticMatch.billingPrice,
+      fiberType: dbFormula.fiberType ?? (staticMatch as ExtendedCatalogFormula).fiberType,
+      specialCharacteristics: dbFormula.specialCharacteristics ?? (staticMatch as ExtendedCatalogFormula).specialCharacteristics,
+      composition: {
+        ...staticMatch.composition,
+        density: dbFormula.density ?? staticMatch.composition.density,
+        calories: dbFormula.density ? dbFormula.density * 100 : staticMatch.composition.calories,
+        protein: typeof dbFormula.proteinPerUnit === "number"
+          ? (dbFormula.proteinPerUnit <= 1 ? dbFormula.proteinPerUnit * 100 : dbFormula.proteinPerUnit)
+          : staticMatch.composition.protein,
+        carbohydrates: typeof dbFormula.carbPerUnit === "number"
+          ? (dbFormula.carbPerUnit <= 1 ? dbFormula.carbPerUnit * 100 : dbFormula.carbPerUnit)
+          : staticMatch.composition.carbohydrates,
+        fat: typeof dbFormula.fatPerUnit === "number"
+          ? (dbFormula.fatPerUnit <= 1 ? dbFormula.fatPerUnit * 100 : dbFormula.fatPerUnit)
+          : staticMatch.composition.fat,
+        fiber: typeof dbFormula.fiberPerUnit === "number"
+          ? (dbFormula.fiberPerUnit <= 1 ? dbFormula.fiberPerUnit * 100 : dbFormula.fiberPerUnit)
+          : staticMatch.composition.fiber,
+        sodium: dbFormula.sodiumPerUnit ?? staticMatch.composition.sodium,
+        potassium: dbFormula.potassiumPerUnit ?? staticMatch.composition.potassium,
+        calcium: dbFormula.calciumPerUnit ?? staticMatch.composition.calcium,
+        phosphorus: dbFormula.phosphorusPerUnit ?? staticMatch.composition.phosphorus,
+        waterContent: dbFormula.waterContent ?? staticMatch.composition.waterContent,
+        osmolality: dbFormula.osmolality ?? staticMatch.composition.osmolality,
+      },
+      residueInfo: {
+        plastic: dbFormula.plasticG ?? staticMatch.residueInfo?.plastic ?? 0,
+        paper: dbFormula.paperG ?? staticMatch.residueInfo?.paper ?? 0,
+        metal: dbFormula.metalG ?? staticMatch.residueInfo?.metal ?? 0,
+        glass: dbFormula.glassG ?? staticMatch.residueInfo?.glass ?? 0,
+      },
+    };
+  });
+};
+
+const mergeModulesWithCatalog = (dbModules: any[], staticModules: CatalogModule[]): CatalogModule[] => {
+  if (dbModules.length === 0) return staticModules;
+
+  return dbModules.map((dbModule) => {
+    const dbKey = normalizeCatalogKey(dbModule.name);
+    const staticMatch = staticModules.find((module) => normalizeCatalogKey(module.name) === dbKey);
+
+    return {
+      ...(staticMatch || {
+        id: dbModule.id,
+        name: dbModule.name || "",
+        density: dbModule.density || 0,
+        referenceAmount: dbModule.referenceAmount || 0,
+        referenceTimesPerDay: dbModule.referenceTimesPerDay || 0,
+        calories: dbModule.calories || 0,
+        protein: dbModule.protein || 0,
+        sodium: dbModule.sodium || 0,
+        potassium: dbModule.potassium || 0,
+        fiber: dbModule.fiber || 0,
+        freeWater: dbModule.freeWater || 0,
+      }),
+      id: dbModule.id || staticMatch?.id || "",
+      name: dbModule.name || staticMatch?.name || "",
+      density: dbModule.density ?? staticMatch?.density ?? 0,
+      referenceAmount: dbModule.referenceAmount ?? staticMatch?.referenceAmount ?? 0,
+      referenceTimesPerDay: dbModule.referenceTimesPerDay ?? staticMatch?.referenceTimesPerDay ?? 0,
+      calories: dbModule.calories ?? staticMatch?.calories ?? 0,
+      protein: dbModule.protein ?? staticMatch?.protein ?? 0,
+      sodium: dbModule.sodium ?? staticMatch?.sodium ?? 0,
+      potassium: dbModule.potassium ?? staticMatch?.potassium ?? 0,
+      fiber: dbModule.fiber ?? staticMatch?.fiber ?? 0,
+      freeWater: dbModule.freeWater ?? staticMatch?.freeWater ?? 0,
+    };
+  });
+};
 
 const PrescriptionNew = () => {
   const navigate = useNavigate();
@@ -49,15 +275,23 @@ const PrescriptionNew = () => {
   const prescriptionIdFromUrl = searchParams.get("prescription");
 
   // Usar pacientes e prescricoes do banco de dados
-  const { patients, isLoading: patientsLoading } = usePatients();
+  const { patients, isLoading: patientsLoading, updatePatient } = usePatients();
   const { prescriptions, createPrescription, updatePrescription } = usePrescriptions();
   const [isSaving, setIsSaving] = useState(false);
-  const [editingPrescriptionId, setEditingPrescriptionId] = useState<string | null>(prescriptionIdFromUrl);
-  const [editingStartDate, setEditingStartDate] = useState<string | null>(null);
+  const [editingPrescriptionIds, setEditingPrescriptionIds] = useState<Record<TherapyType, string | null>>({
+    oral: null,
+    enteral: null,
+    parenteral: null,
+  });
+  const [editingStartDates, setEditingStartDates] = useState<Record<TherapyType, string | null>>({
+    oral: null,
+    enteral: null,
+    parenteral: null,
+  });
   const [hydratedFromPrescription, setHydratedFromPrescription] = useState(false);
 
-  const availableFormulas = getAllFormulas();
-  const availableModules = getAllModules();
+  const staticFormulas = useMemo(() => getAllFormulas(), []);
+  const staticModules = useMemo(() => getAllModules(), []);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -94,6 +328,7 @@ const PrescriptionNew = () => {
 
   // Hydration
   const [hydration, setHydration] = useState<HydrationEntry>({ volume: "", times: [] });
+  const [equipmentVolume, setEquipmentVolume] = useState("");
 
   // Summary expanded
   const [showDetails, setShowDetails] = useState(false);
@@ -101,10 +336,15 @@ const PrescriptionNew = () => {
   // --- Oral Inline State (Step 8) ---
   const [oralDietConsistency, setOralDietConsistency] = useState('');
   const [oralDietCharacteristics, setOralDietCharacteristics] = useState('');
+  const [oralAdministrationRoute, setOralAdministrationRoute] = useState<'oral' | 'translactation'>('oral');
+  const [oralDeliveryMethod, setOralDeliveryMethod] = useState<'cup' | 'baby-bottle' | 'feeding-bottle'>('cup');
   const [oralMealsPerDay, setOralMealsPerDay] = useState<number>(6);
   const [oralSpeechTherapy, setOralSpeechTherapy] = useState(false);
   const [oralNeedsThickener, setOralNeedsThickener] = useState(false);
   const [oralSafeConsistency, setOralSafeConsistency] = useState('');
+  const [oralThickenerProduct, setOralThickenerProduct] = useState('');
+  const [oralThickenerVolume, setOralThickenerVolume] = useState('');
+  const [oralThickenerTimes, setOralThickenerTimes] = useState<string[]>([]);
   const [oralEstimatedVET, setOralEstimatedVET] = useState<number>(0);
   const [oralEstimatedProtein, setOralEstimatedProtein] = useState<number>(0);
   const [oralHasTherapy, setOralHasTherapy] = useState(false);
@@ -127,13 +367,28 @@ const PrescriptionNew = () => {
 
   const parenteralPerKg = useMemo(() => {
     const w = selectedPatient?.weight || 0;
-    if (!w) return { kcal: 0, amino: 0, lipids: 0, glucose: 0 };
-    return { kcal: parenteralVET / w, amino: parenteralAminoacids / w, lipids: parenteralLipids / w, glucose: parenteralGlucose / w };
+    if (!w) return { kcal: 0, amino: 0, lipids: 0, glucose: 0, tig: 0 };
+    return {
+      kcal: parenteralVET / w,
+      amino: parenteralAminoacids / w,
+      lipids: parenteralLipids / w,
+      glucose: parenteralGlucose / w,
+      tig: (parenteralGlucose * 1000) / (w * 1440),
+    };
   }, [parenteralVET, parenteralAminoacids, parenteralLipids, parenteralGlucose, selectedPatient?.weight]);
 
   // --- DB hooks for oral supplements ---
   const { formulas: dbFormulas } = useFormulas();
   const { modules: dbModules } = useDbModules();
+  const { supplies } = useSupplies();
+  const availableFormulas = useMemo<ExtendedCatalogFormula[]>(
+    () => mergeFormulasWithCatalog(dbFormulas, staticFormulas),
+    [dbFormulas, staticFormulas],
+  );
+  const availableModules = useMemo(
+    () => mergeModulesWithCatalog(dbModules, staticModules),
+    [dbModules, staticModules],
+  );
 
   const ORAL_MEAL_SCHEDULES = useMemo(() => [
     { key: 'breakfast', label: 'Desjejum' },
@@ -144,38 +399,137 @@ const PrescriptionNew = () => {
     { key: 'supper', label: 'Ceia' },
   ], []);
 
+  const suggestedAgeGroup = useMemo(() => getSuggestedAgeGroup(selectedPatient), [selectedPatient]);
+  const suggestedAgeGroupLabel = suggestedAgeGroup === "infant"
+    ? "Infantil"
+    : suggestedAgeGroup === "pediatric"
+      ? "Pediatrico"
+      : suggestedAgeGroup === "adult"
+        ? "Adulto"
+        : null;
+
+  const formulaMatchesPatient = useCallback((formula: ExtendedCatalogFormula) => {
+    if (!formula.ageGroup || !suggestedAgeGroup) return true;
+    return formula.ageGroup === suggestedAgeGroup;
+  }, [suggestedAgeGroup]);
+
+  const enteralAvailableClosedFormulas = useMemo(() => {
+    return availableFormulas.filter((formula) =>
+      (formula.systemType === "closed" || formula.systemType === "both")
+      && formulaMatchesPatient(formula)
+      && (!formula.administrationRoutes || formula.administrationRoutes.includes("enteral")),
+    );
+  }, [availableFormulas, formulaMatchesPatient]);
+
+  const enteralAvailableOpenFormulas = useMemo(() => {
+    return availableFormulas.filter((formula) =>
+      (formula.systemType === "open" || formula.systemType === "both")
+      && formulaMatchesPatient(formula)
+      && (!formula.administrationRoutes || formula.administrationRoutes.includes("enteral")),
+    );
+  }, [availableFormulas, formulaMatchesPatient]);
+
   const oralAvailableSupplements = useMemo(() => {
-    return dbFormulas.filter(f => f.type === 'standard' || f.type === 'high-protein' || f.type === 'high-calorie' || f.type === 'oral-supplement' || f.type === 'infant-formula');
-  }, [dbFormulas]);
+    return availableFormulas.filter((formula) =>
+      [
+        "standard",
+        "high-protein",
+        "high-calorie",
+        "diabetic",
+        "renal",
+        "fiber",
+        "immune",
+        "peptide",
+        "oral-supplement",
+        "infant-formula",
+      ].includes(formula.type)
+      && formulaMatchesPatient(formula)
+      && (
+        !formula.administrationRoutes
+        || formula.administrationRoutes.includes(oralAdministrationRoute)
+        || (oralAdministrationRoute === "translactation" && formula.administrationRoutes.includes("oral"))
+      ),
+    );
+  }, [availableFormulas, formulaMatchesPatient, oralAdministrationRoute]);
+
+  const thickenerSupplies = useMemo(
+    () => supplies.filter((supply) => supply.category === "thickener" && supply.isActive !== false),
+    [supplies],
+  );
+
+  const shouldShowInfantFeedingControls = useMemo(() => {
+    if (suggestedAgeGroup === "infant") return true;
+    return oralSupplements.some((supplement) => {
+      const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
+      return formula?.type === "infant-formula" || formula?.ageGroup === "infant";
+    });
+  }, [availableFormulas, oralSupplements, suggestedAgeGroup]);
 
   // Oral totals
   const oralTotals = useMemo(() => {
     let kcal = oralEstimatedVET;
     let protein = oralEstimatedProtein;
+    let carbs = 0;
+    let fat = 0;
+    let fiber = 0;
+    let freeWater = 0;
+    let sodium = 0;
+    let potassium = 0;
+    let calcium = 0;
+    let phosphorus = 0;
+
     oralSupplements.forEach(sup => {
-      const formula = dbFormulas.find(f => f.id === sup.supplementId);
+      const formula = availableFormulas.find(f => f.id === sup.supplementId);
       if (!formula) return;
       const timesPerDay = Object.values(sup.schedules).filter(v => v === true).length;
       const volumePerServing = sup.amount || 200;
       const factor = (volumePerServing * timesPerDay) / 100;
-      kcal += (formula.caloriesPerUnit || 0) * factor;
-      protein += (formula.proteinPerUnit || 0) * factor;
+      kcal += (formula.composition.calories || 0) * factor;
+      protein += (formula.composition.protein || 0) * factor;
+      carbs += (formula.composition.carbohydrates || 0) * factor;
+      fat += (formula.composition.fat || 0) * factor;
+      fiber += (formula.composition.fiber || 0) * factor;
+      freeWater += volumePerServing * timesPerDay * ((formula.composition.waterContent || 0) / 100);
+      sodium += (formula.composition.sodium || 0) * factor;
+      potassium += (formula.composition.potassium || 0) * factor;
+      calcium += (formula.composition.calcium || 0) * factor;
+      phosphorus += (formula.composition.phosphorus || 0) * factor;
     });
     oralTherapyModules.forEach(om => {
-      const mod = dbModules.find(m => m.id === om.moduleId);
+      const mod = availableModules.find(m => m.id === om.moduleId);
       if (!mod) return;
       const timesPerDay = Object.values(om.schedules).filter(v => v === true).length;
       const amount = om.amount || mod.referenceAmount || 1;
       const factor = mod.referenceAmount ? (amount / mod.referenceAmount) : amount;
       kcal += (mod.calories || 0) * timesPerDay * factor;
       protein += (mod.protein || 0) * timesPerDay * factor;
+      carbs += (mod.carbs || 0) * timesPerDay * factor;
+      fat += (mod.fat || 0) * timesPerDay * factor;
+      fiber += (mod.fiber || 0) * timesPerDay * factor;
+      freeWater += (mod.freeWater || 0) * timesPerDay * factor;
+      sodium += (mod.sodium || 0) * timesPerDay * factor;
+      potassium += (mod.potassium || 0) * timesPerDay * factor;
+      calcium += ((mod as any).calcium || 0) * timesPerDay * factor;
+      phosphorus += ((mod as any).phosphorus || 0) * timesPerDay * factor;
     });
+    if (oralNeedsThickener && oralThickenerVolume && oralThickenerTimes.length > 0) {
+      freeWater += (parseFloat(oralThickenerVolume) || 0) * oralThickenerTimes.length;
+    }
     return {
-      kcal, protein,
+      kcal,
+      protein,
+      carbs,
+      fat,
+      fiber,
+      freeWater,
+      sodium,
+      potassium,
+      calcium,
+      phosphorus,
       kcalPerKg: selectedPatient?.weight ? kcal / selectedPatient.weight : 0,
       proteinPerKg: selectedPatient?.weight ? protein / selectedPatient.weight : 0,
     };
-  }, [oralEstimatedVET, oralEstimatedProtein, oralSupplements, oralTherapyModules, dbFormulas, dbModules, selectedPatient]);
+  }, [oralEstimatedVET, oralEstimatedProtein, oralSupplements, oralTherapyModules, availableFormulas, availableModules, selectedPatient, oralNeedsThickener, oralThickenerVolume, oralThickenerTimes]);
 
   // Oral supplement handlers
   const addOralSupplement = () => {
@@ -186,7 +540,7 @@ const PrescriptionNew = () => {
   const updateOralSupplement = (i: number, field: string, value: any) => {
     const updated = [...oralSupplements];
     if (field === 'supplementId') {
-      const formula = dbFormulas.find(f => f.id === value);
+      const formula = availableFormulas.find(f => f.id === value);
       updated[i] = { ...updated[i], supplementId: value, supplementName: formula?.name || '' };
     } else if (field === 'amount') {
       updated[i] = { ...updated[i], amount: value ? parseFloat(value) : undefined };
@@ -207,7 +561,7 @@ const PrescriptionNew = () => {
   const updateOralModule = (i: number, field: string, value: any) => {
     const updated = [...oralTherapyModules];
     if (field === 'moduleId') {
-      const mod = dbModules.find(m => m.id === value);
+      const mod = availableModules.find(m => m.id === value);
       updated[i] = { ...updated[i], moduleId: value, moduleName: mod?.name || '' };
     } else if (field === 'amount') {
       updated[i] = { ...updated[i], amount: value ? parseFloat(value) : undefined };
@@ -218,6 +572,31 @@ const PrescriptionNew = () => {
     }
     setOralTherapyModules(updated);
   };
+
+  const toggleOralThickenerTime = (time: string) => {
+    setOralThickenerTimes((current) =>
+      current.includes(time)
+        ? current.filter((item) => item !== time)
+        : [...current, time].sort(),
+    );
+  };
+
+  useEffect(() => {
+    if (!oralNeedsThickener) {
+      setOralThickenerProduct('');
+      setOralThickenerVolume('');
+      setOralThickenerTimes([]);
+    }
+  }, [oralNeedsThickener]);
+
+  useEffect(() => {
+    if (!shouldShowInfantFeedingControls && oralAdministrationRoute === "translactation") {
+      setOralAdministrationRoute("oral");
+    }
+    if (!shouldShowInfantFeedingControls) {
+      setOralDeliveryMethod("cup");
+    }
+  }, [oralAdministrationRoute, shouldShowInfantFeedingControls]);
 
   // --- DYNAMIC STEP DEFINITIONS ---
   const STEP_DEFS: { id: number; title: string; condition: () => boolean }[] = useMemo(() => [
@@ -245,91 +624,183 @@ const PrescriptionNew = () => {
     return idx > 0 ? activeSteps[idx - 1].id : current;
   };
 
-  const applyLoadedPrescription = useCallback((prescription: Prescription) => {
-    const isEnteral = prescription.therapyType === "enteral";
-    const isOral = prescription.therapyType === "oral";
-    const isParenteral = prescription.therapyType === "parenteral";
+  const applyLoadedPrescription = useCallback((prescription: Prescription, options?: { editMode?: boolean; resetRoutes?: boolean }) => {
+    const editMode = options?.editMode ?? false;
+    const resetRoutes = options?.resetRoutes ?? false;
 
-    setFeedingRoutes({
-      oral: isOral,
-      enteral: isEnteral,
-      parenteral: isParenteral,
-    });
-
-    setEnteralAccess(prescription.feedingRoute || "");
-    setSystemType(prescription.systemType || "");
-    setEditingPrescriptionId(prescription.id || null);
-    setEditingStartDate(prescription.startDate || null);
-
-    if (prescription.systemType === "closed") {
-      const firstFormula = prescription.formulas?.[0];
-      const bagQuantities = (firstFormula?.schedules || []).reduce((acc, time) => {
-        acc[time] = (acc[time] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
-
-      setClosedFormula({
-        formulaId: firstFormula?.formulaId || "",
-        infusionMode: prescription.infusionMode === "gravity" ? "gravity" : prescription.infusionMode === "pump" ? "pump" : "",
-        rate: prescription.infusionRateMlH ? String(prescription.infusionRateMlH) : "",
-        duration: prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : "",
-        bagQuantities,
+    if (resetRoutes) {
+      setFeedingRoutes({
+        oral: prescription.therapyType === "oral",
+        enteral: prescription.therapyType === "enteral",
+        parenteral: prescription.therapyType === "parenteral",
       });
-
-      setOpenInfusionMode("");
-      setOpenDurationPerStep("");
-      setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
     } else {
-      setOpenInfusionMode((prescription.infusionMode as "pump" | "gravity" | "bolus" | "") || "");
-      setOpenDurationPerStep(prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : "");
-      setOpenFormulas(
-        prescription.formulas && prescription.formulas.length > 0
-          ? prescription.formulas.map((formula, index) => ({
-            id: `loaded-formula-${index + 1}`,
-            formulaId: formula.formulaId,
-            volume: formula.volume ? String(formula.volume) : "",
-            diluteTo: "",
-            times: formula.schedules || [],
-          }))
-          : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]
-      );
-
-      setClosedFormula({
-        formulaId: "",
-        infusionMode: "",
-        rate: "",
-        duration: "",
-        bagQuantities: {},
-      });
+      setFeedingRoutes((current) => ({
+        oral: current.oral || prescription.therapyType === "oral",
+        enteral: current.enteral || prescription.therapyType === "enteral",
+        parenteral: current.parenteral || prescription.therapyType === "parenteral",
+      }));
     }
 
-    setModules(
-      (prescription.modules || []).map((module, index) => {
-        return {
+    if (editMode) {
+      setEditingPrescriptionIds((current) => ({
+        ...current,
+        [prescription.therapyType]: prescription.id || null,
+      }));
+      setEditingStartDates((current) => ({
+        ...current,
+        [prescription.therapyType]: prescription.startDate || null,
+      }));
+    }
+
+    if (prescription.therapyType === "enteral") {
+      const enteralDetails = prescription.enteralDetails;
+      setEnteralAccess(enteralDetails?.access || prescription.feedingRoute || "");
+      setSystemType(enteralDetails?.systemType || prescription.systemType || "");
+
+      if ((enteralDetails?.systemType || prescription.systemType) === "closed") {
+        const firstFormula = prescription.formulas?.[0];
+        const bagQuantities = enteralDetails?.closedFormula?.bagQuantities || (firstFormula?.schedules || []).reduce((acc, time) => {
+          acc[time] = (acc[time] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        setClosedFormula({
+          formulaId: enteralDetails?.closedFormula?.formulaId || firstFormula?.formulaId || "",
+          infusionMode: enteralDetails?.closedFormula?.infusionMode || (prescription.infusionMode === "gravity" ? "gravity" : prescription.infusionMode === "pump" ? "pump" : ""),
+          rate: enteralDetails?.closedFormula?.rate || (prescription.infusionRateMlH ? String(prescription.infusionRateMlH) : ""),
+          duration: enteralDetails?.closedFormula?.duration || (prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : ""),
+          bagQuantities,
+        });
+
+        setOpenInfusionMode("");
+        setOpenDurationPerStep("");
+        setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
+      } else {
+        setOpenInfusionMode(enteralDetails?.infusionMode || (prescription.infusionMode as "pump" | "gravity" | "bolus" | "") || "");
+        setOpenDurationPerStep(enteralDetails?.openDurationPerStep || (prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : ""));
+        setOpenFormulas(
+          enteralDetails?.openFormulas && enteralDetails.openFormulas.length > 0
+            ? enteralDetails.openFormulas.map((formula, index) => ({
+              id: `loaded-formula-${index + 1}`,
+              formulaId: formula.formulaId || "",
+              volume: formula.volume || "",
+              diluteTo: formula.diluteTo || "",
+              times: formula.times || [],
+            }))
+            : prescription.formulas && prescription.formulas.length > 0
+            ? prescription.formulas.map((formula, index) => ({
+              id: `loaded-formula-${index + 1}`,
+              formulaId: formula.formulaId,
+              volume: formula.volume ? String(formula.volume) : "",
+              diluteTo: "",
+              times: formula.schedules || [],
+            }))
+            : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }],
+        );
+
+        setClosedFormula({
+          formulaId: "",
+          infusionMode: "",
+          rate: "",
+          duration: "",
+          bagQuantities: {},
+        });
+      }
+
+      setModules(
+        (enteralDetails?.modules || []).length > 0
+          ? (enteralDetails?.modules || []).map((module, index) => ({
+            id: `loaded-module-${index + 1}`,
+            moduleId: module.moduleId || "",
+            quantity: module.quantity || "",
+            unit: module.unit || "g",
+            times: module.times || [],
+          }))
+          : (prescription.modules || []).map((module, index) => ({
           id: `loaded-module-${index + 1}`,
           moduleId: module.moduleId,
           quantity: module.amount ? String(module.amount) : "",
           unit: module.unit || "g",
-          times:
-            module.schedules ||
-            SCHEDULE_TIMES.slice(0, Math.max(0, module.timesPerDay || 0)),
-        };
-      })
-    );
+          times: module.schedules || SCHEDULE_TIMES.slice(0, Math.max(0, module.timesPerDay || 0)),
+        })),
+      );
 
-    setHydration({
-      volume: prescription.hydrationVolume ? String(prescription.hydrationVolume) : "",
-      times: prescription.hydrationSchedules || [],
-    });
-
-    if (isEnteral) {
-      setCompletedSteps([1, 2, 3, 4, 5, 6, 7, 10]);
-      setCurrentStep(10);
-    } else {
-      setCompletedSteps([1, 2, 10]);
-      setCurrentStep(2);
+      setHydration({
+        volume: enteralDetails?.hydration?.volume || (prescription.hydrationVolume ? String(prescription.hydrationVolume) : ""),
+        times: enteralDetails?.hydration?.times || prescription.hydrationSchedules || [],
+      });
+      setEquipmentVolume(
+        enteralDetails?.equipmentVolume
+          ? String(enteralDetails.equipmentVolume)
+          : prescription.equipmentVolume
+            ? String(prescription.equipmentVolume)
+            : "",
+      );
     }
-  }, []);
+
+    if (prescription.therapyType === "oral") {
+      const oralDetails = prescription.oralDetails;
+      setOralAdministrationRoute(oralDetails?.administrationRoute || "oral");
+      setOralDeliveryMethod(oralDetails?.deliveryMethod || "cup");
+      setOralDietConsistency(oralDetails?.dietConsistency || "");
+      setOralDietCharacteristics(oralDetails?.dietCharacteristics || "");
+      setOralMealsPerDay(oralDetails?.mealsPerDay || 6);
+      setOralSpeechTherapy(Boolean(oralDetails?.speechTherapy));
+      setOralNeedsThickener(Boolean(oralDetails?.needsThickener));
+      setOralSafeConsistency(oralDetails?.safeConsistency || "");
+      setOralThickenerProduct(oralDetails?.thickenerProduct || "");
+      setOralThickenerVolume(oralDetails?.thickenerVolume ? String(oralDetails.thickenerVolume) : "");
+      setOralThickenerTimes(oralDetails?.thickenerTimes || []);
+      setOralEstimatedVET(oralDetails?.estimatedVET ?? prescription.totalCalories ?? 0);
+      setOralEstimatedProtein(oralDetails?.estimatedProtein ?? prescription.totalProtein ?? 0);
+      setOralHasTherapy(Boolean(oralDetails?.hasOralTherapy));
+      setOralObservations(oralDetails?.observations || "");
+      setOralSupplements(
+        (oralDetails?.supplements || []).length > 0
+          ? (oralDetails?.supplements || [])
+          : (prescription.formulas || []).map((formula) => ({
+          supplementId: formula.formulaId,
+          supplementName: formula.formulaName,
+          amount: formula.volume || 0,
+          unit: "ml",
+          schedules: (formula.schedules || []).reduce((acc, schedule) => {
+            const meal = ORAL_MEAL_SCHEDULES.find((entry) => entry.label === schedule || entry.key === schedule);
+            if (meal) acc[meal.key as keyof OralSupplementSchedule["schedules"]] = true;
+            return acc;
+          }, {} as OralSupplementSchedule["schedules"]),
+        })),
+      );
+      setOralTherapyModules(
+        (oralDetails?.modules || []).length > 0
+          ? (oralDetails?.modules || [])
+          : (prescription.modules || []).map((module) => ({
+          moduleId: module.moduleId,
+          moduleName: module.moduleName,
+          amount: module.amount || 0,
+          unit: module.unit || "g",
+          schedules: (module.schedules || []).reduce((acc, schedule) => {
+            const meal = ORAL_MEAL_SCHEDULES.find((entry) => entry.label === schedule || entry.key === schedule);
+            if (meal) acc[meal.key as keyof OralModuleSchedule["schedules"]] = true;
+            return acc;
+          }, {} as OralModuleSchedule["schedules"]),
+        })),
+      );
+    }
+
+    if (prescription.therapyType === "parenteral") {
+      const parenteralDetails = prescription.parenteralDetails;
+      setParenteralAccess(parenteralDetails?.access || (prescription.feedingRoute as "central" | "peripheral" | "picc") || "central");
+      setParenteralInfusionTime(Math.round(parenteralDetails?.infusionTime || prescription.infusionHoursPerDay || 24));
+      setParenteralAminoacids(parenteralDetails?.aminoacidsG ?? prescription.totalProtein ?? 0);
+      setParenteralLipids(parenteralDetails?.lipidsG ?? prescription.totalFat ?? 0);
+      setParenteralGlucose(parenteralDetails?.glucoseG ?? prescription.totalCarbs ?? 0);
+      setParenteralObservations(parenteralDetails?.observations || prescription.notes || "");
+    }
+
+    setCompletedSteps([1, 2]);
+    setCurrentStep(2);
+  }, [ORAL_MEAL_SCHEDULES]);
 
   // Load patient from URL
   useEffect(() => {
@@ -343,37 +814,95 @@ const PrescriptionNew = () => {
     }
   }, [patientId, patients, hydratedFromPrescription]);
 
+  const hydratePatientPrescriptions = useCallback((patientPrescriptions: Prescription[]) => {
+    if (patientPrescriptions.length === 0) return;
+
+    setFeedingRoutes({ oral: false, enteral: false, parenteral: false });
+    setEditingPrescriptionIds({ oral: null, enteral: null, parenteral: null });
+    setEditingStartDates({ oral: null, enteral: null, parenteral: null });
+
+    patientPrescriptions
+      .sort(sortByMostRecentStartDate)
+      .forEach((prescription, index) => {
+        applyLoadedPrescription(prescription, { editMode: true, resetRoutes: index === 0 });
+      });
+  }, [applyLoadedPrescription]);
+
   useEffect(() => {
-    if (hydratedFromPrescription || patients.length === 0 || prescriptions.length === 0) return;
+    const resolvedPatientId = selectedPatient?.id || patientId;
+    if (hydratedFromPrescription || patients.length === 0 || prescriptions.length === 0 || !resolvedPatientId) return;
 
-    let targetPrescription: Prescription | undefined;
-    if (prescriptionIdFromUrl) {
-      targetPrescription = prescriptions.find((p) => p.id === prescriptionIdFromUrl);
+    const targetPrescription = prescriptionIdFromUrl
+      ? prescriptions.find((prescription) => prescription.id === prescriptionIdFromUrl)
+      : undefined;
+
+    const patient = patients.find((currentPatient) =>
+      currentPatient.id === (targetPrescription?.patientId || resolvedPatientId),
+    );
+    if (!patient) return;
+
+    setSelectedPatient(patient);
+    setOralAdministrationRoute("oral");
+    setOralDeliveryMethod("cup");
+    setOralDietConsistency(patient.consistency || "");
+    setOralSafeConsistency(patient.safeConsistency || "");
+    setOralMealsPerDay(Number(patient.mealCount) || 6);
+      setOralDietCharacteristics(patient.observation || "");
+      setOralObservations(patient.observation || "");
+      setOralSpeechTherapy(Boolean(patient.safeConsistency));
+      setOralNeedsThickener(Boolean(patient.safeConsistency));
+      setEquipmentVolume("");
+      setOralThickenerProduct("");
+      setOralThickenerVolume("");
+      setOralThickenerTimes([]);
+
+    const activeOrReferencedPrescriptions = prescriptions.filter((prescription) =>
+      prescription.patientId === patient.id
+      && (
+        prescription.status === "active"
+        || prescription.id === prescriptionIdFromUrl
+      ),
+    );
+
+    if (activeOrReferencedPrescriptions.length > 0) {
+      hydratePatientPrescriptions(activeOrReferencedPrescriptions);
     }
 
-    if (!targetPrescription && patientId) {
-      targetPrescription =
-        prescriptions.find((p) => p.patientId === patientId && p.status === "active") ||
-        prescriptions.find((p) => p.patientId === patientId);
-    }
-
-    if (!targetPrescription) return;
-
-    const patient = patients.find((p) => p.id === targetPrescription!.patientId);
-    if (patient) {
-      setSelectedPatient(patient);
-    }
-
-    applyLoadedPrescription(targetPrescription);
     setHydratedFromPrescription(true);
-  }, [
-    hydratedFromPrescription,
-    patients,
-    prescriptions,
-    patientId,
-    prescriptionIdFromUrl,
-    applyLoadedPrescription,
-  ]);
+  }, [hydratedFromPrescription, patientId, selectedPatient?.id, patients, prescriptions, prescriptionIdFromUrl, hydratePatientPrescriptions]);
+
+  const latestPrescriptionsByType = useMemo(() => {
+    if (!selectedPatient?.id) return { enteral: undefined, oral: undefined, parenteral: undefined } as Record<TherapyType, Prescription | undefined>;
+
+    const patientPrescriptions = prescriptions
+      .filter((prescription) => prescription.patientId === selectedPatient.id)
+      .sort(sortByMostRecentStartDate);
+
+    return {
+      enteral: patientPrescriptions.find((prescription) => prescription.therapyType === "enteral"),
+      oral: patientPrescriptions.find((prescription) => prescription.therapyType === "oral"),
+      parenteral: patientPrescriptions.find((prescription) => prescription.therapyType === "parenteral"),
+    } satisfies Record<TherapyType, Prescription | undefined>;
+  }, [selectedPatient, prescriptions]);
+
+  const handleRepeatPrescription = (therapyType: TherapyType) => {
+    const sourcePrescription = latestPrescriptionsByType[therapyType];
+    if (!sourcePrescription) {
+      toast.error(`Nenhuma prescrição anterior de ${therapyType === "enteral" ? "terapia enteral" : therapyType === "oral" ? "via oral" : "nutrição parenteral"} encontrada.`);
+      return;
+    }
+
+    applyLoadedPrescription(sourcePrescription, { editMode: false });
+    setEditingPrescriptionIds((current) => ({
+      ...current,
+      [therapyType]: null,
+    }));
+    setEditingStartDates((current) => ({
+      ...current,
+      [therapyType]: null,
+    }));
+    toast.success("Dados da prescrição anterior carregados para repetição.");
+  };
 
   const completeStep = (step: number) => {
     if (!completedSteps.includes(step)) setCompletedSteps([...completedSteps, step]);
@@ -392,11 +921,24 @@ const PrescriptionNew = () => {
 
   // Nutrition calculations
   const nutritionSummary = useMemo(() => {
-    let totalCalories = 0, totalProtein = 0, totalFreeWater = 0;
+    let totalCalories = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+    let totalFiber = 0;
+    let totalFreeWater = 0;
+    let totalSodium = 0;
+    let totalPotassium = 0;
+    let totalCalcium = 0;
+    let totalPhosphorus = 0;
     let totalResiduePlastic = 0;
     let totalResiduePaper = 0;
     let totalResidueMetal = 0;
     let totalResidueGlass = 0;
+    const proteinSources = new Set<string>();
+    const carbSources = new Set<string>();
+    const fatSources = new Set<string>();
+    const fiberSources = new Set<string>();
 
     // --- ENTERAL totals (only when enteral is active) ---
     if (feedingRoutes.enteral) {
@@ -409,7 +951,18 @@ const PrescriptionNew = () => {
           const density = formula.composition.density || formula.composition.calories / 100;
           totalCalories += totalVolume * density;
           totalProtein += (totalVolume / 100) * formula.composition.protein;
+          totalCarbs += (totalVolume / 100) * (formula.composition.carbohydrates || 0);
+          totalFat += (totalVolume / 100) * (formula.composition.fat || 0);
+          totalFiber += (totalVolume / 100) * (formula.composition.fiber || 0);
           totalFreeWater += (totalVolume * (formula.composition.waterContent || 80)) / 100;
+          totalSodium += (totalVolume / 100) * (formula.composition.sodium || 0);
+          totalPotassium += (totalVolume / 100) * (formula.composition.potassium || 0);
+          totalCalcium += (totalVolume / 100) * (formula.composition.calcium || 0);
+          totalPhosphorus += (totalVolume / 100) * (formula.composition.phosphorus || 0);
+          if (formula.proteinSources) proteinSources.add(`${formula.name}: ${formula.proteinSources}`);
+          if (formula.carbSources) carbSources.add(`${formula.name}: ${formula.carbSources}`);
+          if (formula.fatSources) fatSources.add(`${formula.name}: ${formula.fatSources}`);
+          if (formula.fiberSources) fiberSources.add(`${formula.name}: ${formula.fiberSources}`);
           if (formula.residueInfo) {
             const factor = totalVolume / 1000;
             totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
@@ -428,7 +981,18 @@ const PrescriptionNew = () => {
             const density = formula.composition.density || formula.composition.calories / 100;
             totalCalories += totalVolume * density;
             totalProtein += (totalVolume / 100) * formula.composition.protein;
+            totalCarbs += (totalVolume / 100) * (formula.composition.carbohydrates || 0);
+            totalFat += (totalVolume / 100) * (formula.composition.fat || 0);
+            totalFiber += (totalVolume / 100) * (formula.composition.fiber || 0);
             totalFreeWater += (totalVolume * (formula.composition.waterContent || 80)) / 100;
+            totalSodium += (totalVolume / 100) * (formula.composition.sodium || 0);
+            totalPotassium += (totalVolume / 100) * (formula.composition.potassium || 0);
+            totalCalcium += (totalVolume / 100) * (formula.composition.calcium || 0);
+            totalPhosphorus += (totalVolume / 100) * (formula.composition.phosphorus || 0);
+            if (formula.proteinSources) proteinSources.add(`${formula.name}: ${formula.proteinSources}`);
+            if (formula.carbSources) carbSources.add(`${formula.name}: ${formula.carbSources}`);
+            if (formula.fatSources) fatSources.add(`${formula.name}: ${formula.fatSources}`);
+            if (formula.fiberSources) fiberSources.add(`${formula.name}: ${formula.fiberSources}`);
             if (formula.residueInfo) {
               const factor = totalVolume / 1000;
               totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
@@ -446,7 +1010,27 @@ const PrescriptionNew = () => {
           const totalQty = parseFloat(mod.quantity) * mod.times.length;
           totalCalories += totalQty * module.density;
           const proteinRatio = (module.protein > 0 && module.referenceAmount > 0) ? (module.protein / module.referenceAmount) : 0;
+          const carbRatio = (module.carbs && module.referenceAmount > 0) ? (module.carbs / module.referenceAmount) : 0;
+          const fatRatio = (module.fat && module.referenceAmount > 0) ? (module.fat / module.referenceAmount) : 0;
+          const fiberRatio = (module.fiber > 0 && module.referenceAmount > 0) ? (module.fiber / module.referenceAmount) : 0;
+          const waterRatio = (module.freeWater > 0 && module.referenceAmount > 0) ? (module.freeWater / module.referenceAmount) : 0;
+          const sodiumRatio = (module.sodium > 0 && module.referenceAmount > 0) ? (module.sodium / module.referenceAmount) : 0;
+          const potassiumRatio = (module.potassium > 0 && module.referenceAmount > 0) ? (module.potassium / module.referenceAmount) : 0;
+          const calciumRatio = ((module as any).calcium && module.referenceAmount > 0) ? ((module as any).calcium / module.referenceAmount) : 0;
+          const phosphorusRatio = ((module as any).phosphorus && module.referenceAmount > 0) ? ((module as any).phosphorus / module.referenceAmount) : 0;
           totalProtein += totalQty * proteinRatio;
+          totalCarbs += totalQty * carbRatio;
+          totalFat += totalQty * fatRatio;
+          totalFiber += totalQty * fiberRatio;
+          totalFreeWater += totalQty * waterRatio;
+          totalSodium += totalQty * sodiumRatio;
+          totalPotassium += totalQty * potassiumRatio;
+          totalCalcium += totalQty * calciumRatio;
+          totalPhosphorus += totalQty * phosphorusRatio;
+          if ((module as any).proteinSources) proteinSources.add(`${module.name}: ${(module as any).proteinSources}`);
+          if ((module as any).carbSources) carbSources.add(`${module.name}: ${(module as any).carbSources}`);
+          if ((module as any).fatSources) fatSources.add(`${module.name}: ${(module as any).fatSources}`);
+          if ((module as any).fiberSources) fiberSources.add(`${module.name}: ${(module as any).fiberSources}`);
         }
       });
 
@@ -459,22 +1043,54 @@ const PrescriptionNew = () => {
     if (feedingRoutes.oral) {
       totalCalories += oralTotals.kcal;
       totalProtein += oralTotals.protein;
+      totalCarbs += oralTotals.carbs;
+      totalFat += oralTotals.fat;
+      totalFiber += oralTotals.fiber;
+      totalFreeWater += oralTotals.freeWater;
+      totalSodium += oralTotals.sodium;
+      totalPotassium += oralTotals.potassium;
+      totalCalcium += oralTotals.calcium;
+      totalPhosphorus += oralTotals.phosphorus;
     }
 
     // --- PARENTERAL totals (add to enteral if both active) ---
     if (feedingRoutes.parenteral) {
       totalCalories += parenteralVET;
       totalProtein += parenteralAminoacids; // aminoacids in grams of protein
+      totalCarbs += parenteralGlucose;
+      totalFat += parenteralLipids;
     }
 
     const weight = selectedPatient?.weight || 70;
+    const proteinKcal = totalProtein * 4;
+    const carbKcal = totalCarbs * 4;
+    const fatKcal = totalFat * 9;
+    const macroKcal = proteinKcal + carbKcal + fatKcal;
     return {
       vet: Math.round(totalCalories),
       vetPerKg: Math.round((totalCalories / weight) * 10) / 10,
       protein: Math.round(totalProtein * 10) / 10,
       proteinPerKg: Math.round((totalProtein / weight) * 10) / 10,
+      carbs: Math.round(totalCarbs * 10) / 10,
+      carbsPerKg: Math.round((totalCarbs / weight) * 10) / 10,
+      fat: Math.round(totalFat * 10) / 10,
+      fatPerKg: Math.round((totalFat / weight) * 10) / 10,
+      fiber: Math.round(totalFiber * 10) / 10,
       freeWater: Math.round(totalFreeWater),
       freeWaterPerKg: Math.round((totalFreeWater / weight) * 10) / 10,
+      sodium: Math.round(totalSodium * 10) / 10,
+      potassium: Math.round(totalPotassium * 10) / 10,
+      calcium: Math.round(totalCalcium * 10) / 10,
+      phosphorus: Math.round(totalPhosphorus * 10) / 10,
+      proteinPct: macroKcal > 0 ? Math.round((proteinKcal / macroKcal) * 1000) / 10 : 0,
+      carbPct: macroKcal > 0 ? Math.round((carbKcal / macroKcal) * 1000) / 10 : 0,
+      fatPct: macroKcal > 0 ? Math.round((fatKcal / macroKcal) * 1000) / 10 : 0,
+      sources: {
+        protein: Array.from(proteinSources),
+        carbs: Array.from(carbSources),
+        fat: Array.from(fatSources),
+        fiber: Array.from(fiberSources),
+      },
       residues: {
         plastic: Math.round(totalResiduePlastic * 10) / 10,
         paper: Math.round(totalResiduePaper * 10) / 10,
@@ -483,7 +1099,7 @@ const PrescriptionNew = () => {
       },
       residueTotal: Math.round((totalResiduePlastic + totalResiduePaper + totalResidueMetal + totalResidueGlass) * 10) / 10,
     };
-  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, oralTotals, parenteralVET, parenteralAminoacids]);
+  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, oralTotals, parenteralVET, parenteralAminoacids, parenteralGlucose, parenteralLipids]);
 
   const bmi = useMemo(() => {
     if (!selectedPatient?.weight || !selectedPatient?.height) return null;
@@ -496,6 +1112,54 @@ const PrescriptionNew = () => {
     const heightM = selectedPatient.height / 100;
     return 25 * heightM * heightM;
   }, [selectedPatient]);
+
+  const sidebarSummary = useMemo(() => {
+    if (currentStep === 8 && feedingRoutes.oral) {
+      return {
+        title: "Resumo da via oral",
+        calories: oralTotals.kcal.toFixed(0),
+        caloriesPerKg: oralTotals.kcalPerKg.toFixed(1),
+        protein: oralTotals.protein.toFixed(1),
+        proteinPerKg: oralTotals.proteinPerKg.toFixed(2),
+        freeWater: "-",
+        residues: "-",
+      };
+    }
+
+    if (currentStep === 9 && feedingRoutes.parenteral) {
+      return {
+        title: "Resumo da parenteral",
+        calories: parenteralVET.toFixed(0),
+        caloriesPerKg: parenteralPerKg.kcal.toFixed(1),
+        protein: parenteralAminoacids.toFixed(1),
+        proteinPerKg: parenteralPerKg.amino.toFixed(2),
+        freeWater: "-",
+        residues: "-",
+      };
+    }
+
+    if (feedingRoutes.enteral) {
+      return {
+        title: currentStep === 10 ? "Resumo das vias selecionadas" : "Resumo da enteral",
+        calories: String(nutritionSummary.vet),
+        caloriesPerKg: String(nutritionSummary.vetPerKg),
+        protein: `${nutritionSummary.protein}`,
+        proteinPerKg: String(nutritionSummary.proteinPerKg),
+        freeWater: `${nutritionSummary.freeWater}ml`,
+        residues: `${nutritionSummary.residueTotal.toFixed(1)}g`,
+      };
+    }
+
+    return {
+      title: "Resumo da prescrição",
+      calories: String(nutritionSummary.vet),
+      caloriesPerKg: String(nutritionSummary.vetPerKg),
+      protein: `${nutritionSummary.protein}`,
+      proteinPerKg: String(nutritionSummary.proteinPerKg),
+      freeWater: `${nutritionSummary.freeWater}ml`,
+      residues: feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-",
+    };
+  }, [currentStep, feedingRoutes, oralTotals, parenteralVET, parenteralPerKg, parenteralAminoacids, nutritionSummary]);
 
   // Bag calculation (closed system)
   const bagCalculation = useMemo(() => {
@@ -551,27 +1215,12 @@ const PrescriptionNew = () => {
     const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
 
     if (!resolvedHospitalId) {
-      toast.error("Hospital da sessão não identificado. Refaça o login.");
+      toast.error("Unidade da sessão não identificada. Refaça o login.");
       return;
     }
 
     setIsSaving(true);
     try {
-      // Montar objeto da prescricao
-      // Determine therapyType based on active routes
-      const therapyType: 'enteral' | 'oral' | 'parenteral' =
-        feedingRoutes.enteral ? 'enteral' : feedingRoutes.oral ? 'oral' : 'parenteral';
-
-      // Build notes with oral and parenteral data
-      const notesParts: string[] = [];
-      if (feedingRoutes.oral) {
-        notesParts.push(`[ORAL] Consist\u00eancia: ${oralDietConsistency || '-'} | Refei\u00e7\u00f5es: ${oralMealsPerDay}/dia | Caracter\u00edsticas: ${oralDietCharacteristics || '-'} | Fono: ${oralSpeechTherapy ? 'Sim' : 'N\u00e3o'} | VET oral: ${oralTotals.kcal.toFixed(0)}kcal | Prot oral: ${oralTotals.protein.toFixed(1)}g | Obs: ${oralObservations || '-'}`);
-      }
-      if (feedingRoutes.parenteral) {
-        notesParts.push(`[PARENTERAL] Acesso: ${parenteralAccess} | Infus\u00e3o: ${parenteralInfusionTime}h | VET: ${parenteralVET.toFixed(0)}kcal | Amino: ${parenteralAminoacids}g | Lip: ${parenteralLipids}g | Glic: ${parenteralGlucose}g | Obs: ${parenteralObservations || '-'}`);
-      }
-
-      // Only include enteral formulas/modules/hydration if enteral is active
       const enteralFormulas = feedingRoutes.enteral
         ? (systemType === 'closed' && closedFormula.formulaId ? [{
           formulaId: closedFormula.formulaId,
@@ -599,7 +1248,43 @@ const PrescriptionNew = () => {
         }))
         : [];
 
-      const prescriptionData = {
+      const mealLabelByKey = Object.fromEntries(ORAL_MEAL_SCHEDULES.map((entry) => [entry.key, entry.label]));
+      const oralFormulas = feedingRoutes.oral
+        ? oralSupplements
+          .filter((supplement) => supplement.supplementId)
+          .map((supplement) => {
+            const activeSchedules = Object.entries(supplement.schedules || {})
+              .filter(([, enabled]) => enabled === true)
+              .map(([key]) => mealLabelByKey[key] || key);
+            return {
+              formulaId: supplement.supplementId,
+              formulaName: supplement.supplementName,
+              volume: supplement.amount || 0,
+              timesPerDay: activeSchedules.length,
+              schedules: activeSchedules,
+            };
+          })
+        : [];
+
+      const oralModulesPayload = feedingRoutes.oral
+        ? oralTherapyModules
+          .filter((module) => module.moduleId)
+          .map((module) => {
+            const activeSchedules = Object.entries(module.schedules || {})
+              .filter(([, enabled]) => enabled === true)
+              .map(([key]) => mealLabelByKey[key] || key);
+            return {
+              moduleId: module.moduleId,
+              moduleName: module.moduleName,
+              amount: module.amount || 0,
+              timesPerDay: activeSchedules.length,
+              schedules: activeSchedules,
+              unit: module.unit || "g",
+            };
+          })
+        : [];
+
+      const basePrescriptionData = {
         hospitalId: resolvedHospitalId,
         professionalId: sessionProfessionalId,
         patientId: selectedPatient.id,
@@ -607,31 +1292,160 @@ const PrescriptionNew = () => {
         patientRecord: selectedPatient.record,
         patientBed: selectedPatient.bed,
         patientWard: selectedPatient.ward,
-        therapyType,
-        systemType: (feedingRoutes.enteral ? systemType || 'open' : 'open') as 'open' | 'closed',
-        feedingRoute: feedingRoutes.enteral ? enteralAccess || undefined : undefined,
-        infusionMode: feedingRoutes.enteral ? (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) as 'pump' | 'gravity' | 'bolus' | undefined : undefined,
-        infusionRateMlH: feedingRoutes.enteral && systemType === 'closed' ? parseFloat(closedFormula.rate) || undefined : undefined,
-        infusionHoursPerDay: feedingRoutes.enteral && systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : undefined,
-        formulas: enteralFormulas,
-        modules: enteralModules,
-        hydrationVolume: feedingRoutes.enteral ? parseFloat(hydration.volume) || undefined : undefined,
-        hydrationSchedules: feedingRoutes.enteral && hydration.times.length > 0 ? hydration.times : undefined,
-        totalCalories: nutritionSummary.vet,
-        totalProtein: nutritionSummary.protein,
-        totalFreeWater: nutritionSummary.freeWater,
-        notes: notesParts.length > 0 ? notesParts.join(' | ') : undefined,
         status: 'active' as const,
-        startDate: editingStartDate || new Date().toISOString().split('T')[0]
       };
 
-      if (editingPrescriptionId) {
-        await updatePrescription(editingPrescriptionId, prescriptionData);
-        toast.success("Prescrição atualizada com sucesso!");
-      } else {
-        await createPrescription(prescriptionData);
-        toast.success("Prescrição salva com sucesso!");
+      const today = new Date().toISOString().split('T')[0];
+      const persistPrescription = async (therapyType: TherapyType, data: Record<string, unknown>) => {
+        const payload = {
+          ...basePrescriptionData,
+          ...data,
+          therapyType,
+          startDate: editingStartDates[therapyType] || today,
+        };
+
+        if (editingPrescriptionIds[therapyType]) {
+          await updatePrescription(editingPrescriptionIds[therapyType] as string, payload);
+          return;
+        }
+
+        await createPrescription(payload as Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>);
+      };
+
+      const savedRoutes: string[] = [];
+
+      if (feedingRoutes.enteral) {
+        await persistPrescription("enteral", {
+          systemType: systemType || 'open',
+          feedingRoute: enteralAccess || undefined,
+          infusionMode: (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) || undefined,
+          infusionRateMlH: systemType === 'closed' ? parseFloat(closedFormula.rate) || undefined : undefined,
+          infusionHoursPerDay: systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : parseFloat(openDurationPerStep) || undefined,
+          equipmentVolume: systemType === 'open' ? parseFloat(equipmentVolume) || undefined : undefined,
+          formulas: enteralFormulas,
+          modules: enteralModules,
+          hydrationVolume: parseFloat(hydration.volume) || undefined,
+          hydrationSchedules: hydration.times.length > 0 ? hydration.times : undefined,
+          totalCalories: nutritionSummary.vet,
+          totalProtein: nutritionSummary.protein,
+          totalCarbs: nutritionSummary.carbs,
+          totalFat: nutritionSummary.fat,
+          totalFiber: nutritionSummary.fiber,
+          totalFreeWater: nutritionSummary.freeWater,
+          enteralDetails: {
+            access: enteralAccess || undefined,
+            systemType: systemType || undefined,
+            infusionMode: (systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || undefined,
+            equipmentVolume: systemType === "open" ? parseFloat(equipmentVolume) || undefined : undefined,
+            openDurationPerStep: openDurationPerStep || undefined,
+            closedFormula: systemType === "closed"
+              ? {
+                formulaId: closedFormula.formulaId || undefined,
+                infusionMode: closedFormula.infusionMode || undefined,
+                rate: closedFormula.rate || undefined,
+                duration: closedFormula.duration || undefined,
+                bagQuantities: closedFormula.bagQuantities,
+              }
+              : undefined,
+            openFormulas: systemType === "open"
+              ? openFormulas.map((formula) => ({
+                formulaId: formula.formulaId || undefined,
+                volume: formula.volume || undefined,
+                diluteTo: formula.diluteTo || undefined,
+                times: formula.times,
+              }))
+              : undefined,
+            modules: modules.map((module) => ({
+              moduleId: module.moduleId || undefined,
+              quantity: module.quantity || undefined,
+              unit: module.unit,
+              times: module.times,
+            })),
+            hydration: {
+              volume: hydration.volume || undefined,
+              times: hydration.times,
+            },
+          },
+          notes: `TNE: ${systemType === "closed" ? "sistema fechado" : "sistema aberto"} | Acesso: ${enteralAccess || "-"} | Infusão: ${(systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || "-"} | Volume para equipo: ${systemType === "open" ? (equipmentVolume || "-") : "n/a"} ml`,
+        });
+        savedRoutes.push("TNE");
       }
+
+      if (feedingRoutes.oral) {
+        await persistPrescription("oral", {
+          systemType: "open",
+          feedingRoute: "oral",
+          formulas: oralFormulas,
+          modules: oralModulesPayload,
+          totalCalories: oralTotals.kcal,
+          totalProtein: oralTotals.protein,
+          oralDetails: {
+            administrationRoute: oralAdministrationRoute,
+            deliveryMethod: shouldShowInfantFeedingControls ? oralDeliveryMethod : undefined,
+            dietConsistency: oralDietConsistency || undefined,
+            dietCharacteristics: oralDietCharacteristics || undefined,
+            mealsPerDay: oralMealsPerDay,
+            speechTherapy: oralSpeechTherapy,
+            needsThickener: oralNeedsThickener,
+            safeConsistency: oralSafeConsistency || undefined,
+            thickenerProduct: oralNeedsThickener ? oralThickenerProduct || undefined : undefined,
+            thickenerVolume: oralNeedsThickener ? parseFloat(oralThickenerVolume) || undefined : undefined,
+            thickenerTimes: oralNeedsThickener && oralThickenerTimes.length > 0 ? oralThickenerTimes : undefined,
+            estimatedVET: oralEstimatedVET || undefined,
+            estimatedProtein: oralEstimatedProtein || undefined,
+            hasOralTherapy: oralHasTherapy,
+            supplements: oralSupplements,
+            modules: oralTherapyModules,
+            observations: oralObservations || undefined,
+          },
+          notes: `Via oral: ${oralAdministrationRoute === "translactation" ? "Translactacao" : "Oral"}${shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""} | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Volume de agua: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
+        });
+        savedRoutes.push("Via oral");
+      }
+
+      if (feedingRoutes.parenteral) {
+        await persistPrescription("parenteral", {
+          systemType: "open",
+          feedingRoute: parenteralAccess,
+          infusionHoursPerDay: parenteralInfusionTime,
+          totalCalories: parenteralVET,
+          totalProtein: parenteralAminoacids,
+          totalCarbs: parenteralGlucose,
+          totalFat: parenteralLipids,
+          parenteralDetails: {
+            access: parenteralAccess,
+            infusionTime: parenteralInfusionTime,
+            aminoacidsG: parenteralAminoacids,
+            lipidsG: parenteralLipids,
+            glucoseG: parenteralGlucose,
+            vetKcal: parenteralVET,
+            tigMgKgMin: parenteralPerKg.tig || undefined,
+            observations: parenteralObservations || undefined,
+          },
+          notes: parenteralObservations || `Acesso: ${parenteralAccess} | Infusao: ${parenteralInfusionTime}h | TIG: ${parenteralPerKg.tig.toFixed(2)} mg/kg/min`,
+        });
+        savedRoutes.push("TNP");
+      }
+
+      try {
+        await updatePatient(selectedPatient.id, {
+          name: selectedPatient.name,
+          record: selectedPatient.record,
+          dob: selectedPatient.dob,
+          bed: selectedPatient.bed,
+          ward: selectedPatient.ward,
+          hospitalId: selectedPatient.hospitalId,
+          nutritionType: feedingRoutes.enteral ? "enteral" : feedingRoutes.oral ? "oral" : feedingRoutes.parenteral ? "parenteral" : selectedPatient.nutritionType,
+          consistency: feedingRoutes.oral ? oralDietConsistency || undefined : selectedPatient.consistency,
+          safeConsistency: feedingRoutes.oral && oralSpeechTherapy ? oralSafeConsistency || undefined : undefined,
+          mealCount: feedingRoutes.oral ? oralMealsPerDay : selectedPatient.mealCount,
+          observation: feedingRoutes.oral ? oralDietCharacteristics || selectedPatient.observation : selectedPatient.observation,
+        });
+      } catch (patientSyncError) {
+        console.error("Erro ao sincronizar dados resumidos do paciente:", patientSyncError);
+      }
+
+      toast.success(`Prescrição salva com sucesso para: ${savedRoutes.join(", ")}.`);
       navigate("/dashboard");
     } catch (error) {
       console.error('Erro ao salvar prescrição:', error);
@@ -646,7 +1460,7 @@ const PrescriptionNew = () => {
   };
 
   const StepIndicator = ({ step, title, isActive, isCompleted }: { step: number; title: string; isActive: boolean; isCompleted: boolean }) => (
-    <div className={`flex items-center gap-3 p-3 rounded-lg transition-all cursor-pointer ${isActive ? "bg-primary/10 border-2 border-primary" : isCompleted ? "bg-green-50 border border-green-200" : "bg-muted/50"}`} onClick={() => isCompleted && setCurrentStep(step)}>
+    <div className={`flex min-w-[220px] shrink-0 items-center gap-3 p-3 rounded-lg transition-all cursor-pointer lg:min-w-0 ${isActive ? "bg-primary/10 border-2 border-primary" : isCompleted ? "bg-green-50 border border-green-200" : "bg-muted/50"}`} onClick={() => isCompleted && setCurrentStep(step)}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isActive ? "bg-primary text-white" : isCompleted ? "bg-green-500 text-white" : "bg-muted-foreground/20"}`}>
         {isCompleted ? <Check className="h-4 w-4" /> : step}
       </div>
@@ -658,23 +1472,25 @@ const PrescriptionNew = () => {
     <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background pb-20">
       <Header />
       <div className="container mx-auto px-4 py-6 space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button variant="ghost" size="icon" onClick={() => navigate(-1)}><ArrowLeft className="h-5 w-5" /></Button>
           <div>
-            <h1 className="text-3xl font-bold">Prescrição de Dietas</h1>
+            <h1 className="text-2xl font-bold sm:text-3xl">Prescrição de Dietas</h1>
             <p className="text-muted-foreground">
               Prescrição nutricional passo a passo
-              {editingPrescriptionId ? " - modo edição ativa" : ""}
+              {Object.values(editingPrescriptionIds).some(Boolean) ? " - modo edição ativa" : ""}
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
           {/* Sidebar Steps */}
-          <div className="space-y-2">
-            {activeSteps.map(s => (
-              <StepIndicator key={s.id} step={s.id} title={s.title} isActive={currentStep === s.id} isCompleted={completedSteps.includes(s.id)} />
-            ))}
+          <div className="space-y-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 xl:flex-col xl:overflow-visible">
+              {activeSteps.map(s => (
+                <StepIndicator key={s.id} step={s.id} title={s.title} isActive={currentStep === s.id} isCompleted={completedSteps.includes(s.id)} />
+              ))}
+            </div>
 
             {/* RESUMO NUTRICIONAL SEMPRE VISIVEL */}
             {selectedPatient && currentStep > 1 && (
@@ -682,7 +1498,7 @@ const PrescriptionNew = () => {
                 <CardHeader className="pb-2 pt-3 px-3">
                   <CardTitle className="text-sm flex items-center gap-2 text-primary">
                     <Calculator className="h-4 w-4" />
-                    Resumo
+                    {sidebarSummary.title}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0 px-3 pb-3 space-y-2">
@@ -692,24 +1508,30 @@ const PrescriptionNew = () => {
                     {bmi && <span> | IMC: {bmi.toFixed(1)}</span>}
                     {idealWeight && <span> | Peso ideal (IMC 25): {idealWeight.toFixed(1)}kg</span>}
                   </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.carbsPerKg} g/kg | {nutritionSummary.carbPct}% VET</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Lipidios</p><p>{nutritionSummary.fat} g/dia</p><p className="text-muted-foreground">{nutritionSummary.fatPerKg} g/kg | {nutritionSummary.fatPct}% VET</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Fibras</p><p>{nutritionSummary.fiber} g/dia</p><p className="text-muted-foreground">Resumo global das vias</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Micronutrientes</p><p>Na {nutritionSummary.sodium} | K {nutritionSummary.potassium}</p><p className="text-muted-foreground">Ca {nutritionSummary.calcium} | P {nutritionSummary.phosphorus} mg/dia</p></div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-lg font-bold text-orange-600">
-                        {nutritionSummary.vet}
+                        {sidebarSummary.calories}
                       </div>
                       <div className="text-xs text-muted-foreground">kcal</div>
                       <div className="text-xs font-semibold text-orange-700">
-                        {nutritionSummary.vetPerKg} kcal/kg
+                        {sidebarSummary.caloriesPerKg} kcal/kg
                       </div>
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-lg font-bold text-blue-600">
-                        {nutritionSummary.protein}g
+                        {sidebarSummary.protein}g
                       </div>
                       <div className="text-xs text-muted-foreground">proteínas</div>
                       <div className="text-xs font-semibold text-blue-700">
-                        {nutritionSummary.proteinPerKg} g/kg
+                        {sidebarSummary.proteinPerKg} g/kg
                       </div>
                     </div>
                   </div>
@@ -717,16 +1539,16 @@ const PrescriptionNew = () => {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-sm font-bold text-cyan-600">
-                        {nutritionSummary.freeWater}ml
+                        {sidebarSummary.freeWater}
                       </div>
                       <div className="text-xs text-muted-foreground">água livre</div>
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-sm font-bold text-green-600">
-                        {feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}
+                        {sidebarSummary.residues}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {feedingRoutes.enteral ? "resíduos totais" : "resíduos (somente via enteral)"}
+                        {sidebarSummary.residues === "-" ? "resíduos indisponíveis" : "resíduos totais"}
                       </div>
                     </div>
                   </div>
@@ -752,7 +1574,7 @@ const PrescriptionNew = () => {
           </div>
 
           {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="xl:col-span-3 space-y-6">
             {/* Step 1 */}
             {currentStep === 1 && (
               <Card>
@@ -770,17 +1592,42 @@ const PrescriptionNew = () => {
                       {patients.filter(p => p.status === 'active').map(p => (
                         <Card key={p.id} className={`cursor-pointer hover:shadow-md ${selectedPatient?.id === p.id ? "ring-2 ring-primary bg-primary/5" : ""}`} onClick={() => {
                           setSelectedPatient(p);
-                          // Auto-load last prescription for this patient
-                          const lastRx = prescriptions
-                            .filter(rx => rx.patientId === p.id)
-                            .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''))[0];
-                          if (lastRx) {
-                            applyLoadedPrescription(lastRx);
-                            // Keep the previous prescription ID so saving overwrites it
-                            setEditingPrescriptionId(lastRx.id || null);
-                            setEditingStartDate(lastRx.startDate || null);
-                            toast.info("Prescrição anterior carregada. Ao salvar, ela será atualizada.");
-                          }
+                          setEditingPrescriptionIds({ oral: null, enteral: null, parenteral: null });
+                          setEditingStartDates({ oral: null, enteral: null, parenteral: null });
+                          setHydratedFromPrescription(false);
+                          setFeedingRoutes({ oral: false, enteral: false, parenteral: false });
+                          setEnteralAccess("");
+                          setSystemType("");
+                          setClosedFormula({ formulaId: "", infusionMode: "", rate: "", duration: "", bagQuantities: {} });
+                          setOpenInfusionMode("");
+                          setOpenDurationPerStep("");
+                          setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
+                          setModules([]);
+                          setHydration({ volume: "", times: [] });
+                          setEquipmentVolume("");
+                          setOralAdministrationRoute("oral");
+                          setOralDeliveryMethod("cup");
+                          setOralDietConsistency(p.consistency || "");
+                            setOralDietCharacteristics(p.observation || "");
+                            setOralMealsPerDay(Number(p.mealCount) || 6);
+                            setOralSpeechTherapy(Boolean(p.safeConsistency));
+                            setOralNeedsThickener(Boolean(p.safeConsistency));
+                            setOralSafeConsistency(p.safeConsistency || "");
+                            setOralThickenerProduct("");
+                            setOralThickenerVolume("");
+                            setOralThickenerTimes([]);
+                            setOralEstimatedVET(0);
+                          setOralEstimatedProtein(0);
+                          setOralHasTherapy(false);
+                          setOralSupplements([]);
+                          setOralTherapyModules([]);
+                          setOralObservations(p.observation || "");
+                          setParenteralAccess("central");
+                          setParenteralInfusionTime(24);
+                          setParenteralAminoacids(0);
+                          setParenteralLipids(0);
+                          setParenteralGlucose(0);
+                          setParenteralObservations("");
                         }}>
                           <CardContent className="p-4">
                             <div className="flex justify-between"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-muted-foreground">{p.record} - {p.bed || 'Sem leito'}</p></div>{selectedPatient?.id === p.id && <Check className="h-5 w-5 text-primary" />}</div>
@@ -789,6 +1636,27 @@ const PrescriptionNew = () => {
                           </CardContent>
                         </Card>
                       ))}
+                    </div>
+                  )}
+                  {selectedPatient && (
+                    <div className="space-y-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4">
+                      <div>
+                        <p className="font-medium text-primary">Repetir prescrição anterior</p>
+                        <p className="text-sm text-muted-foreground">
+                          Carrega os dados da última prescrição para facilitar uma nova prescrição sem sobrescrever automaticamente a anterior.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" disabled={!latestPrescriptionsByType.enteral} onClick={() => handleRepeatPrescription("enteral")}>
+                          Repetir TNE
+                        </Button>
+                        <Button type="button" variant="outline" disabled={!latestPrescriptionsByType.oral} onClick={() => handleRepeatPrescription("oral")}>
+                          Repetir Via Oral
+                        </Button>
+                        <Button type="button" variant="outline" disabled={!latestPrescriptionsByType.parenteral} onClick={() => handleRepeatPrescription("parenteral")}>
+                          Repetir TNP
+                        </Button>
+                      </div>
                     </div>
                   )}
                   <div className="flex justify-end"><Button onClick={() => completeStep(1)} disabled={!canProceed(1)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
@@ -892,7 +1760,17 @@ const PrescriptionNew = () => {
               <Card>
                 <CardHeader><CardTitle>5. Sistema Fechado</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-2"><Label>Fórmula *</Label><Select value={closedFormula.formulaId} onValueChange={v => setClosedFormula({ ...closedFormula, formulaId: v })}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{availableFormulas.filter(f => f.systemType === "closed" || f.systemType === "both").map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.composition.density} kcal/ml)</SelectItem>)}</SelectContent></Select></div>
+                  {suggestedAgeGroupLabel && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Mostrando formulas de uso <strong>{suggestedAgeGroupLabel}</strong> para via enteral, respeitando o cadastro da formula.
+                    </div>
+                  )}
+                  {enteralAvailableClosedFormulas.length === 0 && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                      Nenhuma formula fechada compativel com a faixa etaria e a rota cadastradas para este paciente.
+                    </div>
+                  )}
+                  <div className="space-y-2"><Label>Fórmula *</Label><Select value={closedFormula.formulaId} onValueChange={v => setClosedFormula({ ...closedFormula, formulaId: v })}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableClosedFormulas.map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.composition.density} kcal/ml)</SelectItem>)}</SelectContent></Select></div>
                   <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-2 gap-4">{[{ v: "pump", l: "Bomba de Infusão", d: "ml/h" }, { v: "gravity", l: "Gravitacional", d: "gotas/min (1ml=20gotas)" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: m.v as any })}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
                   {closedFormula.infusionMode && <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Velocidade *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.rate} onChange={e => setClosedFormula({ ...closedFormula, rate: e.target.value })} /><span className="text-sm whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span></div></div><div className="space-y-2"><Label>Tempo de Infusão *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.duration} onChange={e => setClosedFormula({ ...closedFormula, duration: e.target.value })} /><span className="text-sm">horas/dia</span></div></div></div>}
                   {bagCalculation && <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><p className="font-semibold text-blue-800">Volume prescrito para 24h: {bagCalculation.totalVolume} ml</p><p className="text-blue-700">A fórmula possui {bagCalculation.bagSize} ml por bolsa</p><p className="font-medium text-blue-800">Enviar para 24h: {bagCalculation.numBags} bolsa(s) necessárias</p></div>}
@@ -928,6 +1806,16 @@ const PrescriptionNew = () => {
               <Card>
                 <CardHeader><CardTitle>5. Sistema Aberto</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
+                  {suggestedAgeGroupLabel && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      Mostrando formulas de uso <strong>{suggestedAgeGroupLabel}</strong> para via enteral, respeitando o cadastro da formula.
+                    </div>
+                  )}
+                  {enteralAvailableOpenFormulas.length === 0 && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                      Nenhuma formula aberta compativel com a faixa etaria e a rota cadastradas para este paciente.
+                    </div>
+                  )}
                   <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Bomba", d: "ml/h" }, { v: "gravity", l: "Gravitacional", d: "gotas/min" }, { v: "bolus", l: "Bolus", d: "Tudo de uma vez" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
                   {(openInfusionMode === "pump" || openInfusionMode === "gravity") && <div className="space-y-2"><Label>Infundir cada etapa em:</Label><div className="flex items-center gap-2 max-w-xs"><Input type="number" value={openDurationPerStep} onChange={e => setOpenDurationPerStep(e.target.value)} /><span className="text-sm">horas</span></div></div>}
                   <div className="space-y-4"><div className="flex justify-between items-center"><Label className="text-lg">Fórmulas</Label><Button variant="outline" size="sm" onClick={addOpenFormula}><Plus className="h-4 w-4 mr-1" />Adicionar</Button></div>
@@ -935,7 +1823,7 @@ const PrescriptionNew = () => {
                       <div key={f.id} className="p-4 border rounded-lg space-y-4 bg-muted/30">
                         <div className="flex justify-between"><h4 className="font-semibold">Fórmula {i + 1}</h4>{openFormulas.length > 1 && <Button variant="ghost" size="sm" onClick={() => removeOpenFormula(f.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}</div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="space-y-2"><Label>Fórmula</Label><Select value={f.formulaId} onValueChange={v => updateOpenFormula(f.id, "formulaId", v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{availableFormulas.filter(af => af.systemType === "open" || af.systemType === "both").map(af => <SelectItem key={af.id} value={af.id}>{af.name}</SelectItem>)}</SelectContent></Select></div>
+                          <div className="space-y-2"><Label>Fórmula</Label><Select value={f.formulaId} onValueChange={v => updateOpenFormula(f.id, "formulaId", v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableOpenFormulas.map(af => <SelectItem key={af.id} value={af.id}>{af.name}</SelectItem>)}</SelectContent></Select></div>
                           <div className="space-y-2"><Label>Quantidade por etapa (ml ou g)</Label><Input type="number" value={f.volume} onChange={e => updateOpenFormula(f.id, "volume", e.target.value)} /></div>
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
@@ -979,6 +1867,13 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
+                  {systemType === "open" && (
+                    <div className="space-y-2">
+                      <Label>Volume para equipo por frasco (ml)</Label>
+                      <Input type="number" value={equipmentVolume} onChange={e => setEquipmentVolume(e.target.value)} className="max-w-xs" placeholder="Ex: 20" />
+                      <p className="text-sm text-muted-foreground">Esse volume entra só no faturamento da dieta enteral aberta. Não entra nos cálculos nutricionais.</p>
+                    </div>
+                  )}
                   <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
                   {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
@@ -1024,6 +1919,11 @@ const PrescriptionNew = () => {
                 <Card>
                   <CardHeader><CardTitle className="flex items-center gap-2"><Mic className="h-5 w-5" />Acompanhamento Fonoaudiológico</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
+                    {suggestedAgeGroup && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                        Faixa etaria sugerida: <strong>{suggestedAgeGroup === "infant" ? "Infantil" : suggestedAgeGroup === "pediatric" ? "Pediatrico" : "Adulto"}</strong>. As formulas abaixo respeitam idade e rota permitida no cadastro.
+                      </div>
+                    )}
                     <div className="flex items-center gap-4">
                       <Label>Acompanhamento fonoaudiológico?</Label>
                       <div className="flex items-center gap-2"><Checkbox checked={!oralSpeechTherapy} onCheckedChange={() => setOralSpeechTherapy(false)} /><span className="text-sm">Não</span></div>
@@ -1036,6 +1936,34 @@ const PrescriptionNew = () => {
                           <div className="flex items-center gap-2"><Checkbox checked={!oralNeedsThickener} onCheckedChange={() => setOralNeedsThickener(false)} /><span className="text-sm">Não</span></div>
                           <div className="flex items-center gap-2"><Checkbox checked={oralNeedsThickener} onCheckedChange={() => setOralNeedsThickener(true)} /><span className="text-sm">Sim</span></div>
                         </div>
+                        {oralNeedsThickener && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Produto espessante</Label>
+                              {thickenerSupplies.length > 0 ? (
+                                <Select value={oralThickenerProduct} onValueChange={setOralThickenerProduct}>
+                                  <SelectTrigger><SelectValue placeholder="Selecione o espessante" /></SelectTrigger>
+                                  <SelectContent>
+                                    {thickenerSupplies.map((supply) => <SelectItem key={supply.id} value={supply.name}>{supply.name}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input value={oralThickenerProduct} onChange={e => setOralThickenerProduct(e.target.value)} placeholder="Ex: Resource ThickenUp" />
+                              )}
+                            </div>
+                            <div className="space-y-2"><Label>Volume de agua por oferta (ml)</Label><Input type="number" value={oralThickenerVolume} onChange={e => setOralThickenerVolume(e.target.value)} placeholder="Ex: 150" /></div>
+                          </div>
+                        )}
+                        {oralNeedsThickener && (
+                          <div className="space-y-2">
+                            <Label>Horarios da agua espessada</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {SCHEDULE_TIMES.map(time => (
+                                <Button key={time} type="button" variant={oralThickenerTimes.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleOralThickenerTime(time)}>{time}</Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {oralNeedsThickener && (
                           <div className="space-y-2"><Label>Consistência segura para água</Label><Input value={oralSafeConsistency} onChange={e => setOralSafeConsistency(e.target.value)} placeholder="Ex: Néctar, Mel, Pudim" /></div>
                         )}
@@ -1067,6 +1995,37 @@ const PrescriptionNew = () => {
 
                     {oralHasTherapy && (
                       <div className="space-y-6 pt-4">
+                        <Card className="border-dashed">
+                          <CardContent className="pt-4 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label>Via de administracao</Label>
+                                <Select value={oralAdministrationRoute} onValueChange={(value: "oral" | "translactation") => setOralAdministrationRoute(value)}>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="oral">Via oral</SelectItem>
+                                    {shouldShowInfantFeedingControls && <SelectItem value="translactation">Translactacao</SelectItem>}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {shouldShowInfantFeedingControls && (
+                                <div className="space-y-2">
+                                  <Label>Forma de oferta</Label>
+                                  <Select value={oralDeliveryMethod} onValueChange={(value: "cup" | "baby-bottle" | "feeding-bottle") => setOralDeliveryMethod(value)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="cup">Copo</SelectItem>
+                                      <SelectItem value="baby-bottle">Mamadeira</SelectItem>
+                                      <SelectItem value="feeding-bottle">Frasco para dieta</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <p className="text-xs text-muted-foreground">Copo e mamadeira nao sao cobrados automaticamente. Frasco para dieta entra no faturamento quando houver insumo faturavel cadastrado.</p>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+
                         {/* Suplementos */}
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
@@ -1082,7 +2041,7 @@ const PrescriptionNew = () => {
                                 </div>
                                 <Select value={sup.supplementId} onValueChange={val => updateOralSupplement(index, 'supplementId', val)}>
                                   <SelectTrigger><SelectValue placeholder="Selecione o suplemento" /></SelectTrigger>
-                                  <SelectContent>{oralAvailableSupplements.map(f => <SelectItem key={f.id} value={f.id!}>{f.name} - {f.caloriesPerUnit}kcal/100ml</SelectItem>)}</SelectContent>
+                                  <SelectContent>{oralAvailableSupplements.map(f => <SelectItem key={f.id} value={f.id!}>{f.name} - {f.caloriesPerUnit}kcal/100ml{f.ageGroup ? ` | ${f.ageGroup}` : ""}</SelectItem>)}</SelectContent>
                                 </Select>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1"><Label className="text-sm">Quantidade por oferta</Label><Input type="number" value={sup.amount || ''} onChange={e => updateOralSupplement(index, 'amount', e.target.value)} placeholder="Ex: 200" /></div>
@@ -1186,6 +2145,11 @@ const PrescriptionNew = () => {
                         {parenteralPerKg.glucose > 0 && <div className="text-sm font-semibold text-green-700">{parenteralPerKg.glucose.toFixed(2)} g/kg</div>}
                       </div>
                     </div>
+                    {selectedPatient?.weight && (
+                      <div className="rounded-lg border border-purple-200 bg-white/80 px-4 py-3 text-sm">
+                        <span className="font-semibold text-purple-700">TIG:</span> {parenteralPerKg.tig.toFixed(2)} mg/kg/min
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1245,6 +2209,11 @@ const PrescriptionNew = () => {
                         <Input type="number" step="1" value={parenteralGlucose || ''} onChange={e => setParenteralGlucose(parseFloat(e.target.value) || 0)} placeholder="Ex: 200" />
                         {selectedPatient?.weight && <p className="text-xs text-muted-foreground">= {parenteralPerKg.glucose.toFixed(2)} g/kg</p>}
                       </div>
+                      <div className="space-y-2">
+                        <Label>TIG (mg/kg/min)</Label>
+                        <Input type="number" value={selectedPatient?.weight ? parenteralPerKg.tig.toFixed(2) : ''} readOnly placeholder="Informe o peso do paciente" />
+                        <p className="text-xs text-muted-foreground">CÃ¡lculo: glicose (g/dia) x 1000 / peso / 1440</p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -1276,7 +2245,7 @@ const PrescriptionNew = () => {
                     <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.freeWaterPerKg} ml/kg)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
-                  <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Fórmula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusão:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{modules.length > 0 && <p><strong>Módulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}{feedingRoutes.oral && <p><strong>Oral:</strong> {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia</p>}{feedingRoutes.parenteral && <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>}{feedingRoutes.enteral && <div className="pt-2"><p><strong>Resíduos (g/dia):</strong></p><p className="text-sm text-muted-foreground">Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g</p></div>}</CollapsibleContent></Collapsible>
+                  <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Fórmula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusão:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{systemType === "open" && equipmentVolume && <p><strong>Volume para equipo:</strong> {equipmentVolume} ml por frasco</p>}{modules.length > 0 && <p><strong>Módulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}{feedingRoutes.oral && <p><strong>Oral:</strong> {oralAdministrationRoute === "translactation" ? "Translactacao" : "Via oral"} | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia{shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""}</p>}{feedingRoutes.parenteral && <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>}{feedingRoutes.enteral && <div className="pt-2"><p><strong>Resíduos (g/dia):</strong></p><p className="text-sm text-muted-foreground">Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g</p></div>}</CollapsibleContent></Collapsible>
                   <div className="flex justify-between">
                     <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(10))}>Voltar</Button>
                     <Button onClick={handleSave} disabled={isSaving} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />{isSaving ? "Salvando..." : "Salvar Prescrição"}</Button>

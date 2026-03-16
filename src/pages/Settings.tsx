@@ -35,8 +35,16 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { useSettings, useBackup, useDashboardData, useHospitals, useWards } from "@/hooks/useDatabase";
-import { db, NursingCosts, IndirectCosts, Hospital, Ward } from "@/lib/database";
-import { can } from "@/lib/permissions";
+import { db, NursingCosts, IndirectCosts, Hospital, RolePermission, Ward, rolePermissionsService } from "@/lib/database";
+import {
+    applyRolePermissionsFromDatabase,
+    can,
+    getDefaultPermissionsForRole,
+    PERMISSION_DEFINITIONS,
+    PermissionKey,
+    ROLE_OPTIONS,
+    UserRole,
+} from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
     Table,
@@ -62,6 +70,7 @@ const Settings = () => {
     const canManageUnits = can(role, "manage_units");
     const canManageWards = can(role, "manage_wards");
     const canManageCosts = can(role, "manage_costs");
+    const canManageRolePermissions = can(role, "manage_role_permissions");
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,6 +102,17 @@ const Settings = () => {
     const [indirectCosts, setIndirectCosts] = useState<IndirectCosts>({
         laborCosts: settings?.indirectCosts?.laborCosts || 0,
     });
+    const [rolePermissions, setRolePermissions] = useState<Record<UserRole, Record<PermissionKey, boolean>>>(() => {
+        const initial = {} as Record<UserRole, Record<PermissionKey, boolean>>;
+        ROLE_OPTIONS.forEach((roleOption) => {
+            initial[roleOption.value] = {} as Record<PermissionKey, boolean>;
+            PERMISSION_DEFINITIONS.forEach((permission) => {
+                initial[roleOption.value][permission.key] = Boolean(getDefaultPermissionsForRole(roleOption.value)[permission.key]);
+            });
+        });
+        return initial;
+    });
+    const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
     // Update form when settings load
     useEffect(() => {
@@ -128,6 +148,74 @@ const Settings = () => {
             });
         }
     }, [settings]);
+
+    useEffect(() => {
+        if (!canManageRolePermissions) return;
+
+        const loadRolePermissions = async () => {
+            try {
+                const rows = await rolePermissionsService.getAll();
+                const nextMatrix = {} as Record<UserRole, Record<PermissionKey, boolean>>;
+
+                ROLE_OPTIONS.forEach((roleOption) => {
+                    const defaults = getDefaultPermissionsForRole(roleOption.value);
+                    nextMatrix[roleOption.value] = {} as Record<PermissionKey, boolean>;
+                    PERMISSION_DEFINITIONS.forEach((permission) => {
+                        nextMatrix[roleOption.value][permission.key] = Boolean(defaults[permission.key]);
+                    });
+                });
+
+                rows.forEach((row) => {
+                    const roleKey = row.role as UserRole;
+                    const permissionKey = row.permissionKey as PermissionKey;
+                    if (!nextMatrix[roleKey] || !(permissionKey in nextMatrix[roleKey])) return;
+                    nextMatrix[roleKey][permissionKey] = Boolean(row.allowed);
+                });
+
+                setRolePermissions(nextMatrix);
+            } catch (error) {
+                console.error("Erro ao carregar permissoes de perfil", error);
+            }
+        };
+
+        loadRolePermissions();
+    }, [canManageRolePermissions]);
+
+    const updateRolePermission = (targetRole: UserRole, permissionKey: PermissionKey, allowed: boolean) => {
+        setRolePermissions((current) => ({
+            ...current,
+            [targetRole]: {
+                ...current[targetRole],
+                [permissionKey]: allowed,
+            },
+        }));
+    };
+
+    const handleSaveRolePermissions = async () => {
+        try {
+            setIsSavingPermissions(true);
+            const rows: Array<Pick<RolePermission, "role" | "permissionKey" | "allowed">> = [];
+
+            ROLE_OPTIONS.forEach((roleOption) => {
+                PERMISSION_DEFINITIONS.forEach((permission) => {
+                    rows.push({
+                        role: roleOption.value,
+                        permissionKey: permission.key,
+                        allowed: Boolean(rolePermissions[roleOption.value]?.[permission.key]),
+                    });
+                });
+            });
+
+            const savedRows = await rolePermissionsService.saveAll(rows);
+            applyRolePermissionsFromDatabase(savedRows);
+            toast.success("Perfis e permissoes salvos com sucesso!");
+        } catch (error) {
+            console.error("Erro ao salvar permissoes", error);
+            toast.error("Erro ao salvar perfis e permissoes");
+        } finally {
+            setIsSavingPermissions(false);
+        }
+    };
 
     const handleSaveSettings = async () => {
         try {
@@ -172,7 +260,7 @@ const Settings = () => {
         if (!file) return;
 
         try {
-            const backup = await importBackup(file, true);
+            const backup = await importBackup(file);
             toast.success(`Backup importado com sucesso! ${backup.data.patients?.length || 0} pacientes, ${backup.data.formulas?.length || 0} formulas.`);
             // Reset file input
             if (fileInputRef.current) {
@@ -211,7 +299,7 @@ const Settings = () => {
                             Status do Banco de Dados por Unidade
                         </CardTitle>
                         <CardDescription>
-                            Dados salvos no Supabase com segregação por hospital (hospital_id)
+                            Dados salvos na API local com PostgreSQL e segregação por hospital.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -240,6 +328,60 @@ const Settings = () => {
                         </div>
                     </CardContent>
                 </Card>
+
+                {canManageRolePermissions && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Users className="h-5 w-5" />
+                                Perfis e Permissoes
+                            </CardTitle>
+                            <CardDescription>
+                                Configure o que cada perfil pode acessar na unidade atual: gestor geral, gestor local, nutricionista e tecnico.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="rounded-lg border">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead className="min-w-[220px]">Permissao</TableHead>
+                                            {ROLE_OPTIONS.map((roleOption) => (
+                                                <TableHead key={roleOption.value} className="text-center">
+                                                    {roleOption.label}
+                                                </TableHead>
+                                            ))}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {PERMISSION_DEFINITIONS.map((permission) => (
+                                            <TableRow key={permission.key}>
+                                                <TableCell>
+                                                    <div className="font-medium">{permission.label}</div>
+                                                    <div className="text-xs text-muted-foreground">{permission.description}</div>
+                                                </TableCell>
+                                                {ROLE_OPTIONS.map((roleOption) => (
+                                                    <TableCell key={`${permission.key}-${roleOption.value}`} className="text-center">
+                                                        <div className="flex justify-center">
+                                                            <Switch
+                                                                checked={Boolean(rolePermissions[roleOption.value]?.[permission.key])}
+                                                                onCheckedChange={(checked) => updateRolePermission(roleOption.value, permission.key, checked)}
+                                                            />
+                                                        </div>
+                                                    </TableCell>
+                                                ))}
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            <Button onClick={handleSaveRolePermissions} disabled={isSavingPermissions} className="w-full">
+                                <Save className="h-4 w-4 mr-2" />
+                                {isSavingPermissions ? "Salvando perfis..." : "Salvar perfis e permissoes"}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Configuracoes do Hospital */}
                 {(canManageUnits || canManageWards) && (
@@ -545,7 +687,7 @@ const Settings = () => {
                                 <div>
                                     <p className="text-sm font-semibold text-amber-800">Importante sobre Backups</p>
                                     <p className="text-sm text-amber-700">
-                                        Recomendamos fazer backup regularmente. Apesar de os dados estarem no Supabase,
+                                        Recomendamos fazer backup regularmente. Mesmo com PostgreSQL local,
                                         o backup facilita auditoria, migração e recuperação operacional.
                                     </p>
                                 </div>
@@ -574,7 +716,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
             return;
         }
         if (!newHospital.name) {
-            toast.error("Nome e obrigatorio");
+            toast.error("Nome é obrigatório");
             return;
         }
         try {
@@ -667,6 +809,9 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>{editingHospital ? 'Editar' : 'Nova'} Unidade</DialogTitle>
+                            <DialogDescription>
+                                Configure a unidade utilizada nos cadastros, mapas e relatorios do sistema.
+                            </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-2">
                             <div className="space-y-2">
@@ -744,7 +889,12 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogContent>
-                    <DialogHeader><DialogTitle>{editingWard ? 'Editar' : 'Nova'} Ala</DialogTitle></DialogHeader>
+                    <DialogHeader>
+                        <DialogTitle>{editingWard ? 'Editar' : 'Nova'} Ala</DialogTitle>
+                        <DialogDescription>
+                            Defina o nome e o tipo da ala para organizacao dos pacientes por setor.
+                        </DialogDescription>
+                    </DialogHeader>
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <Label>Nome da Ala</Label>

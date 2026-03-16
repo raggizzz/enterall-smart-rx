@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -18,24 +19,41 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Search, UserCog, Trash2, Edit } from "lucide-react";
+import { Edit, Plus, Search, Trash2, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { useProfessionals } from "@/hooks/useDatabase";
+import { useHospitals, useProfessionals } from "@/hooks/useDatabase";
 import { Professional } from "@/lib/database";
-import { ROLE_OPTIONS, getRoleLabel, normalizeRole, can } from "@/lib/permissions";
+import { ROLE_OPTIONS, can, getRoleLabel, normalizeRole } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
+
+const isManagerRole = (role?: string) => {
+    const normalized = normalizeRole(role);
+    return normalized === "general_manager" || normalized === "local_manager";
+};
+
+const isEightDigitPin = (value: string) => /^\d{8}$/.test(value);
+
+const ROLE_HELPERS: Record<string, string> = {
+    general_manager: "Gestor geral: acesso completo, inclusive unidades, gestores e perfis.",
+    local_manager: "Gestor local: acesso completo da unidade, sem gestao global de outras unidades.",
+    nutritionist: "Nutricionista: pacientes, prescricoes, relatorios, etiquetas, faturamento e ferramentas.",
+    technician: "Tecnico: inicio, faturamento, etiquetas, mapa copa e cancelamento tecnico.",
+};
 
 const Professionals = () => {
     const [hospitalId, setHospitalId] = useState("");
     const { professionals, isLoading, createProfessional, updateProfessional, deleteProfessional } = useProfessionals(hospitalId || undefined);
+    const { hospitals } = useHospitals();
     const role = useCurrentRole();
     const canManageManagers = can(role, "manage_managers");
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingProfessional, setEditingProfessional] = useState<Professional | null>(null);
     const [currentProfessional, setCurrentProfessional] = useState<Partial<Professional>>({});
+    const [passwordPin, setPasswordPin] = useState("");
+    const [confirmPasswordPin, setConfirmPasswordPin] = useState("");
 
     useEffect(() => {
         const syncHospital = () => {
@@ -47,6 +65,11 @@ const Professionals = () => {
         return () => window.removeEventListener("enmeta-session-updated", syncHospital);
     }, []);
 
+    const selectedHospitalName = useMemo(
+        () => hospitals.find((hospital) => hospital.id === hospitalId)?.name || "",
+        [hospitalId, hospitals],
+    );
+
     const roleOptions = ROLE_OPTIONS.filter((option) => {
         if ((option.value === "general_manager" || option.value === "local_manager") && !canManageManagers) {
             return false;
@@ -57,6 +80,8 @@ const Professionals = () => {
     const resetForm = () => {
         setCurrentProfessional({});
         setEditingProfessional(null);
+        setPasswordPin("");
+        setConfirmPasswordPin("");
     };
 
     const handleSave = async () => {
@@ -65,33 +90,50 @@ const Professionals = () => {
             return;
         }
         if (!currentProfessional.name || !currentProfessional.role || !currentProfessional.registrationNumber) {
-            toast.error("Preencha os campos obrigatórios");
+            toast.error("Preencha os campos obrigatorios");
             return;
         }
 
         const normalizedRole = normalizeRole(currentProfessional.role);
-        if (!canManageManagers && (normalizedRole === "general_manager" || normalizedRole === "local_manager")) {
-            toast.error("Sem permissão para cadastrar gestores");
+        if (!canManageManagers && isManagerRole(normalizedRole)) {
+            toast.error("Sem permissao para cadastrar gestores");
+            return;
+        }
+
+        if (!editingProfessional && !isEightDigitPin(passwordPin)) {
+            toast.error("Cadastre uma senha numerica com 8 digitos.");
+            return;
+        }
+
+        if (passwordPin && !isEightDigitPin(passwordPin)) {
+            toast.error("A senha deve ter exatamente 8 digitos numericos.");
+            return;
+        }
+
+        if (passwordPin !== confirmPasswordPin) {
+            toast.error("A confirmacao da senha nao confere.");
             return;
         }
 
         try {
             const professionalData = {
+                hospitalId,
                 name: currentProfessional.name!,
                 role: normalizedRole,
                 registrationNumber: currentProfessional.registrationNumber!,
                 cpf: currentProfessional.cpf,
                 crn: currentProfessional.crn,
-                cpe: currentProfessional.cpe,
-                managingUnit: currentProfessional.managingUnit,
-                isActive: true,
+                cpe: isManagerRole(normalizedRole) ? currentProfessional.cpe : undefined,
+                managingUnit: isManagerRole(normalizedRole) ? (selectedHospitalName || currentProfessional.managingUnit) : undefined,
+                passwordPin: passwordPin || undefined,
+                isActive: currentProfessional.isActive !== false,
             };
 
             if (editingProfessional?.id) {
                 await updateProfessional(editingProfessional.id, professionalData);
                 toast.success("Profissional atualizado com sucesso!");
             } else {
-                await createProfessional(professionalData);
+                await createProfessional(professionalData as Omit<Professional, "id" | "createdAt" | "updatedAt">);
                 toast.success("Profissional cadastrado com sucesso!");
             }
 
@@ -106,6 +148,8 @@ const Professionals = () => {
     const handleEdit = (professional: Professional) => {
         setEditingProfessional(professional);
         setCurrentProfessional({ ...professional, role: normalizeRole(professional.role) });
+        setPasswordPin("");
+        setConfirmPasswordPin("");
         setIsDialogOpen(true);
     };
 
@@ -114,31 +158,36 @@ const Professionals = () => {
 
         try {
             await deleteProfessional(id);
-            toast.success("Profissional excluído com sucesso!");
+            toast.success("Profissional excluido com sucesso!");
         } catch (error) {
-            console.error('Error deleting professional:', error);
+            console.error("Error deleting professional:", error);
             toast.error("Erro ao excluir profissional");
         }
     };
 
-    const filteredProfessionals = professionals.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.registrationNumber.includes(searchTerm)
+    const filteredProfessionals = professionals.filter((professional) =>
+        professional.name.toLowerCase().includes(searchTerm.toLowerCase())
+        || professional.registrationNumber.includes(searchTerm),
     );
+
+    const currentRole = normalizeRole(currentProfessional.role);
 
     return (
         <div className="min-h-screen bg-background pb-20">
             <Header />
             <div className="container py-6 space-y-6">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Profissionais</h1>
                         <p className="text-muted-foreground">Gerencie a equipe da unidade selecionada</p>
                     </div>
-                    <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                        setIsDialogOpen(open);
-                        if (!open) resetForm();
-                    }}>
+                    <Dialog
+                        open={isDialogOpen}
+                        onOpenChange={(open) => {
+                            setIsDialogOpen(open);
+                            if (!open) resetForm();
+                        }}
+                    >
                         <DialogTrigger asChild>
                             <Button onClick={() => resetForm()}>
                                 <Plus className="h-4 w-4 mr-2" />
@@ -147,24 +196,27 @@ const Professionals = () => {
                         </DialogTrigger>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>{editingProfessional ? 'Editar' : 'Novo'} Profissional</DialogTitle>
+                                <DialogTitle>{editingProfessional ? "Editar" : "Novo"} Profissional</DialogTitle>
+                                <DialogDescription>
+                                    Cadastro conforme o modelo operacional: nome completo, funcao, matricula, CPF, CRN e senha de 8 digitos.
+                                </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                                 <div className="grid gap-2">
                                     <Label>Nome Completo *</Label>
                                     <Input
-                                        value={currentProfessional.name || ''}
-                                        onChange={e => setCurrentProfessional({ ...currentProfessional, name: e.target.value })}
+                                        value={currentProfessional.name || ""}
+                                        onChange={(e) => setCurrentProfessional({ ...currentProfessional, name: e.target.value })}
                                         placeholder="Nome completo"
                                     />
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                        <Label>Função *</Label>
+                                        <Label>Funcao *</Label>
                                         <Select
                                             value={currentProfessional.role}
-                                            onValueChange={(val: 'general_manager' | 'local_manager' | 'nutritionist' | 'technician') =>
-                                                setCurrentProfessional({ ...currentProfessional, role: val })
+                                            onValueChange={(value: "general_manager" | "local_manager" | "nutritionist" | "technician") =>
+                                                setCurrentProfessional({ ...currentProfessional, role: value })
                                             }
                                         >
                                             <SelectTrigger>
@@ -178,13 +230,18 @@ const Professionals = () => {
                                                 ))}
                                             </SelectContent>
                                         </Select>
+                                        {currentRole && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {ROLE_HELPERS[currentRole]}
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label>Matrícula *</Label>
+                                        <Label>Matricula *</Label>
                                         <Input
-                                            value={currentProfessional.registrationNumber || ''}
-                                            onChange={e => setCurrentProfessional({ ...currentProfessional, registrationNumber: e.target.value })}
-                                            placeholder="Número de matrícula"
+                                            value={currentProfessional.registrationNumber || ""}
+                                            onChange={(e) => setCurrentProfessional({ ...currentProfessional, registrationNumber: e.target.value })}
+                                            placeholder="Numero de matricula"
                                         />
                                     </div>
                                 </div>
@@ -192,40 +249,84 @@ const Professionals = () => {
                                     <div className="grid gap-2">
                                         <Label>CPF</Label>
                                         <Input
-                                            value={currentProfessional.cpf || ''}
-                                            onChange={e => setCurrentProfessional({ ...currentProfessional, cpf: e.target.value })}
+                                            value={currentProfessional.cpf || ""}
+                                            onChange={(e) => setCurrentProfessional({ ...currentProfessional, cpf: e.target.value })}
                                             placeholder="000.000.000-00"
                                         />
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label>CRN (se aplicável)</Label>
+                                        <Label>CRN</Label>
                                         <Input
-                                            value={currentProfessional.crn || ''}
-                                            onChange={e => setCurrentProfessional({ ...currentProfessional, crn: e.target.value })}
+                                            value={currentProfessional.crn || ""}
+                                            onChange={(e) => setCurrentProfessional({ ...currentProfessional, crn: e.target.value })}
                                             placeholder="CRN-0000"
                                         />
                                     </div>
                                 </div>
-                                {['general_manager', 'local_manager'].includes(normalizeRole(currentProfessional.role)) && (
+
+                                {isManagerRole(currentRole) && (
+                                    <>
+                                        <div className="grid gap-2">
+                                            <Label>Codigo do Gestor (CPE)</Label>
+                                            <Input
+                                                value={currentProfessional.cpe || ""}
+                                                onChange={(e) => setCurrentProfessional({ ...currentProfessional, cpe: e.target.value })}
+                                                placeholder="Codigo CPE"
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label>Unidade Gestora</Label>
+                                            <Select
+                                                value={currentProfessional.managingUnit || selectedHospitalName}
+                                                onValueChange={(value) => setCurrentProfessional({ ...currentProfessional, managingUnit: value })}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Selecione a unidade" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {hospitals.map((hospital) => (
+                                                        <SelectItem key={hospital.id} value={hospital.name}>
+                                                            {hospital.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4">
                                     <div className="grid gap-2">
-                                        <Label>CPE (Código do Gestor)</Label>
+                                        <Label>{editingProfessional ? "Nova senha (8 digitos)" : "Senha (8 digitos) *"}</Label>
                                         <Input
-                                            value={currentProfessional.cpe || ''}
-                                            onChange={e => setCurrentProfessional({ ...currentProfessional, cpe: e.target.value })}
-                                            placeholder="Código CPE"
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength={8}
+                                            value={passwordPin}
+                                            onChange={(e) => setPasswordPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                                            placeholder="12345678"
                                         />
                                     </div>
-                                )}
-                                <div className="grid gap-2">
-                                    <Label>Unidade de Trabalho</Label>
-                                    <Input
-                                        value={currentProfessional.managingUnit || ''}
-                                        onChange={e => setCurrentProfessional({ ...currentProfessional, managingUnit: e.target.value })}
-                                        placeholder="Ex: UTI Adulto"
-                                    />
+                                    <div className="grid gap-2">
+                                        <Label>Confirmar senha</Label>
+                                        <Input
+                                            type="password"
+                                            inputMode="numeric"
+                                            maxLength={8}
+                                            value={confirmPasswordPin}
+                                            onChange={(e) => setConfirmPasswordPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                                            placeholder="12345678"
+                                        />
+                                    </div>
                                 </div>
+                                {editingProfessional?.passwordConfigured && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Este profissional ja possui senha cadastrada. Preencha os campos acima apenas se quiser redefinir a senha.
+                                    </p>
+                                )}
+
                                 <Button onClick={handleSave} className="w-full mt-4">
-                                    {editingProfessional ? 'Salvar Alterações' : 'Cadastrar Profissional'}
+                                    {editingProfessional ? "Salvar Alteracoes" : "Cadastrar Profissional"}
                                 </Button>
                             </div>
                         </DialogContent>
@@ -237,7 +338,7 @@ const Professionals = () => {
                         <div className="relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Buscar por nome ou matrícula..."
+                                placeholder="Buscar por nome ou matricula..."
                                 className="pl-8"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -249,36 +350,37 @@ const Professionals = () => {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Nome</TableHead>
-                                    <TableHead>Função</TableHead>
-                                    <TableHead>Matrícula</TableHead>
+                                    <TableHead>Funcao</TableHead>
+                                    <TableHead>Matricula</TableHead>
                                     <TableHead>CRN</TableHead>
                                     <TableHead>Unidade</TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
+                                    <TableHead>Senha</TableHead>
+                                    <TableHead className="text-right">Acoes</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : filteredProfessionals.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                             Nenhum profissional encontrado
                                         </TableCell>
                                     </TableRow>
                                 ) : (
                                     filteredProfessionals.map((professional) => {
                                         const normalizedRole = normalizeRole(professional.role);
-                                        const isManagerRole = normalizedRole === 'general_manager' || normalizedRole === 'local_manager';
-                                        const canEditManager = !isManagerRole || canManageManagers;
-                                        const badgeClass = normalizedRole === 'general_manager'
-                                            ? 'bg-purple-100 text-purple-800'
-                                            : normalizedRole === 'local_manager'
-                                                ? 'bg-indigo-100 text-indigo-800'
-                                                : normalizedRole === 'nutritionist'
-                                                    ? 'bg-green-100 text-green-800'
-                                                    : 'bg-blue-100 text-blue-800';
+                                        const managerRole = isManagerRole(normalizedRole);
+                                        const canEditManager = !managerRole || canManageManagers;
+                                        const badgeClass = normalizedRole === "general_manager"
+                                            ? "bg-purple-100 text-purple-800"
+                                            : normalizedRole === "local_manager"
+                                                ? "bg-indigo-100 text-indigo-800"
+                                                : normalizedRole === "nutritionist"
+                                                    ? "bg-green-100 text-green-800"
+                                                    : "bg-blue-100 text-blue-800";
                                         return (
                                             <TableRow key={professional.id}>
                                                 <TableCell className="font-medium">
@@ -293,8 +395,9 @@ const Professionals = () => {
                                                     </span>
                                                 </TableCell>
                                                 <TableCell>{professional.registrationNumber}</TableCell>
-                                                <TableCell>{professional.crn || '-'}</TableCell>
-                                                <TableCell>{professional.managingUnit || '-'}</TableCell>
+                                                <TableCell>{professional.crn || "-"}</TableCell>
+                                                <TableCell>{professional.managingUnit || selectedHospitalName || "-"}</TableCell>
+                                                <TableCell>{professional.passwordConfigured ? "Configurada" : "Pendente"}</TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-2">
                                                         <Button variant="ghost" size="icon" disabled={!canEditManager} onClick={() => handleEdit(professional)}>

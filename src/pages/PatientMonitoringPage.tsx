@@ -12,10 +12,11 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import PatientMonitoring from "@/components/PatientMonitoring";
 import { usePatients, usePrescriptions, useEvolutions } from "@/hooks/useDatabase";
-import { Patient, Prescription } from "@/lib/database";
+import { DailyEvolution, Patient, Prescription } from "@/lib/database";
 
 type ChartRow = {
     date: string;
+    oralPct?: number;
     enteralPct: number;
     parenteralPct: number;
     nonIntentionalPct: number;
@@ -42,8 +43,10 @@ const buildLastSevenDays = (): string[] => {
     return days;
 };
 
-const calculateUnintentionalKcal = (patient?: Patient): number => {
-    const unintentional = patient?.unintentionalCalories;
+const calculateUnintentionalKcal = (source?: { unintentionalCalories?: Patient["unintentionalCalories"]; nonIntentionalKcal?: number }): number => {
+    if (typeof source?.nonIntentionalKcal === "number") return source.nonIntentionalKcal;
+
+    const unintentional = source?.unintentionalCalories;
     if (!unintentional) return 0;
 
     const propofol = (unintentional.propofolMlH || 0) * 1.1 * 24;
@@ -57,6 +60,30 @@ const isPrescriptionActiveOn = (prescription: Prescription, day: string): boolea
     return prescription.startDate <= day && (!prescription.endDate || prescription.endDate >= day);
 };
 
+const getPreviousDay = (): string => {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    return date.toISOString().split("T")[0];
+};
+
+const sortByMostRecentStartDate = (left: Prescription, right: Prescription): number => {
+    return right.startDate.localeCompare(left.startDate);
+};
+
+const pickPrescriptionForType = (
+    prescriptions: Prescription[],
+    therapyType: Prescription["therapyType"],
+    preferredId?: string,
+): Prescription | undefined => {
+    const candidates = prescriptions.filter((prescription) => prescription.therapyType === therapyType);
+    if (preferredId) {
+        const exactMatch = candidates.find((prescription) => prescription.id === preferredId);
+        if (exactMatch) return exactMatch;
+    }
+
+    return [...candidates].sort(sortByMostRecentStartDate)[0];
+};
+
 export default function PatientMonitoringPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -64,7 +91,7 @@ export default function PatientMonitoringPage() {
 
     const { patients, updatePatient } = usePatients();
     const { prescriptions } = usePrescriptions();
-    const { evolutions } = useEvolutions();
+    const { evolutions, createEvolution, updateEvolution } = useEvolutions();
     const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
     useEffect(() => {
@@ -125,12 +152,22 @@ export default function PatientMonitoringPage() {
         );
     }, [selectedPatient, prescriptions]);
 
+    const savedEvolution = useMemo(() => {
+        if (!selectedPatient?.id) return undefined;
+
+        const targetDate = getPreviousDay();
+        return evolutions.find(
+            (evolution) => evolution.patientId === selectedPatient.id && evolution.date === targetDate,
+        );
+    }, [selectedPatient, evolutions]);
+
     const chartData = useMemo<ChartRow[]>(() => {
         const days = buildLastSevenDays();
 
         if (!selectedPatient?.id) {
             return days.map((day) => ({
                 date: formatLabelDate(day),
+                oralPct: 0,
                 enteralPct: 0,
                 parenteralPct: 0,
                 nonIntentionalPct: 0,
@@ -139,8 +176,6 @@ export default function PatientMonitoringPage() {
         }
 
         const patientIdValue = selectedPatient.id;
-        const patientUnintentionalKcal = calculateUnintentionalKcal(selectedPatient);
-
         return days.map((day) => {
             const evolutionOnDay = evolutions.find(
                 (evolution) => evolution.patientId === patientIdValue && evolution.date === day,
@@ -149,47 +184,124 @@ export default function PatientMonitoringPage() {
             const prescriptionsOnDay = prescriptions.filter(
                 (prescription) =>
                     prescription.patientId === patientIdValue &&
-                    prescription.status === "active" &&
                     isPrescriptionActiveOn(prescription, day),
             );
 
-            const targetKcal = (() => {
-                const enteralPrescription = prescriptionsOnDay.find(
-                    (prescription) => prescription.therapyType === "enteral" && (prescription.totalCalories || 0) > 0,
-                );
-                if (enteralPrescription?.totalCalories) return enteralPrescription.totalCalories;
+            const enteralPrescription = pickPrescriptionForType(
+                prescriptionsOnDay,
+                "enteral",
+                evolutionOnDay?.prescriptionId,
+            );
+            const oralPrescription = pickPrescriptionForType(prescriptionsOnDay, "oral");
+            const parenteralPrescription = pickPrescriptionForType(prescriptionsOnDay, "parenteral");
 
-                const fallbackPrescription = prescriptionsOnDay.find(
-                    (prescription) => (prescription.totalCalories || 0) > 0,
-                );
+            const targetKcal = (() => {
+                const tneGoal = selectedPatient.tneGoals?.targetKcalPerKg;
+                if (tneGoal && selectedPatient.weight) return tneGoal * selectedPatient.weight;
+
+                if (enteralPrescription?.totalCalories) return enteralPrescription.totalCalories;
+                if (parenteralPrescription?.totalCalories) return parenteralPrescription.totalCalories;
+
+                const fallbackPrescription = [...prescriptionsOnDay]
+                    .sort(sortByMostRecentStartDate)
+                    .find((prescription) => (prescription.totalCalories || 0) > 0);
                 if (fallbackPrescription?.totalCalories) return fallbackPrescription.totalCalories;
 
                 if (selectedPatient.weight) return selectedPatient.weight * 25;
                 return 0;
             })();
 
-            const parenteralKcal = prescriptionsOnDay
-                .filter((prescription) => prescription.therapyType === "parenteral")
-                .reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0);
+            const oralKcal = evolutionOnDay?.oralKcal ?? oralPrescription?.totalCalories ?? 0;
+            const enteralInfusedKcal = evolutionOnDay?.enteralKcal
+                ?? (enteralPrescription?.totalCalories || 0) * ((evolutionOnDay?.metaReached || 0) / 100);
+            const parenteralKcal = evolutionOnDay?.parenteralKcal ?? parenteralPrescription?.totalCalories ?? 0;
+            const nonIntentionalKcal = calculateUnintentionalKcal(evolutionOnDay || selectedPatient);
 
-            const enteralPct = clampPercent(evolutionOnDay?.metaReached || 0);
+            const oralPct = targetKcal > 0 ? clampPercent((oralKcal / targetKcal) * 100) : 0;
+            const enteralPct = targetKcal > 0 ? clampPercent((enteralInfusedKcal / targetKcal) * 100) : 0;
             const parenteralPct = targetKcal > 0 ? clampPercent((parenteralKcal / targetKcal) * 100) : 0;
-            const nonIntentionalPct = targetKcal > 0 ? clampPercent((patientUnintentionalKcal / targetKcal) * 100) : 0;
+            const nonIntentionalPct = targetKcal > 0 ? clampPercent((nonIntentionalKcal / targetKcal) * 100) : 0;
 
             return {
                 date: formatLabelDate(day),
+                oralPct: Number(oralPct.toFixed(1)),
                 enteralPct: Number(enteralPct.toFixed(1)),
                 parenteralPct: Number(parenteralPct.toFixed(1)),
                 nonIntentionalPct: Number(nonIntentionalPct.toFixed(1)),
-                totalPct: Number((enteralPct + parenteralPct + nonIntentionalPct).toFixed(1)),
+                totalPct: Number((oralPct + enteralPct + parenteralPct + nonIntentionalPct).toFixed(1)),
             };
         });
     }, [selectedPatient, evolutions, prescriptions]);
 
-    const handleSave = async (data: Partial<Patient>) => {
+    const handleSave = async (data: Partial<Patient> & Partial<DailyEvolution>) => {
         if (selectedPatient?.id) {
-            await updatePatient(selectedPatient.id, data);
-            setSelectedPatient((prev) => (prev ? { ...prev, ...data } : null));
+            const updatedPatient = { ...selectedPatient, ...data };
+            const targetDate = getPreviousDay();
+            const prescriptionsOnTargetDate = prescriptions.filter(
+                (prescription) =>
+                    prescription.patientId === selectedPatient.id &&
+                    isPrescriptionActiveOn(prescription, targetDate),
+            );
+            const enteralPrescription = pickPrescriptionForType(prescriptionsOnTargetDate, "enteral");
+            const referencePrescription = enteralPrescription || [...prescriptionsOnTargetDate].sort(sortByMostRecentStartDate)[0];
+            const existingEvolution = evolutions.find(
+                (evolution) =>
+                    evolution.patientId === selectedPatient.id &&
+                    evolution.date === targetDate &&
+                    (!referencePrescription?.id || evolution.prescriptionId === referencePrescription.id),
+            ) || evolutions.find(
+                (evolution) => evolution.patientId === selectedPatient.id && evolution.date === targetDate,
+            );
+
+            await updatePatient(selectedPatient.id, {
+                tneGoals: data.tneGoals,
+                infusionPercentage24h: data.infusionPercentage24h,
+                tneInterruptions: data.tneInterruptions,
+                unintentionalCalories: data.unintentionalCalories,
+                monitoringNotes: data.monitoringNotes,
+                idealWeight: data.idealWeight,
+            });
+
+            const infusionPercentage = data.infusionPercentage24h ?? updatedPatient.infusionPercentage24h ?? 0;
+            const prescribedVolume = enteralPrescription?.totalVolume || 0;
+            const infusedVolume = prescribedVolume > 0
+                ? Number(((prescribedVolume * infusionPercentage) / 100).toFixed(2))
+                : 0;
+            const enteralInfusedKcal = data.enteralKcal ?? ((enteralPrescription?.totalCalories || 0) * infusionPercentage) / 100;
+            const enteralInfusedProtein = data.enteralProtein ?? ((enteralPrescription?.totalProtein || 0) * infusionPercentage) / 100;
+            const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+
+            const evolutionPayload = {
+                hospitalId: updatedPatient.hospitalId || sessionHospitalId,
+                patientId: selectedPatient.id,
+                prescriptionId: enteralPrescription?.id ?? referencePrescription?.id,
+                professionalId: typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined,
+                date: targetDate,
+                prescribedVolume,
+                volumeInfused: infusedVolume,
+                metaReached: infusionPercentage,
+                proteinPrescribed: enteralPrescription?.totalProtein || 0,
+                proteinInfused: enteralInfusedProtein,
+                oralKcal: data.oralKcal ?? savedEvolution?.oralKcal ?? totals.oralKcal,
+                oralProtein: data.oralProtein ?? savedEvolution?.oralProtein ?? totals.oralProtein,
+                enteralKcal: enteralInfusedKcal,
+                enteralProtein: enteralInfusedProtein,
+                parenteralKcal: data.parenteralKcal ?? savedEvolution?.parenteralKcal ?? totals.parenteralKcal,
+                parenteralProtein: data.parenteralProtein ?? savedEvolution?.parenteralProtein ?? totals.parenteralProtein,
+                nonIntentionalKcal: data.nonIntentionalKcal ?? calculateUnintentionalKcal(updatedPatient),
+                tneGoals: data.tneGoals ?? updatedPatient.tneGoals,
+                tneInterruptions: data.tneInterruptions ?? updatedPatient.tneInterruptions,
+                unintentionalCalories: data.unintentionalCalories ?? updatedPatient.unintentionalCalories,
+                notes: data.monitoringNotes ?? updatedPatient.monitoringNotes,
+            };
+
+            if (existingEvolution?.id) {
+                await updateEvolution(existingEvolution.id, evolutionPayload);
+            } else {
+                await createEvolution(evolutionPayload);
+            }
+
+            setSelectedPatient(updatedPatient);
         }
     };
 
@@ -232,15 +344,15 @@ export default function PatientMonitoringPage() {
     return (
         <div className="min-h-screen bg-background pb-20">
             <Header />
-            <div className="container py-6 space-y-6">
-                <div className="flex items-center gap-4">
+            <div className="container px-4 py-6 space-y-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div>
                         <h1 className="text-2xl font-bold">Acompanhamento da Terapia Nutricional</h1>
                         <p className="text-muted-foreground">
-                            {selectedPatient.name} - Prontuario: {selectedPatient.record}
+                            {selectedPatient.name} - Prontuário: {selectedPatient.record}
                         </p>
                     </div>
                 </div>
@@ -255,6 +367,7 @@ export default function PatientMonitoringPage() {
                     parenteralKcal={totals.parenteralKcal}
                     parenteralProtein={totals.parenteralProtein}
                     historyData={chartData}
+                    savedEvolution={savedEvolution}
                 />
             </div>
             <BottomNav />

@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -280,8 +281,37 @@ export const PrescriptionDetails = ({
         const weight = patient.weight || 0;
         const lines: string[] = [];
 
-        // Tipo de sistema
-        if (prescription.systemType === 'closed') {
+        if (prescription.therapyType === 'oral') {
+            const oralRoute = prescription.oralDetails?.administrationRoute === 'translactation' ? 'translactacao' : 'via oral';
+            const deliveryMethod = prescription.oralDetails?.deliveryMethod === 'feeding-bottle'
+                ? 'frasco para dieta'
+                : prescription.oralDetails?.deliveryMethod === 'baby-bottle'
+                    ? 'mamadeira'
+                    : prescription.oralDetails?.deliveryMethod === 'cup'
+                        ? 'copo'
+                        : '';
+
+            lines.push(`Terapia nutricional ofertada por ${oralRoute}${deliveryMethod ? ` em ${deliveryMethod}` : ''}.`);
+            lines.push(`Consistencia da dieta: ${prescription.oralDetails?.dietConsistency || patient.consistency || '-'}.`);
+            lines.push(`Caracteristicas da dieta: ${prescription.oralDetails?.dietCharacteristics || prescription.oralDetails?.observations || '-'}.`);
+            lines.push(`Fracionamento: ${prescription.oralDetails?.mealsPerDay || patient.mealCount || '-'} refeicoes/dia.`);
+            lines.push(`Acompanhamento fonoaudiologico: ${prescription.oralDetails?.speechTherapy ? 'sim' : 'nao'}.`);
+            if (prescription.oralDetails?.needsThickener) {
+                lines.push(`Agua espessada com ${prescription.oralDetails?.thickenerProduct || 'espessante nao informado'}, ${prescription.oralDetails?.thickenerVolume || '?'} ml por oferta, horarios: ${prescription.oralDetails?.thickenerTimes?.join(', ') || '-'}.`);
+            }
+        } else if (prescription.therapyType === 'parenteral') {
+            lines.push(`Terapia parenteral prescrita por acesso ${prescription.parenteralDetails?.access || 'nao informado'}.`);
+            lines.push(`Tempo de infusao: ${prescription.parenteralDetails?.infusionTime || prescription.infusionHoursPerDay || '?'} horas.`);
+            lines.push(`Aminoacidos: ${prescription.parenteralDetails?.aminoacidsG || 0} g/dia.`);
+            lines.push(`Lipideos: ${prescription.parenteralDetails?.lipidsG || 0} g/dia.`);
+            lines.push(`Glicose: ${prescription.parenteralDetails?.glucoseG || 0} g/dia.`);
+            if (prescription.parenteralDetails?.tigMgKgMin) {
+                lines.push(`TIG: ${prescription.parenteralDetails.tigMgKgMin.toFixed(2)} mg/kg/min.`);
+            }
+            if (prescription.parenteralDetails?.observations) {
+                lines.push(`Observacoes: ${prescription.parenteralDetails.observations}`);
+            }
+        } else if (prescription.systemType === 'closed') {
             lines.push(`Dieta enteral administrada por ${prescription.feedingRoute || 'sonda nasoenteral'}.`);
 
             prescription.formulas.forEach((pf) => {
@@ -596,6 +626,9 @@ export const PrescriptionDetails = ({
                             <FileText className="h-5 w-5" />
                             Sugestão de Registro em Prontuário
                         </DialogTitle>
+                        <DialogDescription>
+                            Visualize o texto sugerido para registrar esta prescricao no prontuario do paciente.
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="mt-4">
                         <pre className="whitespace-pre-wrap text-sm bg-gray-50 p-4 rounded-lg border">

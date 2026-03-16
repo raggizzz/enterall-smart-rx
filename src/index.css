@@ -35,7 +35,7 @@ All colors MUST be HSL.
     --border: 156 20% 84%;
     --input: 156 20% 84%;
     --ring: 156 73% 36%;
-    
+
     --medical-green: 156 73% 36%;
     --medical-green-dark: 156 100% 12%;
     --medical-green-light: 156 45% 94%;
@@ -43,7 +43,7 @@ All colors MUST be HSL.
     --warning: 38 92% 50%;
     --info: 199 89% 48%;
 
-    --radius: 0.5rem;
+    --radius: 0rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -90,7 +90,7 @@ All colors MUST be HSL.
     --border: 156 40% 20%;
     --input: 156 40% 20%;
     --ring: 156 73% 45%;
-    
+
     --medical-green: 156 73% 45%;
     --medical-green-dark: 156 100% 12%;
     --medical-green-light: 156 50% 15%;
@@ -109,6 +109,12 @@ All colors MUST be HSL.
 }
 
 @layer base {
+  html {
+    min-height: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
   * {
     @apply border-border;
   }
@@ -116,6 +122,8 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground antialiased;
     min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
     background-image:
       radial-gradient(circle at 0% 0%, hsl(var(--medical-green-light)) 0%, transparent 34%),
       radial-gradient(circle at 100% 100%, hsl(var(--secondary)) 0%, transparent 30%);
@@ -124,5 +132,124 @@ All colors MUST be HSL.
 
   #root {
     min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+}
+
+/* === Premium Design Enhancements === */
+@layer components {
+
+  /* Smooth transitions for interactive elements */
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    transition: all 0.2s ease-in-out;
+  }
+
+  /* Enhanced card styling with subtle shadow */
+  .card-premium {
+    box-shadow:
+      0 1px 3px 0 rgba(0, 0, 0, 0.06),
+      0 1px 2px -1px rgba(0, 0, 0, 0.06),
+      0 0 0 1px hsl(var(--medical-green) / 0.05);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+
+  .card-premium:hover {
+    box-shadow:
+      0 4px 12px 0 rgba(0, 0, 0, 0.08),
+      0 2px 4px -2px rgba(0, 0, 0, 0.05),
+      0 0 0 1px hsl(var(--medical-green) / 0.1);
+    transform: translateY(-1px);
+  }
+
+  /* Glassmorphism utility */
+  .glass {
+    background: hsl(var(--card) / 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  /* Animated gradient border */
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg,
+        hsl(var(--medical-green) / 0.3),
+        hsl(var(--primary) / 0.1),
+        hsl(var(--medical-green) / 0.3));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Pulse animation for status indicators */
+  @keyframes pulse-soft {
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.6;
+    }
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  /* Fade-in animation for page transitions */
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in-up 0.3s ease-out;
+  }
+}
+
+/* Print optimizations */
+@media print {
+  body {
+    background: white !important;
+    background-image: none !important;
+  }
+
+  .no-print,
+  nav,
+  header {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 }

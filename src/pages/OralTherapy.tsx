@@ -303,7 +303,7 @@ export default function OralTherapyPage() {
         const resolvedHospitalId = selectedPatient.hospitalId || sessionHospitalId;
 
         if (!resolvedHospitalId) {
-            toast.error("Hospital da sessão não identificado. Refaça o login.");
+      toast.error("Unidade da sessão não identificada. Refaça o login.");
             return;
         }
 
@@ -340,10 +340,10 @@ export default function OralTherapyPage() {
             dietConsistency ? `Consistencia: ${dietConsistency}` : "",
             dietCharacteristics ? `Caracteristicas: ${dietCharacteristics}` : "",
             `Refeicoes/dia: ${mealsPerDay}`,
-            speechTherapy ? "Acompanhamento fonoaudiologico: sim" : "Acompanhamento fonoaudiologico: nao",
+            speechTherapy ? "Acompanhamento fonoaudiológico: sim" : "Acompanhamento fonoaudiológico: nao",
             speechTherapy && needsThickener ? `Água com espessante: sim (${safeConsistency || "consistência não informada"})` : "",
             speechTherapy && !needsThickener ? "Agua com espessante: nao" : "",
-            observations ? `Observacoes: ${observations}` : "",
+            observations ? `Observações: ${observations}` : "",
         ].filter(Boolean);
 
         const prescriptionPayload = {
@@ -384,9 +384,12 @@ export default function OralTherapyPage() {
             await updatePatient(selectedPatient.id, {
                 nutritionType: "oral",
                 observation: dietCharacteristics || observations || selectedPatient.observation,
+                consistency: dietConsistency || undefined,
+                safeConsistency: speechTherapy && needsThickener ? safeConsistency : undefined,
+                mealCount: mealsPerDay || undefined,
             });
 
-            toast.success("Prescricao de dieta oral salva!");
+            toast.success("Prescrição de dieta oral salva!");
             navigate("/patients");
         } catch (error) {
             console.error("Erro ao salvar dieta oral:", error);
@@ -428,7 +431,7 @@ export default function OralTherapyPage() {
                     <div>
                         <h1 className="text-2xl font-bold">Dieta Oral / TNO</h1>
                         <p className="text-muted-foreground">
-                            {selectedPatient?.name} - Prontuario: {selectedPatient?.record}
+                            {selectedPatient?.name} - Prontuário: {selectedPatient?.record}
                         </p>
                     </div>
                 </div>
@@ -520,7 +523,7 @@ export default function OralTherapyPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center gap-4">
-                            <Label>Acompanhamento fonoaudiologico?</Label>
+                            <Label>Acompanhamento fonoaudiológico?</Label>
                             <div className="flex items-center gap-2">
                                 <Checkbox
                                     id="speechNo"
@@ -846,9 +849,9 @@ export default function OralTherapyPage() {
 
                                 <Separator />
 
-                                {/* Observacoes */}
+                                {/* Observações */}
                                 <div className="space-y-2">
-                                    <Label>Observacoes</Label>
+                                    <Label>Observações</Label>
                                     <Textarea
                                         value={observations}
                                         onChange={(e) => setObservations(e.target.value)}
@@ -864,7 +867,7 @@ export default function OralTherapyPage() {
                 {/* Salvar */}
                 <Button onClick={handleSave} className="w-full" size="lg" disabled={isSaving}>
                     <Save className="h-4 w-4 mr-2" />
-                    {isSaving ? "Salvando..." : "Salvar Prescricao de Dieta Oral"}
+                    {isSaving ? "Salvando..." : "Salvar Prescrição de Dieta Oral"}
                 </Button>
             </div>
             <BottomNav />

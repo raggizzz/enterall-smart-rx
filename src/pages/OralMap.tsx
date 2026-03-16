@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Printer, AlertCircle, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { usePatients } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions } from "@/hooks/useDatabase";
 
 const OralMap = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
+    const { prescriptions, isLoading: prescriptionsLoading } = usePrescriptions();
     const [selectedClinic, setSelectedClinic] = useState<string>("all");
 
     const oralMapPatients = useMemo(() => {
@@ -39,6 +40,10 @@ const OralMap = () => {
     }, [patients]);
 
     const mapTitle = selectedClinic === "all" ? "Todos os setores" : selectedClinic;
+    const printPatients = useMemo(
+        () => oralMapPatients.filter((patient) => patient.nutritionType === "oral"),
+        [oralMapPatients],
+    );
 
     const getDietLabel = (nutritionType: string) => {
         if (nutritionType === 'oral') return 'Dieta Oral';
@@ -96,9 +101,9 @@ const OralMap = () => {
                     </div>
                 </div>
 
-                {patientsLoading ? (
+                {patientsLoading || prescriptionsLoading ? (
                     <div className="text-center py-12">
-                        <p className="text-muted-foreground">Carregando pacientes...</p>
+                        <p className="text-muted-foreground">Carregando dados...</p>
                     </div>
                 ) : oralMapPatients.length === 0 ? (
                     <Card>
@@ -109,60 +114,87 @@ const OralMap = () => {
                     </Card>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {oralMapPatients.map((patient) => (
-                            <Card
-                                key={patient.id}
-                                className={`border-l-4 ${patient.nutritionType === 'oral'
-                                    ? 'border-l-green-500'
-                                    : patient.nutritionType === 'enteral'
-                                        ? 'border-l-purple-500'
-                                        : 'border-l-red-500'
-                                    }`}
-                            >
-                                <CardHeader className="pb-2">
-                                    <div className="flex justify-between items-start gap-3">
-                                        <div>
-                                            <CardTitle className="text-lg">{patient.bed || 'Sem leito'}</CardTitle>
-                                            <p className="text-sm font-medium text-muted-foreground">{patient.name}</p>
-                                            <p className="text-xs text-muted-foreground">Prontuario: {patient.record}</p>
+                        {oralMapPatients.map((patient) => {
+                            // Find active enteral prescription for this patient if nutrition type is enteral
+                            const activeEnteralPrescription = patient.nutritionType === 'enteral'
+                                ? prescriptions.find(p => p.patientId === patient.id && p.therapyType === 'enteral' && p.status === 'active')
+                                : null;
+
+                            return (
+                                <Card
+                                    key={patient.id}
+                                    className={`border-l-4 ${patient.nutritionType === 'oral'
+                                        ? 'border-l-green-500'
+                                        : patient.nutritionType === 'enteral'
+                                            ? 'border-l-purple-500'
+                                            : 'border-l-red-500'
+                                        }`}
+                                >
+                                    <CardHeader className="pb-2">
+                                        <div className="flex justify-between items-start gap-3">
+                                            <div>
+                                                <CardTitle className="text-lg">{patient.bed || 'Sem leito'}</CardTitle>
+                                                <p className="text-sm font-medium text-muted-foreground">{patient.name}</p>
+                                                <p className="text-xs text-muted-foreground">Prontuário: {patient.record}</p>
+                                            </div>
+                                            <Badge className={getDietBadgeClass(patient.nutritionType)}>
+                                                {getDietLabel(patient.nutritionType)}
+                                            </Badge>
                                         </div>
-                                        <Badge className={getDietBadgeClass(patient.nutritionType)}>
-                                            {getDietLabel(patient.nutritionType)}
-                                        </Badge>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="text-sm">
-                                        <span className="text-muted-foreground">Setor:</span> {patient.ward || '-'}
-                                    </div>
-
-                                    <div className="text-sm">
-                                        <span className="text-muted-foreground">Data de Nascimento:</span> {patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}
-                                    </div>
-
-                                    <div className="flex gap-4 text-sm">
-                                        <span><strong>Consistência:</strong> {(patient as any).consistency || '-'}</span>
-                                        <span><strong>Nº de Refeições:</strong> {(patient as any).mealCount || '-'}</span>
-                                    </div>
-
-                                    <div className="text-sm">
-                                        <strong>Consistência Segura:</strong> {(patient as any).safeConsistency || ((patient as any).speechTherapyFollowUp ? (patient as any).safeConsistency : '–')}
-                                    </div>
-
-                                    <div className="text-sm bg-green-50 p-2 rounded border border-green-200">
-                                        <p className="font-medium text-green-800">Características da dieta</p>
-                                        <p className="text-green-700">{getDietCharacteristics(patient.nutritionType, patient.observation)}</p>
-                                    </div>
-
-                                    {patient.observation && patient.nutritionType !== 'oral' && (
-                                        <div className="flex items-start gap-2 text-sm bg-yellow-50 p-2 rounded text-yellow-800">
-                                            <AlertCircle className="h-4 w-4 mt-0.5" />
-                                            <span>{patient.observation}</span>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                        <div className="text-sm">
+                                            <span className="text-muted-foreground">Setor:</span> {patient.ward || '-'}
                                         </div>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        ))}
+
+                                        <div className="text-sm">
+                                            <span className="text-muted-foreground">Nascimento:</span> {patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}
+                                        </div>
+
+                                        <div className="flex flex-col gap-1 text-sm bg-slate-50 p-2 rounded border border-slate-100">
+                                            <p className="font-medium text-slate-800 border-b pb-1 mb-1">Informações de Dieta Oral</p>
+                                            <div className="flex justify-between">
+                                                <span><strong>Consistência:</strong> {patient.consistency || '-'}</span>
+                                                <span><strong>Refeições:</strong> {patient.mealCount || '-'}</span>
+                                            </div>
+                                            <div>
+                                                <strong>Consistência Segura:</strong> {patient.safeConsistency || '–'}
+                                            </div>
+                                            <div>
+                                                <strong>Fono:</strong> {patient.safeConsistency ? 'Sim' : '-'}
+                                            </div>
+                                        </div>
+
+                                        {activeEnteralPrescription && (
+                                            <div className="flex flex-col gap-1 text-sm bg-purple-50 p-2 rounded border border-purple-100">
+                                                <p className="font-medium text-purple-800 border-b border-purple-200 pb-1 mb-1">Terapia Nutricional Enteral</p>
+                                                <div className="text-purple-700">
+                                                    {activeEnteralPrescription.formulas?.map((f, i) => (
+                                                        <span key={i} className="block">• {f.formulaName} - {f.volume}ml x {f.timesPerDay} {f.timesPerDay > 1 ? 'doses' : 'dose'}</span>
+                                                    ))}
+                                                </div>
+                                                <div className="flex justify-between mt-1 pt-1 border-t border-purple-100 text-purple-700">
+                                                    <span><strong>Kcal:</strong> {activeEnteralPrescription.totalCalories}</span>
+                                                    <span><strong>Ptn:</strong> {activeEnteralPrescription.totalProtein}g</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="text-sm bg-green-50 p-2 rounded border border-green-200">
+                                            <p className="font-medium text-green-800">Características da dieta</p>
+                                            <p className="text-green-700">{getDietCharacteristics(patient.nutritionType, patient.observation)}</p>
+                                        </div>
+
+                                        {patient.observation && patient.nutritionType !== 'oral' && (
+                                            <div className="flex items-start gap-2 text-sm bg-yellow-50 p-2 rounded text-yellow-800">
+                                                <AlertCircle className="h-4 w-4 mt-0.5 min-w-4" />
+                                                <span>{patient.observation}</span>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )
+                        })}
                     </div>
                 )}
 
@@ -184,32 +216,48 @@ const OralMap = () => {
 
             <div className="hidden print:block p-4 text-black bg-white">
                 <h1 className="text-xl font-bold mb-1">Mapa da Copa - Dietas e Suplementos</h1>
-                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes (oral): {oralMapPatients.filter(p => p.nutritionType === 'oral').length}</p>
+                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes (oral): {printPatients.length}</p>
 
                 <table className="w-full border-collapse text-sm">
                     <thead>
                         <tr>
                             <th className="border border-black p-2 text-left">Leito</th>
                             <th className="border border-black p-2 text-left">Paciente</th>
-                            <th className="border border-black p-2 text-left">Data de Nascimento</th>
-                            <th className="border border-black p-2 text-left">Via</th>
+                            <th className="border border-black p-2 text-left">Nascimento</th>
+                            <th className="border border-black p-2 text-left">Via / Fórmulas</th>
                             <th className="border border-black p-2 text-left">Consistência</th>
-                            <th className="border border-black p-2 text-left">Consistência Segura</th>
-                            <th className="border border-black p-2 text-left">Características da dieta</th>
+                            <th className="border border-black p-2 text-left">Consist. Segura</th>
+                            <th className="border border-black p-2 text-left">Características</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {oralMapPatients.filter(p => p.nutritionType === 'oral').map((patient) => (
-                            <tr key={`print-${patient.id}`}>
-                                <td className="border border-black p-2">{patient.bed || '-'}</td>
-                                <td className="border border-black p-2">{patient.name}</td>
-                                <td className="border border-black p-2">{patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}</td>
-                                <td className="border border-black p-2">{getDietLabel(patient.nutritionType)}</td>
-                                <td className="border border-black p-2">{(patient as any).consistency || '-'}</td>
-                                <td className="border border-black p-2">{(patient as any).safeConsistency || '–'}</td>
-                                <td className="border border-black p-2">{getDietCharacteristics(patient.nutritionType, patient.observation)}</td>
-                            </tr>
-                        ))}
+                        {printPatients.map((patient) => {
+                            const activeEnteralPrescription = patient.nutritionType === 'enteral'
+                                ? prescriptions.find(p => p.patientId === patient.id && p.therapyType === 'enteral' && p.status === 'active')
+                                : null;
+
+                            return (
+                                <tr key={`print-${patient.id}`}>
+                                    <td className="border border-black p-2">{patient.bed || '-'}</td>
+                                    <td className="border border-black p-2">{patient.name}</td>
+                                    <td className="border border-black p-2">{patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}</td>
+                                    <td className="border border-black p-2">
+                                        <div className="font-bold">{getDietLabel(patient.nutritionType)}</div>
+                                        {activeEnteralPrescription && activeEnteralPrescription.formulas && (
+                                            <div className="text-xs mt-1">
+                                                {activeEnteralPrescription.formulas.map((f, i) => (
+                                                    <div key={i}>• {f.formulaName} ({f.volume}ml x{f.timesPerDay})</div>
+                                                ))}
+                                                <div className="mt-1 font-medium">{activeEnteralPrescription.totalCalories} kcal | {activeEnteralPrescription.totalProtein}g ptn</div>
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td className="border border-black p-2">{patient.consistency || '-'} <br /> <span className="text-xs text-gray-500">Refeições: {patient.mealCount || '-'}</span></td>
+                                    <td className="border border-black p-2">{patient.safeConsistency || '–'} <br /> <span className="text-xs text-gray-500">Fono: {patient.safeConsistency ? 'Sim' : '-'}</span></td>
+                                    <td className="border border-black p-2">{getDietCharacteristics(patient.nutritionType, patient.observation)}</td>
+                                </tr>
+                            )
+                        })}
                     </tbody>
                 </table>
             </div>

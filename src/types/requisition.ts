@@ -1,6 +1,7 @@
 export interface DietMapItem {
     patientId: string;
     patientName: string;
+    patientRecord?: string;
     bed: string;
     ward: string;
     dob?: string;
@@ -9,9 +10,12 @@ export interface DietMapItem {
     productName: string;
     volumeOrAmount: number; // ml or g
     unit: string; // 'ml', 'g', 'un'
+    stageVolume?: number;
+    stageVolumeUnit?: string;
     rate?: string; // e.g., '60ml/h'
     times: string[]; // e.g., ['09:00', '12:00']
     productCode?: string;
+    observation?: string;
 }
 
 export interface ConsolidatedItem {
@@ -26,6 +30,7 @@ export interface ConsolidatedItem {
 
 export interface RequisitionData {
     unitName: string;
+    therapyLabel: string;
     startDate: string;
     endDate: string;
     printDate: string;

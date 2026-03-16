@@ -11,6 +11,8 @@ import {
   Utensils,
   Syringe,
   BanIcon,
+  Printer,
+  Target,
 } from "lucide-react";
 import SupplementIcon from "@/components/icons/SupplementIcon";
 import EnteralIcon from "@/components/icons/EnteralIcon";
@@ -21,7 +23,10 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
-import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards, useEvolutions } from "@/hooks/useDatabase";
+import SectorMapPrint from "@/components/SectorMapPrint";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 
 interface WardBed {
   bed: string;
@@ -29,6 +34,8 @@ interface WardBed {
   dob: string | null;
   record: string | null;
   feedingRoute: "oral" | "oral-supplement" | "enteral" | "parenteral" | "fasting" | "empty";
+  activeRoutes: Array<"oral" | "enteral" | "parenteral">;
+  goalRoutes: Array<"oral" | "enteral" | "parenteral">;
   status: "goal_met" | "below_goal" | "warning" | "no_diet" | null;
   prescribedVolume: number;
   prescribedCalories: number;
@@ -38,6 +45,7 @@ interface WardBed {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const role = useCurrentRole();
   const [userName, setUserName] = useState("Profissional");
   const [userProfessionalId, setUserProfessionalId] = useState("");
   const [selectedHospital, setSelectedHospital] = useState("");
@@ -50,9 +58,13 @@ const Dashboard = () => {
 
   const { patients } = usePatients();
   const { prescriptions } = usePrescriptions();
+  const { evolutions } = useEvolutions();
   const { hospitals } = useHospitals();
   const { wards } = useWards(selectedHospital);
   const { professionals } = useProfessionals(selectedHospital || undefined);
+  const canManagePatients = can(role, "manage_patients");
+  const canManagePrescriptions = can(role, "manage_prescriptions");
+  const canManageMonitoring = can(role, "manage_monitoring");
 
   const [patientSearch, setPatientSearch] = useState({ name: "", dob: "", record: "" });
   useEffect(() => {
@@ -97,6 +109,14 @@ const Dashboard = () => {
   const wardBeds = useMemo(() => {
     if (!selectedHospital || !selectedWard) return [];
 
+    const latestEvolutionByPatient = evolutions.reduce<Record<string, typeof evolutions[number]>>((acc, evolution) => {
+      const current = acc[evolution.patientId];
+      if (!current || evolution.date > current.date) {
+        acc[evolution.patientId] = evolution;
+      }
+      return acc;
+    }, {});
+
     const activePatients = patients.filter(p =>
       p.status === 'active' &&
       p.hospitalId === selectedHospital &&
@@ -105,8 +125,31 @@ const Dashboard = () => {
 
     // Create beds from patients
     const patientBeds: WardBed[] = activePatients.map((patient, index) => {
-      const patientPrescription = prescriptions.find((p) => p.patientId === patient.id && p.status === "active")
+      const patientPrescriptions = prescriptions.filter((p) => p.patientId === patient.id && p.status === "active");
+      const patientPrescription = patientPrescriptions[0]
         || prescriptions.find((p) => p.patientId === patient.id);
+      const latestEvolution = patient.id ? latestEvolutionByPatient[patient.id] : undefined;
+      const activeRoutes = Array.from(new Set(
+        patientPrescriptions
+          .map((prescription) => prescription.therapyType)
+          .filter((therapyType): therapyType is "oral" | "enteral" | "parenteral" => therapyType === "oral" || therapyType === "enteral" || therapyType === "parenteral"),
+      ));
+
+      const targetKcal = (() => {
+        if (patient.tneGoals?.targetKcalPerKg && patient.weight) return patient.tneGoals.targetKcalPerKg * patient.weight;
+        if (patient.targetKcal) return patient.targetKcal;
+        return patientPrescriptions.reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0);
+      })();
+
+      const routeContribution = {
+        oral: latestEvolution?.oralKcal ?? patientPrescriptions.filter((prescription) => prescription.therapyType === "oral").reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0),
+        enteral: latestEvolution?.enteralKcal ?? 0,
+        parenteral: latestEvolution?.parenteralKcal ?? patientPrescriptions.filter((prescription) => prescription.therapyType === "parenteral").reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0),
+      };
+      const goalRoutes = (Object.entries(routeContribution) as Array<[keyof typeof routeContribution, number]>)
+        .filter(([, value]) => value > 0)
+        .map(([route]) => route);
+      const totalDelivered = routeContribution.oral + routeContribution.enteral + routeContribution.parenteral;
 
       let feedingRoute: WardBed["feedingRoute"] = 'oral';
       if (patient.nutritionType === 'enteral') feedingRoute = 'enteral';
@@ -119,7 +162,13 @@ const Dashboard = () => {
         dob: patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-',
         record: patient.record,
         feedingRoute,
-        status: patientPrescription ? 'goal_met' : 'no_diet',
+        activeRoutes,
+        goalRoutes,
+        status: patientPrescription
+          ? targetKcal > 0 && totalDelivered >= targetKcal
+            ? 'goal_met'
+            : 'below_goal'
+          : 'no_diet',
         prescribedVolume: patientPrescription?.totalVolume || 0,
         prescribedCalories: patientPrescription?.totalCalories || 0,
         patientId: patient.id,
@@ -139,6 +188,8 @@ const Dashboard = () => {
         dob: null,
         record: null,
         feedingRoute: 'empty',
+        activeRoutes: [],
+        goalRoutes: [],
         status: null,
         prescribedVolume: 0,
         prescribedCalories: 0,
@@ -148,7 +199,7 @@ const Dashboard = () => {
     }
 
     return [...patientBeds, ...emptyBeds];
-  }, [patients, prescriptions, selectedHospital, selectedWard]);
+  }, [patients, prescriptions, evolutions, selectedHospital, selectedWard]);
 
   const getFeedingIcon = (route: string) => {
     switch (route) {
@@ -165,6 +216,14 @@ const Dashboard = () => {
       default:
         return null;
     }
+  };
+
+  const getFeedingIcons = (routes: WardBed["activeRoutes"], fallbackRoute: WardBed["feedingRoute"]) => {
+    if (routes.length > 0) {
+      return routes;
+    }
+
+    return fallbackRoute !== "empty" ? [fallbackRoute] : [];
   };
 
   const getFeedingBadge = (route: string) => {
@@ -186,7 +245,7 @@ const Dashboard = () => {
     }
   };
 
-  const getStatusBadge = (status: string | null, feedingRoute?: string) => {
+  const getStatusBadge = (status: string | null, feedingRoute?: string, goalRoutes: WardBed["goalRoutes"] = []) => {
     const routeLabel: Record<string, string> = {
       oral: "Oral",
       "oral-supplement": "Supl. Oral",
@@ -201,11 +260,20 @@ const Dashboard = () => {
     };
     switch (status) {
       case "goal_met": {
-        const label = feedingRoute && routeLabel[feedingRoute]
-          ? `Meta Atingida (${routeLabel[feedingRoute]})`
+        if (goalRoutes.length > 1) {
+          return (
+            <Badge className="bg-emerald-600 hover:bg-emerald-700 animate-pulse">
+              <Target className="h-3.5 w-3.5 mr-1" />
+              Meta Atingida
+            </Badge>
+          );
+        }
+        const primaryRoute = goalRoutes[0] || feedingRoute;
+        const label = primaryRoute && routeLabel[primaryRoute]
+          ? `Meta Atingida (${routeLabel[primaryRoute]})`
           : "Meta Atingida";
-        const color = feedingRoute && routeColor[feedingRoute]
-          ? routeColor[feedingRoute]
+        const color = primaryRoute && routeColor[primaryRoute]
+          ? routeColor[primaryRoute]
           : "bg-green-500 hover:bg-green-600";
         return <Badge className={color}>{label}</Badge>;
       }
@@ -246,11 +314,29 @@ const Dashboard = () => {
     navigate(`/prescription?${query.toString()}`);
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background">
-      <Header />
+  const handlePrintSectorMap = () => {
+    window.print();
+  };
 
-      <div className="container px-4 py-6 space-y-6">
+  const patientsInSelectedWard = useMemo(() => {
+    return patients
+      .filter((patient) =>
+        patient.status === "active" &&
+        patient.hospitalId === selectedHospital &&
+        patient.ward === selectedWard,
+      )
+      .sort((left, right) => (left.bed || "").localeCompare(right.bed || ""));
+  }, [patients, selectedHospital, selectedWard]);
+
+  const currentHospitalName = hospitals.find((hospital) => hospital.id === selectedHospital)?.name;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background print:bg-white">
+      <div className="print:hidden">
+        <Header />
+      </div>
+
+      <div className="container px-4 py-6 space-y-6 print:hidden">
         {/* Welcome Section */}
         <div className="flex flex-col gap-4">
           <div>
@@ -266,33 +352,8 @@ const Dashboard = () => {
             <CardDescription>Acesso rápido às principais funcionalidades</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="hospital-select" className="text-sm font-medium" title="Selecione a unidade (hospital) para carregar os setores.">Selecionar Unidade</Label>
-                <Select value={selectedHospital} onValueChange={(val) => {
-                  const selected = hospitals.find((hospital) => hospital.id === val);
-                  setSelectedHospital(val);
-                  setSelectedWard("");
-                  localStorage.setItem("userHospitalId", val);
-                  localStorage.setItem("userHospitalName", selected?.name || "Unidade não selecionada");
-                  localStorage.removeItem("userWard");
-                  window.dispatchEvent(new Event("enmeta-session-updated"));
-                }}>
-                  <SelectTrigger id="hospital-select" className="h-auto py-4">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-5 w-5" />
-                      <SelectValue placeholder="Selecione a unidade" />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {hospitals.map((hospital) => (
-                      <SelectItem key={hospital.id} value={hospital.id || ""}>
-                        {hospital.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Selecionar Unidade removed from UI as per user request to streamline local deployments */}
 
               <div className="space-y-2">
                 <Label htmlFor="ward-select" className="text-sm font-medium" title="Filtre os pacientes por setor ou ala da unidade.">Selecionar Setor</Label>
@@ -303,14 +364,13 @@ const Dashboard = () => {
                     localStorage.setItem("userWard", value);
                     window.dispatchEvent(new Event("enmeta-session-updated"));
                   }}
-                  disabled={!selectedHospital}
                 >
                   <SelectTrigger id="ward-select" className="h-auto py-4">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground">
                         <Building2 className="h-5 w-5" />
                       </span>
-                      <SelectValue placeholder={!selectedHospital ? "Selecione uma unidade primeiro" : "Escolher setor da unidade"} />
+                      <SelectValue placeholder="Escolher setor ou ala" />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
@@ -384,6 +444,7 @@ const Dashboard = () => {
                   className="h-auto py-4 w-full flex flex-col gap-2"
                   title="Cadastrar novo paciente"
                   onClick={() => navigate('/patients')}
+                  disabled={!canManagePatients}
                 >
                   <UserPlus className="h-6 w-6" />
                   <span>Cadastrar Paciente</span>
@@ -396,18 +457,22 @@ const Dashboard = () => {
         {selectedWard && (
           <Card className="bg-card/90 backdrop-blur border-primary/10">
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <CardTitle>Mapa do Setor - {selectedWard}</CardTitle>
                   <CardDescription>Visualização dos leitos e pacientes com vias alimentares</CardDescription>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto">
                   <Input
                     placeholder="Buscar paciente..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-[200px]"
+                    className="w-full sm:w-[220px]"
                   />
+                  <Button variant="outline" onClick={handlePrintSectorMap} className="w-full sm:w-auto">
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -415,7 +480,7 @@ const Dashboard = () => {
               {/* Legend */}
               <div className="mb-6 p-4 bg-muted rounded-lg">
                 <p className="text-sm font-medium mb-3">Legenda - Vias Alimentares:</p>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                   <div className="flex items-center gap-2">
                     <Utensils className="h-5 w-5 text-green-600" />
                     <span className="text-sm">Oral</span>
@@ -452,13 +517,17 @@ const Dashboard = () => {
                       key={index}
                       className={`border-2 transition-all hover:shadow-lg cursor-pointer ${bed.patient ? "border-primary" : "border-dashed border-muted"
                         }`}
-                      onClick={() => bed.patient && handleOpenPrescription(bed)}
+                      onClick={() => bed.patient && canManagePrescriptions && handleOpenPrescription(bed)}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-base">{bed.bed}</CardTitle>
                           <div className="flex items-center gap-2">
-                            {getFeedingIcon(bed.feedingRoute)}
+                            {getFeedingIcons(bed.activeRoutes, bed.feedingRoute).map((route, iconIndex) => (
+                              <span key={`${bed.bed}-${route}-${iconIndex}`}>
+                                {getFeedingIcon(route)}
+                              </span>
+                            ))}
                           </div>
                         </div>
                       </CardHeader>
@@ -469,32 +538,40 @@ const Dashboard = () => {
                             <p className="text-xs text-muted-foreground">Nasc: {bed.dob}</p>
                             <p className="text-xs text-muted-foreground">Pront: {bed.record}</p>
                             <div className="pt-2 flex flex-wrap gap-2">
-                              {getFeedingBadge(bed.feedingRoute)}
-                              {getStatusBadge(bed.status, bed.feedingRoute)}
+                              {(bed.activeRoutes.length > 0 ? bed.activeRoutes : [bed.feedingRoute]).map((route, routeIndex) => (
+                                <span key={`${bed.bed}-badge-${route}-${routeIndex}`}>
+                                  {getFeedingBadge(route)}
+                                </span>
+                              ))}
+                              {getStatusBadge(bed.status, bed.feedingRoute, bed.goalRoutes)}
                             </div>
                             <div className="flex gap-2 mt-2">
-                              <Button
-                                variant="link"
-                                className="p-0 h-auto text-primary text-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenPrescription(bed);
-                                }}
-                              >
-                                Prescrever
-                              </Button>
-                              <Button
-                                variant="link"
-                                className="p-0 h-auto text-primary text-sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (bed.patientId) {
-                                    navigate(`/patient-monitoring?patient=${bed.patientId}`);
-                                  }
-                                }}
-                              >
-                                Acompanhamento
-                              </Button>
+                              {canManagePrescriptions && (
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-primary text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPrescription(bed);
+                                  }}
+                                >
+                                  Prescrever
+                                </Button>
+                              )}
+                              {canManageMonitoring && (
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-primary text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (bed.patientId) {
+                                      navigate(`/patient-monitoring?patient=${bed.patientId}`);
+                                    }
+                                  }}
+                                >
+                                  Acompanhamento
+                                </Button>
+                              )}
                             </div>
                           </div>
                         ) : (
@@ -509,7 +586,18 @@ const Dashboard = () => {
         )}
       </div>
 
-      <BottomNav />
+      <div className="print:hidden">
+        <BottomNav />
+      </div>
+
+      {selectedWard && (
+        <SectorMapPrint
+          hospitalName={currentHospitalName}
+          wardName={selectedWard}
+          patients={patientsInSelectedWard}
+          prescriptions={prescriptions}
+        />
+      )}
 
       {selectedPatientForEvolution && (
         <DailyEvolutionDialog

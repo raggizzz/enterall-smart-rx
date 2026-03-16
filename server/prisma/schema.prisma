@@ -1,0 +1,460 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Hospital {
+  id         String   @id @default(uuid())
+  name       String
+  cnpj       String?
+  address    String?
+  city       String?
+  state      String?
+  zipCode    String?
+  phone      String?
+  email      String?
+  isActive   Boolean  @default(true)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  patients      Patient[]
+  formulas      Formula[]
+  modules       Module[]
+  supplies      Supply[]
+  professionals Professional[]
+  prescriptions Prescription[]
+  evolutions    DailyEvolution[]
+  wards         Ward[]
+  settings      AppSettings?
+  appTools      AppTool[]
+  rolePermissions RolePermission[]
+}
+
+model Ward {
+  id         String   @id @default(uuid())
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id])
+  name       String
+  type       String   // e.g., 'ICU', 'Ward', 'Emergency'
+  bedCount   Int      @default(0)
+  isActive   Boolean  @default(true)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  patients   Patient[]
+
+  @@index([hospitalId, isActive, name])
+}
+
+model Professional {
+  id                 String   @id @default(uuid())
+  hospitalId         String?
+  hospital           Hospital? @relation(fields: [hospitalId], references: [id])
+  name               String
+  role               String   // manager, nutritionist, technician
+  registrationNumber String
+  cpf                String?
+  crn                String?
+  cpe                String?
+  managingUnit       String?
+  passwordHash       String?
+  isActive           Boolean  @default(true)
+  version            Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  prescriptions      Prescription[]
+  evolutions         DailyEvolution[]
+
+  @@index([hospitalId, isActive, role])
+  @@index([hospitalId, registrationNumber])
+}
+
+model Patient {
+  id               String   @id @default(uuid())
+  hospitalId       String?
+  hospital         Hospital? @relation(fields: [hospitalId], references: [id])
+  wardId           String?
+  ward             Ward?     @relation(fields: [wardId], references: [id])
+  name             String
+  bed              String?
+  recordNumber     String?
+  admissionDate    DateTime?
+  birthDate        DateTime?
+  gender           String?   // 'M' | 'F' | 'O'
+  weight           Float?
+  height           Float?
+  bmi              Float?
+  diagnosis        String?
+  comorbidities    String?
+  allergies        String?
+  nutritionType    String?   // 'oral' | 'enteral' | 'parenteral'
+  targetKcal       Float?
+  targetProtein    Float?
+  targetVolume     Float?
+  status           String    @default("active") // 'active' | 'discharged' | 'transferred' | 'deceased'
+  observation      String?
+  consistency      String?
+  safeConsistency  String?
+  mealCount        Int?
+  isActive         Boolean   @default(true)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  prescriptions    Prescription[]
+  evolutions       DailyEvolution[]
+
+  @@index([hospitalId, status, wardId])
+  @@index([hospitalId, name])
+  @@index([hospitalId, recordNumber])
+}
+
+model Formula {
+  id                 String   @id @default(uuid())
+  hospitalId         String?
+  hospital           Hospital? @relation(fields: [hospitalId], references: [id])
+  code               String?
+  name               String
+  manufacturer       String?
+  type               String
+  classification     String?
+  macronutrientComplexity String?
+  ageGroup           String?
+  systemType         String?
+  formulaTypes       String?
+  administrationRoutes String?
+  presentationForm   String?
+  presentations      String?
+  presentationDescription String?
+  description        String?
+  billingUnit        String?
+  conversionFactor   Float?
+  billingPrice       Float?
+  density            Float?
+  caloriesPerUnit    Float
+  proteinPerUnit     Float
+  proteinPct         Float?
+  carbPerUnit        Float?
+  carbPct            Float?
+  fatPerUnit         Float?
+  fatPct             Float?
+  fiberPerUnit       Float?
+  fiberType          String?
+  sodiumPerUnit      Float?
+  potassiumPerUnit   Float?
+  calciumPerUnit     Float?
+  phosphorusPerUnit  Float?
+  waterContent       Float?
+  osmolality         Float?
+  proteinSources     String?
+  carbSources        String?
+  fatSources         String?
+  fiberSources       String?
+  specialCharacteristics String?
+  plasticG           Float?
+  paperG             Float?
+  metalG             Float?
+  glassG             Float?
+  isActive           Boolean  @default(true)
+  version            Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  prescriptionFormulas PrescriptionFormula[]
+
+  @@index([hospitalId, isActive, type])
+  @@index([hospitalId, code])
+  @@index([hospitalId, name])
+}
+
+model Module {
+  id                   String   @id @default(uuid())
+  hospitalId           String?
+  hospital             Hospital? @relation(fields: [hospitalId], references: [id])
+  name                 String
+  description          String?
+  density              Float
+  referenceAmount      Float
+  referenceTimesPerDay Int
+  calories             Float
+  protein              Float
+  carbs                Float?
+  fat                  Float?
+  sodium               Float
+  potassium            Float
+  calcium              Float?
+  phosphorus           Float?
+  fiber                Float
+  freeWater            Float
+  billingUnit          String?
+  billingPrice         Float?
+  proteinSources       String?
+  carbSources          String?
+  fatSources           String?
+  fiberSources         String?
+  isActive             Boolean  @default(true)
+  version              Int      @default(1)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  prescriptionModules  PrescriptionModule[]
+
+  @@index([hospitalId, isActive, name])
+}
+
+model Supply {
+  id          String   @id @default(uuid())
+  hospitalId  String?
+  hospital    Hospital? @relation(fields: [hospitalId], references: [id])
+  code        String
+  name        String
+  type        String
+  category    String?
+  description String?
+  billingUnit String?
+  capacityMl  Float?
+  unitPrice   Float
+  isBillable  Boolean  @default(true)
+  plasticG    Float?
+  paperG      Float?
+  metalG      Float?
+  glassG      Float?
+  isActive    Boolean  @default(true)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prescriptionSupplies PrescriptionSupply[]
+
+  @@index([hospitalId, isActive, type])
+  @@index([hospitalId, category])
+  @@index([hospitalId, code])
+}
+
+model Prescription {
+  id                  String   @id @default(uuid())
+  hospitalId          String?
+  hospital            Hospital? @relation(fields: [hospitalId], references: [id])
+  patientId           String
+  patient             Patient   @relation(fields: [patientId], references: [id])
+  patientName         String?
+  patientRecord       String?
+  patientBed          String?
+  patientWard         String?
+  professionalId      String?
+  professional        Professional? @relation(fields: [professionalId], references: [id])
+  professionalName    String?
+  therapyType         String   // 'oral' | 'enteral' | 'parenteral'
+  systemType          String   // 'open' | 'closed'
+  feedingRoute        String?
+  infusionMode        String?
+  infusionRateMlH     Float?
+  infusionDropsMin    Float?
+  infusionHoursPerDay Float?
+  equipmentVolume     Float?
+  hydrationVolume     Float?
+  hydrationSchedules  String?  // Storing as JSON string
+  totalCalories       Float?
+  totalProtein        Float?
+  totalCarbs          Float?
+  totalFat            Float?
+  totalFiber          Float?
+  totalVolume         Float?
+  totalFreeWater      Float?
+  nursingTimeMinutes  Float?
+  nursingCostTotal    Float?
+  materialCostTotal   Float?
+  totalCost           Float?
+  enteralDetails      String?
+  oralDetails         String?
+  parenteralDetails   String?
+  payloadSnapshot     String?
+  status              String   @default("active")
+  statusReason        String?
+  statusChangedAt     DateTime?
+  statusChangedBy     String?
+  startDate           DateTime
+  endDate             DateTime?
+  notes               String?
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  formulas            PrescriptionFormula[]
+  modules             PrescriptionModule[]
+  supplies            PrescriptionSupply[]
+  dailyEvolutions     DailyEvolution[]
+  statusEvents        PrescriptionStatusEvent[]
+
+  @@index([patientId, therapyType, status])
+  @@index([hospitalId, status])
+  @@index([startDate, endDate])
+}
+
+model PrescriptionStatusEvent {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  fromStatus     String?
+  toStatus       String
+  reason         String?
+  changedBy      String?
+  effectiveDate  DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([prescriptionId, createdAt])
+}
+
+model PrescriptionFormula {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  formulaId      String
+  formula        Formula      @relation(fields: [formulaId], references: [id])
+  volume         Float
+  timesPerDay    Int
+  schedules      String       // Stored as JSON array string
+}
+
+model PrescriptionModule {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  moduleId       String
+  module         Module       @relation(fields: [moduleId], references: [id])
+  amount         Float
+  timesPerDay    Int
+  schedules      String?      // Stored as JSON array string
+  unit           String?
+}
+
+model PrescriptionSupply {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  supplyId       String
+  supply         Supply       @relation(fields: [supplyId], references: [id])
+  quantity       Int
+}
+
+model DailyEvolution {
+  id                           String   @id @default(uuid())
+  hospitalId                   String?
+  hospital                     Hospital? @relation(fields: [hospitalId], references: [id])
+  patientId                    String
+  patient                      Patient   @relation(fields: [patientId], references: [id])
+  prescriptionId               String?
+  prescription                 Prescription? @relation(fields: [prescriptionId], references: [id])
+  professionalId               String?
+  professional                 Professional? @relation(fields: [professionalId], references: [id])
+  date                         DateTime
+
+  // Prescribed vs Infused Tracking
+  prescribedVolume             Float?
+  infusedVolume                Float?
+  infusionPercentage           Float?
+  proteinPrescribed            Float?
+  proteinInfused               Float?
+  oralKcal                     Float?
+  oralProtein                  Float?
+  enteralKcal                  Float?
+  enteralProtein               Float?
+  parenteralKcal               Float?
+  parenteralProtein            Float?
+  nonIntentionalKcal           Float?
+  
+  // TNE Goals (JSON stringified)
+  tneGoals                     String?
+  
+  // Interruptions (JSON stringified)
+  tneInterruptions             String?
+  
+  // Unintentional Calories (JSON stringified)
+  unintentionalCalories        String?
+
+  gastricResidualVolume        Float?
+  bowelMovements               Int?
+  vomitingEpisodes             Int?
+  bloodGlucose                 Float?
+  weight                       Float?
+  notes                        String?
+  version                      Int      @default(1)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@index([hospitalId, date])
+  @@index([patientId, date])
+  @@index([prescriptionId, date])
+}
+
+model AppSettings {
+  id                   String   @id @default(uuid())
+  hospitalId           String   @unique
+  hospital             Hospital @relation(fields: [hospitalId], references: [id])
+  nutritionistCostHour Float?
+  nurseCostHour        Float?
+  technicianCostHour   Float?
+  waterCostLiter       Float?
+  energyCostKwh        Float?
+  defaultSignatures    String?
+  labelSettings        String?
+  nursingCosts         String?
+  indirectCosts        String?
+  version              Int      @default(1)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([hospitalId])
+}
+
+model RolePermission {
+  id            String   @id @default(uuid())
+  hospitalId    String?
+  hospital      Hospital? @relation(fields: [hospitalId], references: [id])
+  role          String
+  permissionKey String
+  allowed       Boolean  @default(true)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([hospitalId, role, permissionKey])
+}
+
+model AppTool {
+  id          String   @id @default(uuid())
+  hospitalId  String?
+  hospital    Hospital? @relation(fields: [hospitalId], references: [id])
+  code        String
+  name        String
+  category    String
+  description String?
+  link        String?
+  isActive    Boolean  @default(true)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([hospitalId, code])
+}
+
+model IdempotencyRecord {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  method      String
+  path        String
+  requestHash String
+  statusCode  Int
+  responseBody String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}

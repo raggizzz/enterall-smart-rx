@@ -77,7 +77,7 @@ export default function ParenteralTherapyPage() {
             return;
         }
 
-        toast.success("Prescricao de nutricao parenteral salva!");
+        toast.success("Prescrição de nutrição parenteral salva!");
         navigate('/patients');
     };
 
@@ -88,7 +88,7 @@ export default function ParenteralTherapyPage() {
                 <div className="container py-6">
                     <Card>
                         <CardContent className="py-12 text-center">
-                            <p className="text-muted-foreground mb-4">Selecione um paciente para prescrever nutricao parenteral</p>
+                            <p className="text-muted-foreground mb-4">Selecione um paciente para prescrever nutrição parenteral</p>
                             <Button onClick={() => navigate('/patients')}>
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Ir para Pacientes
@@ -116,7 +116,7 @@ export default function ParenteralTherapyPage() {
                             Terapia Nutricional Parenteral
                         </h1>
                         <p className="text-muted-foreground">
-                            {selectedPatient?.name} - Prontuario: {selectedPatient?.record}
+                            {selectedPatient?.name} - Prontuário: {selectedPatient?.record}
                             {selectedPatient?.weight && ` - Peso: ${selectedPatient.weight}kg`}
                         </p>
                     </div>
@@ -127,7 +127,7 @@ export default function ParenteralTherapyPage() {
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-purple-700">
                             <Calculator className="h-5 w-5" />
-                            Resumo da Prescricao
+                            Resumo da Prescrição
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -270,7 +270,7 @@ export default function ParenteralTherapyPage() {
                                     placeholder="Calculado automaticamente"
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Calculo automatico: aminoacidos x 4 + lipideos x 9 + glicose x 3.4
+                                    Cálculo automático: aminoácidos x 4 + lipídeos x 9 + glicose x 3.4
                                 </p>
                                 {selectedPatient?.weight && (
                                     <p className="text-xs text-muted-foreground">
@@ -294,7 +294,7 @@ export default function ParenteralTherapyPage() {
                                 )}
                             </div>
                             <div className="space-y-2">
-                                <Label>Lipideos (g/dia)</Label>
+                                <Label>Lipídeos (g/dia)</Label>
                                 <Input
                                     type="number"
                                     step="0.1"
@@ -327,10 +327,10 @@ export default function ParenteralTherapyPage() {
                     </CardContent>
                 </Card>
 
-                {/* Observacoes */}
+                {/* Observações */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Observacoes</CardTitle>
+                        <CardTitle>Observações</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <Textarea
@@ -349,7 +349,7 @@ export default function ParenteralTherapyPage() {
                     size="lg"
                 >
                     <Save className="h-4 w-4 mr-2" />
-                    Salvar Prescricao Parenteral
+                    Salvar Prescrição Parenteral
                 </Button>
             </div>
             <BottomNav />

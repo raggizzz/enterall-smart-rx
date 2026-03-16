@@ -5,13 +5,14 @@
  * calorias não intencionais e aporte nutricional total
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 
 import { Progress } from "@/components/ui/progress";
 import {
@@ -42,6 +43,7 @@ import {
 } from "recharts";
 import {
     Patient,
+    DailyEvolution,
     TNEGoals,
     TNEInterruptions,
     UnintentionalCalories
@@ -49,6 +51,7 @@ import {
 
 interface MonitoringChartRow {
     date: string;
+    oralPct?: number;
     enteralPct: number;
     parenteralPct: number;
     nonIntentionalPct: number;
@@ -57,7 +60,7 @@ interface MonitoringChartRow {
 
 interface PatientMonitoringProps {
     patient: Patient;
-    onSave: (data: Partial<Patient>) => Promise<void>;
+    onSave: (data: Partial<Patient> & Partial<DailyEvolution>) => Promise<void>;
     // Dados das prescrições para calcular aporte total
     enteralKcal?: number;
     enteralProtein?: number;
@@ -66,6 +69,7 @@ interface PatientMonitoringProps {
     parenteralKcal?: number;
     parenteralProtein?: number;
     historyData?: MonitoringChartRow[];
+    savedEvolution?: DailyEvolution;
 }
 
 export const PatientMonitoring = ({
@@ -78,11 +82,12 @@ export const PatientMonitoring = ({
     parenteralKcal = 0,
     parenteralProtein = 0,
     historyData,
+    savedEvolution,
 }: PatientMonitoringProps) => {
     // Estados locais
     const [goals, setGoals] = useState<TNEGoals>(patient.tneGoals || {});
     const [infusionPercentage, setInfusionPercentage] = useState(
-        patient.infusionPercentage24h || 0
+        savedEvolution?.metaReached ?? patient.infusionPercentage24h ?? 0
     );
     const [interruptions, setInterruptions] = useState<TNEInterruptions>(
         patient.tneInterruptions || {}
@@ -90,12 +95,29 @@ export const PatientMonitoring = ({
     const [unintentionalCal, setUnintentionalCal] = useState<UnintentionalCalories>(
         patient.unintentionalCalories || {}
     );
+    const [monitoringNotes, setMonitoringNotes] = useState(patient.monitoringNotes || "");
+    const [oralActualKcal, setOralActualKcal] = useState(savedEvolution?.oralKcal ?? oralKcal);
+    const [oralActualProtein, setOralActualProtein] = useState(savedEvolution?.oralProtein ?? oralProtein);
+    const [parenteralActualKcal, setParenteralActualKcal] = useState(savedEvolution?.parenteralKcal ?? parenteralKcal);
+    const [parenteralActualProtein, setParenteralActualProtein] = useState(savedEvolution?.parenteralProtein ?? parenteralProtein);
     const [isSaving, setIsSaving] = useState(false);
 
     // Seções collapse
     const [proceduresOpen, setProceduresOpen] = useState(false);
     const [giOpen, setGiOpen] = useState(false);
     const [devicesOpen, setDevicesOpen] = useState(false);
+
+    useEffect(() => {
+        setGoals(patient.tneGoals || {});
+        setInfusionPercentage(savedEvolution?.metaReached ?? patient.infusionPercentage24h ?? 0);
+        setInterruptions(patient.tneInterruptions || {});
+        setUnintentionalCal(patient.unintentionalCalories || {});
+        setMonitoringNotes(patient.monitoringNotes || "");
+        setOralActualKcal(savedEvolution?.oralKcal ?? oralKcal);
+        setOralActualProtein(savedEvolution?.oralProtein ?? oralProtein);
+        setParenteralActualKcal(savedEvolution?.parenteralKcal ?? parenteralKcal);
+        setParenteralActualProtein(savedEvolution?.parenteralProtein ?? parenteralProtein);
+    }, [patient, savedEvolution, oralKcal, oralProtein, parenteralKcal, parenteralProtein]);
 
     // Calcular peso ideal (IMC 25)
     const idealWeight = useMemo(() => {
@@ -119,9 +141,18 @@ export const PatientMonitoring = ({
         return { propofol, glucose, citrate, total: propofol + glucose + citrate };
     }, [unintentionalCal]);
 
+    const actualEnteralKcal = useMemo(() => {
+        return Number(((enteralKcal * infusionPercentage) / 100).toFixed(1));
+    }, [enteralKcal, infusionPercentage]);
+
+    const actualEnteralProtein = useMemo(() => {
+        return Number(((enteralProtein * infusionPercentage) / 100).toFixed(1));
+    }, [enteralProtein, infusionPercentage]);
+
     // Aporte nutricional total
     const totalNutrition = useMemo(() => {
-        const totalKcal = enteralKcal + oralKcal + parenteralKcal + unintentionalKcal.total;
+        const intentionalKcal = enteralKcal + oralKcal + parenteralKcal;
+        const totalKcal = intentionalKcal + unintentionalKcal.total;
         const totalProtein = enteralProtein + oralProtein + parenteralProtein;
 
         const kcalPerKg = patient.weight ? totalKcal / patient.weight : 0;
@@ -129,14 +160,64 @@ export const PatientMonitoring = ({
         const proteinPerKgIdeal = idealWeight ? totalProtein / idealWeight : 0;
 
         return {
+            intentionalKcal,
             totalKcal,
             totalProtein,
             kcalPerKg,
             proteinPerKg,
             proteinPerKgIdeal,
         };
-    }, [enteralKcal, oralKcal, parenteralKcal, unintentionalKcal.total,
-        enteralProtein, oralProtein, parenteralProtein, patient.weight, idealWeight]);
+    }, [enteralKcal, oralKcal, parenteralKcal,
+        enteralProtein, oralProtein, parenteralProtein, patient.weight, idealWeight, unintentionalKcal.total]);
+
+    const actualNutrition = useMemo(() => {
+        const intentionalKcal = actualEnteralKcal + oralActualKcal + parenteralActualKcal;
+        const totalKcal = intentionalKcal + unintentionalKcal.total;
+        const totalProtein = actualEnteralProtein + oralActualProtein + parenteralActualProtein;
+
+        return {
+            intentionalKcal,
+            totalKcal,
+            totalProtein,
+            kcalPerKg: patient.weight ? totalKcal / patient.weight : 0,
+            proteinPerKg: patient.weight ? totalProtein / patient.weight : 0,
+        };
+    }, [actualEnteralKcal, oralActualKcal, parenteralActualKcal, actualEnteralProtein, oralActualProtein, parenteralActualProtein, patient.weight, unintentionalKcal.total]);
+
+    const actualIntentionalNutrition = useMemo(() => ({
+        totalKcal: actualEnteralKcal + oralActualKcal + parenteralActualKcal,
+        totalProtein: actualEnteralProtein + oralActualProtein + parenteralActualProtein,
+    }), [actualEnteralKcal, oralActualKcal, parenteralActualKcal, actualEnteralProtein, oralActualProtein, parenteralActualProtein]);
+
+    const targetKcal = useMemo(() => {
+        if (!goals.targetKcalPerKg || !patient.weight) return 0;
+        return goals.targetKcalPerKg * patient.weight;
+    }, [goals.targetKcalPerKg, patient.weight]);
+
+    const actualNutritionShare = useMemo(() => {
+        if (targetKcal <= 0) {
+            return {
+                oralPct: 0,
+                enteralPct: 0,
+                parenteralPct: 0,
+                nonIntentionalPct: 0,
+                totalPct: 0,
+            };
+        }
+
+        const oralPct = (oralActualKcal / targetKcal) * 100;
+        const enteralPct = (actualEnteralKcal / targetKcal) * 100;
+        const parenteralPct = (parenteralActualKcal / targetKcal) * 100;
+        const nonIntentionalPct = (unintentionalKcal.total / targetKcal) * 100;
+
+        return {
+            oralPct,
+            enteralPct,
+            parenteralPct,
+            nonIntentionalPct,
+            totalPct: oralPct + enteralPct + parenteralPct + nonIntentionalPct,
+        };
+    }, [targetKcal, oralActualKcal, actualEnteralKcal, parenteralActualKcal, unintentionalKcal.total]);
 
     const chartData = useMemo<MonitoringChartRow[]>(() => {
         if (historyData && historyData.length > 0) {
@@ -152,6 +233,7 @@ export const PatientMonitoring = ({
             const enteralPct = i === 0 ? Math.max(0, Math.min(infusionPercentage || 0, 140)) : 0;
             fallback.push({
                 date: dayLabel,
+                oralPct: 0,
                 enteralPct,
                 parenteralPct: 0,
                 nonIntentionalPct: 0,
@@ -185,7 +267,15 @@ export const PatientMonitoring = ({
                 infusionPercentage24h: infusionPercentage,
                 tneInterruptions: interruptions,
                 unintentionalCalories: unintentionalCal,
+                monitoringNotes,
                 idealWeight: idealWeight,
+                oralKcal: oralActualKcal,
+                oralProtein: oralActualProtein,
+                enteralKcal: actualEnteralKcal,
+                enteralProtein: actualEnteralProtein,
+                parenteralKcal: parenteralActualKcal,
+                parenteralProtein: parenteralActualProtein,
+                nonIntentionalKcal: unintentionalKcal.total,
             });
             toast.success("Dados de acompanhamento salvos!");
         } catch (error) {
@@ -220,6 +310,11 @@ export const PatientMonitoring = ({
                                 })}
                                 placeholder="Ex: 25"
                             />
+                            {targetKcal > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    Meta calculada: {targetKcal.toFixed(0)} kcal/dia
+                                </p>
+                            )}
                             {goalStatus.kcalReached > 0 && (
                                 <Progress value={Math.min(goalStatus.kcalReached, 100)} className="h-2" />
                             )}
@@ -267,21 +362,142 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Percentual de Infusão nas Últimas 24h
+                        Percentual de Infusão do Dia Anterior (Últimas 24h)
                     </CardTitle>
+                    <CardDescription>
+                        A infusão registrada será contabilizada para o fechamento do dia anterior.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                         <Input
                             type="number"
                             min="0"
                             max="100"
                             value={infusionPercentage}
                             onChange={(e) => setInfusionPercentage(parseInt(e.target.value) || 0)}
-                            className="w-24"
+                            className="w-full sm:w-24"
                         />
                         <span className="text-lg">%</span>
                         <Progress value={infusionPercentage} className="flex-1 h-4" />
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div className="rounded-lg border bg-sky-50 p-4">
+                            <div className="flex items-center justify-between">
+                                <span className="font-medium text-sky-700">NE efetiva (automática)</span>
+                                <Badge className="bg-sky-600">{infusionPercentage}%</Badge>
+                            </div>
+                            <p className="mt-2 text-sm text-sky-900">
+                                {actualEnteralKcal.toFixed(0)} kcal e {actualEnteralProtein.toFixed(1)} g de proteína
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                Calculada a partir do percentual de infusão das últimas 24h.
+                            </p>
+                        </div>
+                        <div className="rounded-lg border bg-white p-4">
+                            <p className="font-medium">Aporte efetivo total das últimas 24h</p>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                {actualNutrition.totalKcal.toFixed(0)} kcal e {actualNutrition.totalProtein.toFixed(1)} g de proteína
+                            </p>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                                Intencional: {actualIntentionalNutrition.totalKcal.toFixed(0)} kcal
+                            </p>
+                            {patient.weight && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {actualNutrition.kcalPerKg.toFixed(1)} kcal/kg e {actualNutrition.proteinPerKg.toFixed(2)} g/kg
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="space-y-3 rounded-lg border bg-sky-50/60 p-4">
+                            <p className="font-medium text-sky-700">Resumo efetivo por via nas últimas 24h</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                <div className="rounded-md border bg-white p-3">
+                                    <p className="font-semibold text-sky-700">NE</p>
+                                    <p>{actualEnteralKcal.toFixed(0)} kcal / {actualEnteralProtein.toFixed(1)} g</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {targetKcal > 0 ? `${actualNutritionShare.enteralPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border bg-white p-3">
+                                    <p className="font-semibold text-green-700">VO</p>
+                                    <p>{oralActualKcal.toFixed(0)} kcal / {oralActualProtein.toFixed(1)} g</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {targetKcal > 0 ? `${actualNutritionShare.oralPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border bg-white p-3">
+                                    <p className="font-semibold text-orange-700">NP</p>
+                                    <p>{parenteralActualKcal.toFixed(0)} kcal / {parenteralActualProtein.toFixed(1)} g</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {targetKcal > 0 ? `${actualNutritionShare.parenteralPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border bg-white p-3">
+                                    <p className="font-semibold text-slate-700">Não intencional</p>
+                                    <p>{unintentionalKcal.total.toFixed(0)} kcal</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        {targetKcal > 0 ? `${actualNutritionShare.nonIntentionalPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="rounded-md border bg-white p-3 lg:col-span-2">
+                            <p className="font-semibold text-emerald-700">Total efetivo</p>
+                            <p>{actualNutrition.totalKcal.toFixed(0)} kcal / {actualNutrition.totalProtein.toFixed(1)} g</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                                {targetKcal > 0 ? `${actualNutritionShare.totalPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
+                            </p>
+                        </div>
+                        <div className="space-y-3 rounded-lg border p-4">
+                            <p className="font-medium text-green-700">Via oral efetiva</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label>kcal VO</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        value={oralActualKcal}
+                                        onChange={(e) => setOralActualKcal(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Proteína VO (g)</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={oralActualProtein}
+                                        onChange={(e) => setOralActualProtein(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="space-y-3 rounded-lg border p-4 lg:col-span-2">
+                            <p className="font-medium text-orange-700">Parenteral efetiva</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label>kcal NP</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        value={parenteralActualKcal}
+                                        onChange={(e) => setParenteralActualKcal(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Proteína NP (g)</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        value={parenteralActualProtein}
+                                        onChange={(e) => setParenteralActualProtein(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     {infusionPercentage < 80 && (
                         <p className="text-sm text-amber-600 mt-2">
@@ -305,7 +521,8 @@ export const PatientMonitoring = ({
                 <CardContent className="space-y-4">
                     {/* Procedimentos */}
                     <Collapsible open={proceduresOpen} onOpenChange={setProceduresOpen}>
-                        <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded">
+                        <CollapsibleTrigger asChild>
+                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
                             <Checkbox
                                 checked={!!interruptions.procedures}
                                 onCheckedChange={(checked) => {
@@ -320,6 +537,7 @@ export const PatientMonitoring = ({
                             />
                             <span className="font-medium">Procedimentos</span>
                             <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${proceduresOpen ? 'rotate-180' : ''}`} />
+                        </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="pl-8 pt-2 space-y-2">
                             {[
@@ -347,7 +565,8 @@ export const PatientMonitoring = ({
 
                     {/* Eventos Gastrointestinais */}
                     <Collapsible open={giOpen} onOpenChange={setGiOpen}>
-                        <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded">
+                        <CollapsibleTrigger asChild>
+                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
                             <Checkbox
                                 checked={!!interruptions.gastrointestinal}
                                 onCheckedChange={(checked) => {
@@ -362,6 +581,7 @@ export const PatientMonitoring = ({
                             />
                             <span className="font-medium">Eventos Gastrointestinais</span>
                             <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${giOpen ? 'rotate-180' : ''}`} />
+                        </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="pl-8 pt-2 space-y-2">
                             {[
@@ -406,7 +626,8 @@ export const PatientMonitoring = ({
 
                     {/* Problemas com dispositivos */}
                     <Collapsible open={devicesOpen} onOpenChange={setDevicesOpen}>
-                        <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded">
+                        <CollapsibleTrigger asChild>
+                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
                             <Checkbox
                                 checked={!!interruptions.deviceProblems}
                                 onCheckedChange={(checked) => {
@@ -421,6 +642,7 @@ export const PatientMonitoring = ({
                             />
                             <span className="font-medium">Problemas com dispositivos (sondas/ostomias)</span>
                             <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${devicesOpen ? 'rotate-180' : ''}`} />
+                        </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="pl-8 pt-2 space-y-2">
                             {[
@@ -540,6 +762,23 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <Card>
+                <CardHeader>
+                    <CardTitle>Observações do Acompanhamento</CardTitle>
+                    <CardDescription>
+                        Esse texto alimenta o mapa do nutricionista e acompanha a evolução clínica.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Textarea
+                        value={monitoringNotes}
+                        onChange={(event) => setMonitoringNotes(event.target.value)}
+                        placeholder="Ex: 11/03: tolerou bem a NE. 12/03: reduzida NP e mantida progressão da enteral."
+                        rows={4}
+                    />
+                </CardContent>
+            </Card>
+
             {/* Aporte Nutricional Total */}
             <Card className="border-2 border-green-300 bg-gradient-to-r from-green-50 to-emerald-50">
                 <CardHeader className="pb-2">
@@ -547,9 +786,12 @@ export const PatientMonitoring = ({
                         <Calculator className="h-5 w-5" />
                         Aporte Nutricional Total
                     </CardTitle>
+                    <CardDescription>
+                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                         <div className="text-center p-4 bg-white rounded-lg shadow-sm">
                             <div className="text-3xl font-bold text-green-600">
                                 {totalNutrition.totalKcal.toFixed(0)}
@@ -580,7 +822,7 @@ export const PatientMonitoring = ({
                     </div>
 
                     {/* Detalhamento por via */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 text-sm">
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-orange-600">Via Oral</div>
                             <div>{oralKcal} kcal / {oralProtein}g</div>
@@ -597,6 +839,10 @@ export const PatientMonitoring = ({
                             <div className="font-semibold text-gray-600">Não Intencional</div>
                             <div>{unintentionalKcal.total.toFixed(0)} kcal</div>
                         </div>
+                        <div className="p-2 bg-white rounded border">
+                            <div className="font-semibold text-emerald-700">Total Geral</div>
+                            <div>{totalNutrition.totalKcal.toFixed(0)} kcal</div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -606,24 +852,23 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Acompanhamento da TN / Meta (kcal)
+                        Somatório proporcional de NE infundida, NP infundida e calorias não intencionais em relação à meta
                     </CardTitle>
-                    <CardDescription>
-                        Ultimos 7 dias: NE infundida + NP infundida + calorias nao intencionais em relacao a meta
-                    </CardDescription>
+                    <CardDescription>Últimos 7 dias</CardDescription>
                 </CardHeader>
-                <CardContent className="h-[320px]">
+                <CardContent className="h-[260px] sm:h-[320px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} margin={{ top: 20, right: 20, left: 8, bottom: 8 }}>
+                        <BarChart data={chartData} margin={{ top: 20, right: 12, left: 0, bottom: 8 }}>
                             <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="date" />
-                            <YAxis unit="%" domain={[0, 140]} />
-                            <Tooltip formatter={(value: number) => `${value}%`} />
-                            <Legend />
+                            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                            <YAxis unit="%" domain={[0, 140]} width={38} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value: number) => `${Number(value).toFixed(1)}%`} />
+                            <Legend wrapperStyle={{ fontSize: "12px" }} />
                             <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="3 3" label="Meta" />
-                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida em relacao a meta" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida em relacao a meta" />
-                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal nao intencionais em relacao a meta" />
+                            <Bar dataKey="oralPct" stackId="meta" fill="#22c55e" name="VO efetiva" radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="enteralPct" stackId="meta" fill="#0ea5e9" name="NE infundida" radius={[0, 0, 0, 0]} />
+                            <Bar dataKey="parenteralPct" stackId="meta" fill="#f97316" name="NP infundida" />
+                            <Bar dataKey="nonIntentionalPct" stackId="meta" fill="#16a34a" name="Kcal não intencionais" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 </CardContent>

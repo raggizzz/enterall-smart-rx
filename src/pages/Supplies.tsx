@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogTrigger,
@@ -17,6 +18,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, Package, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +28,15 @@ import { useSupplies } from "@/hooks/useDatabase";
 import { Supply } from "@/lib/database";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
+
+const SUPPLY_CATEGORY_OPTIONS: Array<{ value: NonNullable<Supply["category"]>; label: string }> = [
+    { value: "standard", label: "Padrao" },
+    { value: "thickener", label: "Espessante" },
+    { value: "cup", label: "Copo" },
+    { value: "baby-bottle", label: "Mamadeira" },
+    { value: "feeding-bottle", label: "Frasco para dieta" },
+    { value: "other", label: "Outro" },
+];
 
 const Supplies = () => {
     const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
@@ -57,9 +68,12 @@ const Supplies = () => {
                 code: currentSupply.code!,
                 name: currentSupply.name!,
                 type: currentSupply.type!,
+                category: currentSupply.category || 'standard',
+                description: currentSupply.description,
                 billingUnit: currentSupply.billingUnit || 'unit',
                 capacityMl: currentSupply.capacityMl,
                 unitPrice: currentSupply.unitPrice || 0,
+                isBillable: currentSupply.isBillable !== false,
                 plasticG: currentSupply.plasticG,
                 paperG: currentSupply.paperG,
                 metalG: currentSupply.metalG,
@@ -142,6 +156,9 @@ const Supplies = () => {
                         <DialogContent className="max-w-2xl">
                             <DialogHeader>
                                 <DialogTitle>{editingSupply ? 'Editar' : 'Novo'} Insumo</DialogTitle>
+                                <DialogDescription>
+                                    Preencha os dados do insumo para uso em prescricoes, faturamento e relatorios.
+                                </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
                                 {/* Tipo e CÃ³digo */}
@@ -179,6 +196,44 @@ const Supplies = () => {
                                         placeholder="Ex: Frasco DescartÃ¡vel 100ml"
                                         value={currentSupply.name || ''}
                                         onChange={e => setCurrentSupply({ ...currentSupply, name: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label>Categoria funcional</Label>
+                                        <Select
+                                            value={currentSupply.category || 'standard'}
+                                            onValueChange={(val: NonNullable<Supply["category"]>) => setCurrentSupply({ ...currentSupply, category: val })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione a categoria" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {SUPPLY_CATEGORY_OPTIONS.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label className="mb-1">Item faturavel</Label>
+                                        <div className="flex h-10 items-center gap-2 rounded-md border px-3">
+                                            <Checkbox
+                                                checked={currentSupply.isBillable !== false}
+                                                onCheckedChange={(checked) => setCurrentSupply({ ...currentSupply, isBillable: checked === true })}
+                                            />
+                                            <span className="text-sm text-muted-foreground">Cobrar este item no faturamento</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label>Descricao</Label>
+                                    <Input
+                                        placeholder="Ex: usar para agua espessada / nao faturar em translactacao"
+                                        value={currentSupply.description || ''}
+                                        onChange={e => setCurrentSupply({ ...currentSupply, description: e.target.value })}
                                     />
                                 </div>
 
@@ -335,6 +390,7 @@ const Supplies = () => {
                                     <TableHead>CÃ³digo</TableHead>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Tipo</TableHead>
+                                    <TableHead>Categoria</TableHead>
                                     <TableHead>Unid. Faturamento</TableHead>
                                     <TableHead>Capacidade</TableHead>
                                     <TableHead>Valor</TableHead>
@@ -344,11 +400,11 @@ const Supplies = () => {
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : filteredSupplies.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                             Nenhum insumo encontrado
                                         </TableCell>
                                     </TableRow>
@@ -369,6 +425,12 @@ const Supplies = () => {
                                                     {supply.type === 'bottle' ? 'Frasco' :
                                                         supply.type === 'set' ? 'Equipo' : 'Outros'}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-xs">
+                                                    {SUPPLY_CATEGORY_OPTIONS.find((option) => option.value === (supply.category || 'standard'))?.label || 'Padrao'}
+                                                </div>
+                                                <div className="text-[11px] text-muted-foreground">{supply.isBillable === false ? 'Nao faturavel' : 'Faturavel'}</div>
                                             </TableCell>
                                             <TableCell>
                                                 <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">

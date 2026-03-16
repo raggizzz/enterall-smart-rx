@@ -24,9 +24,9 @@ export const DatabaseProvider: React.FC<DatabaseProviderProps> = ({ children }) 
     return (
       <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
         <div className="text-center p-8 max-w-md bg-white rounded-xl border border-red-200 shadow-sm">
-          <h1 className="text-2xl font-bold text-red-700 mb-2">Erro de Conexao com o Banco</h1>
+          <h1 className="text-2xl font-bold text-red-700 mb-2">Erro de Conexao com a Base Local</h1>
           <p className="text-red-600 mb-4">
-            Nao foi possivel inicializar o acesso ao Supabase.
+            Nao foi possivel inicializar o backend local.
           </p>
           <p className="text-sm text-gray-600">{error.message}</p>
           <button
@@ -50,7 +50,7 @@ export const DatabaseProvider: React.FC<DatabaseProviderProps> = ({ children }) 
             <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: "70%" }} />
           </div>
           <p className="text-xs text-muted-foreground mt-4">
-            Dados sincronizados por unidade hospitalar
+            Dados carregados da base local da unidade
           </p>
         </div>
       </div>

@@ -102,7 +102,10 @@ const Patients = () => {
   // Fetch wards based on selected hospital in the form
   const { wards } = useWards(newPatient.hospitalId);
   const role = useCurrentRole();
+  const canManagePatients = can(role, "manage_patients");
   const canMovePatients = can(role, "move_patients");
+  const canManagePrescriptions = can(role, "manage_prescriptions");
+  const canManageMonitoring = can(role, "manage_monitoring");
   const isEditing = Boolean(editingPatient);
   const disableWardFields = isEditing && !canMovePatients;
 
@@ -146,8 +149,12 @@ const Patients = () => {
   };
 
   const handleAddPatient = async () => {
+    if (!canManagePatients) {
+      toast.error("Sem permissao para gerenciar pacientes.");
+      return;
+    }
     if (!newPatient.name || !newPatient.dob || !newPatient.record) {
-      toast.error("Preencha todos os campos obrigatorios");
+      toast.error("Preencha todos os campos obrigatórios");
       return;
     }
 
@@ -229,7 +236,7 @@ const Patients = () => {
         status: newStatus,
         dischargeDate: new Date().toISOString(),
       });
-      toast.success(newStatus === 'discharged' ? "Alta registrada com sucesso" : "Obito registrado com sucesso");
+      toast.success(newStatus === 'discharged' ? "Alta registrada com sucesso" : "Óbito registrado com sucesso");
       setStatusDialogData({ ...statusDialogData, open: false });
     } catch (error) {
       console.error("Error updating status:", error);
@@ -282,20 +289,20 @@ const Patients = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background pb-20">
       <Header />
       <div className="container mx-auto px-4 py-6 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Pacientes</h1>
-            <p className="text-muted-foreground">Gerenciar todos os pacientes do hospital</p>
+            <p className="text-muted-foreground">Gerenciar todos os pacientes da unidade</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) resetForm();
           }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button disabled={!canManagePatients}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Cadastrar Paciente
               </Button>
@@ -328,7 +335,7 @@ const Patients = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="record">Numero de Prontuario *</Label>
+                    <Label htmlFor="record">Número de Prontuário *</Label>
                     <Input
                       id="record"
                       value={newPatient.record}
@@ -404,7 +411,7 @@ const Patients = () => {
                         {wards.length === 0 && !newPatient.hospitalId && (
                           <>
                             <SelectItem value="UTI-ADULTO">UTI Adulto</SelectItem>
-                            <SelectItem value="UTI-PEDIATRICA">UTI Pediatrica</SelectItem>
+                            <SelectItem value="UTI-PEDIATRICA">UTI Pediátrica</SelectItem>
                             <SelectItem value="ENFERMARIA">Enfermaria</SelectItem>
                           </>
                         )}
@@ -435,12 +442,12 @@ const Patients = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Anotacoes</Label>
+                  <Label htmlFor="notes">Anotações</Label>
                   <Textarea
                     id="notes"
                     value={newPatient.notes}
                     onChange={(e) => setNewPatient({ ...newPatient, notes: e.target.value })}
-                    placeholder="Diagnostico, observacoes, etc."
+                    placeholder="Diagnóstico, observações, etc."
                     rows={4}
                   />
                 </div>
@@ -452,8 +459,8 @@ const Patients = () => {
                 }}>
                   Cancelar
                 </Button>
-                <Button onClick={handleAddPatient}>
-                  {editingPatient ? 'Salvar Alteracoes' : 'Cadastrar Paciente'}
+                <Button onClick={handleAddPatient} disabled={!canManagePatients}>
+                  {editingPatient ? 'Salvar Alterações' : 'Cadastrar Paciente'}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -478,13 +485,13 @@ const Patients = () => {
                     <SelectItem value="active">Pacientes Ativos</SelectItem>
                     <SelectItem value="all">Todos os Pacientes</SelectItem>
                     <SelectItem value="discharged">Pacientes com Alta</SelectItem>
-                    <SelectItem value="deceased">Obitos</SelectItem>
+                    <SelectItem value="deceased">Óbitos</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className="relative flex-1 md:w-[300px]">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por nome, prontuario ou data..."
+                    placeholder="Buscar por nome, prontuário ou data..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9"
@@ -501,7 +508,7 @@ const Patients = () => {
             ) : filteredPatients.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p>Nenhum paciente encontrado</p>
-                <Button variant="link" onClick={() => setIsDialogOpen(true)}>
+                <Button variant="link" onClick={() => setIsDialogOpen(true)} disabled={!canManagePatients}>
                   Cadastrar primeiro paciente
                 </Button>
               </div>
@@ -510,12 +517,12 @@ const Patients = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
-                    <TableHead>Prontuario</TableHead>
+                    <TableHead>Prontuário</TableHead>
                     <TableHead>Data Nasc.</TableHead>
                     <TableHead>Leito/Ala</TableHead>
                     <TableHead>Peso/Altura</TableHead>
                     <TableHead>Via Nutricional</TableHead>
-                    <TableHead>Acoes</TableHead>
+                    <TableHead>Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -534,7 +541,7 @@ const Patients = () => {
                           )}
                           {patient.status === 'deceased' && (
                             <Badge variant="outline" className="border-red-500 text-red-600 flex gap-1 items-center">
-                              <XCircle className="h-3 w-3" /> Obito
+                              <XCircle className="h-3 w-3" /> Óbito
                             </Badge>
                           )}
                         </div>
@@ -558,6 +565,7 @@ const Patients = () => {
                             variant="outline"
                             size="sm"
                             onClick={() => navigate(buildPrescriptionUrl(patient.id))}
+                            disabled={!canManagePrescriptions}
                           >
                             <FileText className="h-4 w-4 mr-1" />
                             Prescrever
@@ -570,23 +578,25 @@ const Patients = () => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => navigate(`/patient-monitoring?patient=${patient.id}`)}
-                              >
-                                <Activity className="h-4 w-4 mr-2 text-blue-600" />
-                                Acompanhamento TNE
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => openStatusDialog(patient, 'discharged')}>
+                              {canManageMonitoring && (
+                                <DropdownMenuItem
+                                  onClick={() => navigate(`/patient-monitoring?patient=${patient.id}`)}
+                                >
+                                  <Activity className="h-4 w-4 mr-2 text-blue-600" />
+                                  Acompanhamento TNE
+                                </DropdownMenuItem>
+                              )}
+                              {canManageMonitoring && <DropdownMenuSeparator />}
+                              <DropdownMenuItem onClick={() => openStatusDialog(patient, 'discharged')} disabled={!canManagePatients}>
                                 <LogOut className="h-4 w-4 mr-2 text-green-600" />
                                 Alta do Paciente
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openStatusDialog(patient, 'deceased')}>
+                              <DropdownMenuItem onClick={() => openStatusDialog(patient, 'deceased')} disabled={!canManagePatients}>
                                 <XCircle className="h-4 w-4 mr-2 text-red-600" />
-                                Registrar Obito
+                                Registrar Óbito
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleEditPatient(patient)}>
+                              <DropdownMenuItem onClick={() => handleEditPatient(patient)} disabled={!canManagePatients}>
                                 <Edit className="h-4 w-4 mr-2" />
                                 Editar Paciente
                               </DropdownMenuItem>
@@ -608,10 +618,10 @@ const Patients = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Registrar Obito'}
+              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Registrar Óbito'}
             </DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja {statusDialogData.newStatus === 'discharged' ? 'dar alta para' : 'registrar o obito de'}
+              Tem certeza que deseja {statusDialogData.newStatus === 'discharged' ? 'dar alta para' : 'registrar o óbito de'}
               <strong> {statusDialogData.patientName}</strong>?
             </DialogDescription>
           </DialogHeader>
@@ -625,7 +635,7 @@ const Patients = () => {
               onClick={confirmUpdateStatus}
               className={statusDialogData.newStatus === 'discharged' ? 'bg-green-600 hover:bg-green-700' : ''}
             >
-              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Confirmar Obito'}
+              {statusDialogData.newStatus === 'discharged' ? 'Confirmar Alta' : 'Confirmar Óbito'}
             </Button>
           </div>
         </DialogContent>

@@ -9,6 +9,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import LogoEnmeta from "@/components/LogoEnmeta";
 import { useProfessionals, useHospitals } from "@/hooks/useDatabase";
+import { ApiError, apiClient } from "@/lib/api";
 import { rolePermissionsService } from "@/lib/database";
 import {
   applyRolePermissionsFromDatabase,
@@ -30,24 +31,27 @@ const Login = () => {
   const { professionals } = useProfessionals(formData.hospital || undefined);
   const { hospitals } = useHospitals();
 
-
   const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
   const hospitalProfessionals = professionals;
 
   useEffect(() => {
+    if (hospitals.length > 0 && !formData.hospital) {
+      setFormData((prev) => ({ ...prev, hospital: hospitals[0].id || "" }));
+    }
+  }, [hospitals, formData.hospital]);
+
+  useEffect(() => {
     if (hasActiveSession()) {
-      navigate('/dashboard');
+      navigate("/dashboard");
     }
   }, [navigate]);
 
   const syncRolePermissions = async () => {
     try {
       const rows = await rolePermissionsService.getAll();
-      if (rows.length > 0) {
-        applyRolePermissionsFromDatabase(rows);
-      }
+      applyRolePermissionsFromDatabase(rows);
     } catch (error) {
-      console.warn("Não foi possível carregar permissões do banco. Usando matriz padrão.", error);
+      console.warn("Nao foi possivel carregar permissoes do banco. Usando matriz padrao.", error);
     }
   };
 
@@ -62,7 +66,7 @@ const Login = () => {
     const normalizedRole = normalizeRole(formData.role);
 
     if (hospitalProfessionals.length === 0 && normalizedRole === "general_manager") {
-      toast.info("Modo de inicialização da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
+      toast.info("Modo de inicializacao da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
       localStorage.setItem("userRole", normalizedRole);
       localStorage.setItem("userName", "Gestor Inicial");
       localStorage.removeItem("userProfessionalId");
@@ -75,22 +79,39 @@ const Login = () => {
       return;
     }
 
-    const user = hospitalProfessionals.find((p) => {
-      const isRoleMatch = normalizeRole(p.role) === normalizedRole;
-      const isIdMatch = p.registrationNumber === formData.identifier;
+    const user = hospitalProfessionals.find((professional) => {
+      const isRoleMatch = normalizeRole(professional.role) === normalizedRole;
+      const isIdMatch = professional.registrationNumber === formData.identifier;
       return isRoleMatch && isIdMatch;
     });
 
-    if (user) {
-      if (user.isActive === false) {
-        toast.error("Usuário inativo. Contate o gestor.");
-        return;
-      }
+    if (user?.isActive === false) {
+      toast.error("Usuario inativo. Contate o gestor.");
+      return;
+    }
 
-      localStorage.setItem("userRole", normalizedRole);
-      localStorage.setItem("userName", user.name);
-      if (user.id) {
-        localStorage.setItem("userProfessionalId", user.id);
+    try {
+      const response = await apiClient.post("/auth/login", {
+        hospitalId: formData.hospital,
+        identifier: formData.identifier,
+        password: formData.password,
+        role: normalizedRole,
+      }) as {
+        user: {
+          id?: string;
+          name: string;
+          role: string;
+        };
+        session: {
+          access_token: string;
+        };
+      };
+
+      localStorage.setItem("local_session", JSON.stringify(response.session));
+      localStorage.setItem("userRole", normalizeRole(response.user.role));
+      localStorage.setItem("userName", response.user.name);
+      if (response.user.id) {
+        localStorage.setItem("userProfessionalId", response.user.id);
       } else {
         localStorage.removeItem("userProfessionalId");
       }
@@ -99,30 +120,43 @@ const Login = () => {
 
       window.dispatchEvent(new Event("enmeta-session-updated"));
       await syncRolePermissions();
-      toast.success(`Bem-vindo(a), ${user.name}!`);
+      toast.success(`Bem-vindo(a), ${response.user.name}!`);
       navigate("/dashboard");
       return;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const message = typeof error.body === "object" && error.body && "error" in (error.body as Record<string, unknown>)
+          ? String((error.body as Record<string, unknown>).error)
+          : "";
+
+        if (message === "Password not configured") {
+          toast.error("Profissional sem senha cadastrada. Configure uma senha de 8 digitos no cadastro.");
+          return;
+        }
+      }
     }
 
     if (normalizedRole !== "general_manager") {
       toast.error(`Acesso negado. ${ROLE_LABELS[normalizedRole]} deve ser cadastrado(a) pelo gestor.`);
     } else {
-      toast.error("Gestor não encontrado. Verifique suas credenciais.");
+      toast.error("Gestor nao encontrado. Verifique suas credenciais.");
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-medical-green-light via-background to-white p-4 lg:p-8">
-      <div className="w-full max-w-5xl">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-medical-green-light via-background to-white p-4 lg:p-8 relative overflow-hidden">
+      <div className="absolute top-[-10%] left-[-5%] w-72 h-72 rounded-full bg-primary/10 blur-3xl animate-pulse-soft pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-5%] w-96 h-96 rounded-full bg-medical-green/5 blur-3xl animate-pulse-soft pointer-events-none" style={{ animationDelay: "1s" }} />
+      <div className="w-full max-w-5xl animate-fade-in relative z-10">
         <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-          <div className="rounded-2xl border border-medical-green/20 bg-card/70 p-8 shadow-sm backdrop-blur">
+          <div className="rounded-2xl border border-medical-green/20 bg-card/60 p-8 shadow-lg backdrop-blur-md">
             <LogoEnmeta size="lg" className="mx-auto mb-5" />
             <h1 className="text-center text-3xl font-bold text-medical-green-dark leading-tight">
-              Nutrição Enteral Inteligente e Sustentável.
+              Nutricao Enteral Inteligente e Sustentavel.
             </h1>
           </div>
 
-          <Card className="border-border shadow-lg">
+          <Card className="border-border shadow-xl bg-card/95 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-2xl text-center">Entrar</CardTitle>
               <CardDescription className="text-center">Acesse sua conta para continuar</CardDescription>
@@ -130,36 +164,13 @@ const Login = () => {
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="hospital">Escolher Unidade</Label>
-                  <Select
-                    value={formData.hospital}
-                    onValueChange={(value) => setFormData({ ...formData, hospital: value })}
-                  >
-                    <SelectTrigger id="hospital">
-                      <SelectValue placeholder="Selecione a unidade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {hospitals.map((hospital) => (
-                        <SelectItem key={hospital.id} value={hospital.id || "unknown"}>
-                          {hospital.name}
-                        </SelectItem>
-                      ))}
-                      {hospitals.length === 0 && (
-                        <SelectItem value="manual" disabled>Nenhuma unidade cadastrada</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-
-                <div className="space-y-2">
-                  <Label htmlFor="role">Função</Label>
+                  <Label htmlFor="role">Funcao</Label>
                   <Select
                     value={formData.role}
                     onValueChange={(value) => setFormData({ ...formData, role: value })}
                   >
                     <SelectTrigger id="role">
-                      <SelectValue placeholder="Selecione sua função" />
+                      <SelectValue placeholder="Selecione sua funcao" />
                     </SelectTrigger>
                     <SelectContent>
                       {ROLE_OPTIONS.map((role) => (
@@ -172,7 +183,7 @@ const Login = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="identifier">Matrícula</Label>
+                  <Label htmlFor="identifier">Matricula</Label>
                   <Input
                     id="identifier"
                     type="text"
@@ -189,7 +200,7 @@ const Login = () => {
                       type="button"
                       variant="link"
                       className="text-xs text-primary p-0 h-auto"
-                      onClick={() => toast.info("Recuperação de senha em desenvolvimento")}
+                      onClick={() => toast.info("Para redefinir sua senha, entre em contato com o gestor da sua unidade.")}
                     >
                       Esqueceu a senha?
                     </Button>

@@ -1,6 +1,6 @@
 /**
- * React Hooks for Database Access
- * Uses Supabase for cloud-based data storage
+ * React hooks for app data access.
+ * The main CRUD flow uses the backend API; legacy realtime hooks remain as no-op compatibility shims.
  */
 
 import { useState, useEffect, useCallback } from 'react';

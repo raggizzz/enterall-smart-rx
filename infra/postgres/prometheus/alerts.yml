@@ -1,0 +1,47 @@
+groups:
+  - name: enmeta-operacao
+    rules:
+      - alert: ENMetaBackendDown
+        expr: up{job="enmeta-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend do ENMeta indisponivel"
+          description: "O backend do ENMeta esta fora do ar ha mais de 2 minutos."
+
+      - alert: PostgreSQLExporterDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Exporter do PostgreSQL indisponivel"
+          description: "O postgres_exporter nao responde ha mais de 2 minutos."
+
+      - alert: ENMetaDatabaseUnhealthy
+        expr: enmeta_database_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Banco do ENMeta nao esta pronto"
+          description: "O backend marcou o banco como indisponivel ou sem readiness."
+
+      - alert: ENMetaHighLatencyP95
+        expr: histogram_quantile(0.95, sum by (le) (rate(enmeta_http_request_duration_seconds_bucket{route!="/metrics"}[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latencia p95 alta no backend"
+          description: "A latencia p95 do backend do ENMeta ficou acima de 1 segundo por 5 minutos."
+
+      - alert: ENMetaVersionConflictsBurst
+        expr: increase(enmeta_sync_conflicts_total[15m]) > 5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Conflitos de sincronizacao acima do normal"
+          description: "Foram detectados mais de 5 conflitos de versao em 15 minutos."

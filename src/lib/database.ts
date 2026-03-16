@@ -1,11 +1,18 @@
 /**
- * EnterAll Smart RX - Supabase Database Services
- * Cloud-First Solution for Multi-Device Sync
- * 
- * All data is stored in Supabase PostgreSQL, enabling real-time sync
+ * EnterAll Smart RX - API-backed data services
+ * Main persistence flows use the local backend API with Prisma/PostgreSQL.
+ * Browser storage is still used in a few places as session/cache support.
  */
 
-import { supabase } from './supabase';
+import { apiClient } from './api';
+import {
+    cacheSnapshot,
+    createTemporaryId,
+    executeOrQueueMutation,
+    getMergedRecords,
+    readLocalRecord,
+    type OfflineEntityType,
+} from './offlineStore';
 
 // ============================================
 // INTERFACES - Tipos de dados
@@ -53,6 +60,8 @@ export interface TNEGoals {
 
 export interface Patient {
     id?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     name: string;
     record: string;
     dob: string;
@@ -64,6 +73,7 @@ export interface Patient {
     ward?: string;
     hospitalId?: string;
     observation?: string;
+    monitoringNotes?: string;
     admissionDate?: string;
     status: 'active' | 'inactive' | 'discharged' | 'deceased';
     dischargeDate?: string;
@@ -73,6 +83,9 @@ export interface Patient {
     infusionPercentage24h?: number;
     tneInterruptions?: TNEInterruptions;
     unintentionalCalories?: UnintentionalCalories;
+    consistency?: string;
+    safeConsistency?: string;
+    mealCount?: string | number;
     createdAt: string;
     updatedAt: string;
 }
@@ -80,13 +93,18 @@ export interface Patient {
 export interface Formula {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     code: string;
     name: string;
     manufacturer: string;
     type: 'standard' | 'high-protein' | 'high-calorie' | 'diabetic' | 'renal' | 'peptide' | 'fiber' | 'immune' | 'oral-supplement' | 'infant-formula';
     classification?: string;
+    macronutrientComplexity?: 'polymeric' | 'oligomeric';
+    ageGroup?: 'adult' | 'pediatric' | 'infant';
     systemType: 'open' | 'closed' | 'both';
     formulaTypes?: string[];
+    administrationRoutes?: Array<'enteral' | 'oral' | 'translactation'>;
     presentationForm?: 'liquido' | 'po';
     presentations: number[];
     presentationDescription?: string;
@@ -103,6 +121,7 @@ export interface Formula {
     fatPerUnit?: number;
     fatPct?: number;
     fiberPerUnit?: number;
+    fiberType?: string;
     sodiumPerUnit?: number;
     potassiumPerUnit?: number;
     calciumPerUnit?: number;
@@ -113,6 +132,7 @@ export interface Formula {
     carbSources?: string;
     fatSources?: string;
     fiberSources?: string;
+    specialCharacteristics?: string;
     plasticG?: number;
     paperG?: number;
     metalG?: number;
@@ -125,7 +145,10 @@ export interface Formula {
 export interface Module {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     name: string;
+    description?: string;
     density: number;
     referenceAmount: number;
     referenceTimesPerDay: number;
@@ -135,6 +158,8 @@ export interface Module {
     fat?: number;
     sodium: number;
     potassium: number;
+    calcium?: number;
+    phosphorus?: number;
     fiber: number;
     freeWater: number;
     billingUnit?: 'g' | 'ml' | 'unit';
@@ -151,12 +176,17 @@ export interface Module {
 export interface Supply {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     code: string;
     name: string;
     type: 'bottle' | 'set' | 'other';
+    category?: 'standard' | 'thickener' | 'cup' | 'baby-bottle' | 'feeding-bottle' | 'other';
+    description?: string;
     billingUnit?: 'unit' | 'pack' | 'box' | 'other';
     capacityMl?: number;
     unitPrice: number;
+    isBillable?: boolean;
     plasticG?: number;
     paperG?: number;
     metalG?: number;
@@ -169,6 +199,8 @@ export interface Supply {
 export interface Professional {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     name: string;
     role: 'manager' | 'general_manager' | 'local_manager' | 'nutritionist' | 'technician';
     registrationNumber: string;
@@ -176,6 +208,8 @@ export interface Professional {
     crn?: string;
     cpe?: string;
     managingUnit?: string;
+    passwordPin?: string;
+    passwordConfigured?: boolean;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
@@ -198,9 +232,21 @@ export interface PrescriptionModule {
     unit?: 'ml' | 'g';
 }
 
+export interface PrescriptionStatusEvent {
+    id?: string;
+    fromStatus?: string;
+    toStatus: string;
+    reason?: string;
+    changedBy?: string;
+    effectiveDate?: string;
+    createdAt?: string;
+}
+
 export interface Prescription {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     patientId: string;
     patientName: string;
     patientRecord: string;
@@ -231,7 +277,71 @@ export interface Prescription {
     nursingCostTotal?: number;
     materialCostTotal?: number;
     totalCost?: number;
+    enteralDetails?: {
+        access?: string;
+        systemType?: 'open' | 'closed';
+        infusionMode?: 'pump' | 'gravity' | 'bolus';
+        equipmentVolume?: number | string;
+        openDurationPerStep?: string;
+        closedFormula?: {
+            formulaId?: string;
+            infusionMode?: 'pump' | 'gravity' | '';
+            rate?: string;
+            duration?: string;
+            bagQuantities?: Record<string, number>;
+        };
+        openFormulas?: Array<{
+            formulaId?: string;
+            volume?: string;
+            diluteTo?: string;
+            times?: string[];
+        }>;
+        modules?: Array<{
+            moduleId?: string;
+            quantity?: string;
+            unit?: 'ml' | 'g';
+            times?: string[];
+        }>;
+        hydration?: {
+            volume?: string;
+            times?: string[];
+        };
+    };
+    oralDetails?: {
+        administrationRoute?: 'oral' | 'translactation';
+        deliveryMethod?: 'cup' | 'baby-bottle' | 'feeding-bottle';
+        dietConsistency?: string;
+        dietCharacteristics?: string;
+        mealsPerDay?: number;
+        speechTherapy?: boolean;
+        needsThickener?: boolean;
+        safeConsistency?: string;
+        thickenerProduct?: string;
+        thickenerVolume?: number;
+        thickenerTimes?: string[];
+        estimatedVET?: number;
+        estimatedProtein?: number;
+        hasOralTherapy?: boolean;
+        supplements?: OralSupplementSchedule[];
+        modules?: OralModuleSchedule[];
+        observations?: string;
+    };
+    parenteralDetails?: {
+        access?: 'central' | 'peripheral' | 'picc';
+        infusionTime?: number;
+        aminoacidsG?: number;
+        lipidsG?: number;
+        glucoseG?: number;
+        vetKcal?: number;
+        tigMgKgMin?: number;
+        observations?: string;
+    };
+    payloadSnapshot?: Record<string, unknown>;
     status: 'active' | 'suspended' | 'completed';
+    statusReason?: string;
+    statusChangedAt?: string;
+    statusChangedBy?: string;
+    statusEvents?: PrescriptionStatusEvent[];
     startDate: string;
     endDate?: string;
     notes?: string;
@@ -242,12 +352,21 @@ export interface Prescription {
 export interface DailyEvolution {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     patientId: string;
     prescriptionId?: string;
     professionalId?: string;
     date: string;
     volumeInfused: number;
     metaReached: number;
+    oralKcal?: number;
+    oralProtein?: number;
+    enteralKcal?: number;
+    enteralProtein?: number;
+    parenteralKcal?: number;
+    parenteralProtein?: number;
+    nonIntentionalKcal?: number;
     intercurrences?: string[];
     notes?: string;
     createdAt: string;
@@ -344,6 +463,8 @@ export interface Clinic {
 export interface AppSettings {
     id?: string;
     hospitalId?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     hospitalName: string;
     hospitalLogo?: string;
     defaultSignatures?: {
@@ -364,6 +485,8 @@ export interface AppSettings {
 
 export interface Hospital {
     id?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     name: string;
     cnes?: string;
     cep?: string;
@@ -374,6 +497,8 @@ export interface Hospital {
 
 export interface Ward {
     id?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     hospitalId: string;
     name: string;
     code?: string;
@@ -385,6 +510,7 @@ export interface Ward {
 
 export interface RolePermission {
     id?: string;
+    hospitalId?: string;
     role: 'general_manager' | 'local_manager' | 'nutritionist' | 'technician';
     permissionKey: string;
     allowed: boolean;
@@ -406,1220 +532,954 @@ export interface AppTool {
 }
 
 // ============================================
-// HELPER FUNCTIONS - Map between camelCase and snake_case
+// API SERVICES (Replacing Supabase)
 // ============================================
 
-const toSnakeCase = (str: string): string => {
-    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-};
-
-const toCamelCase = (str: string): string => {
-    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-};
-
-const mapToSnakeCase = (obj: Record<string, unknown>): Record<string, unknown> => {
-    const result: Record<string, unknown> = {};
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            result[toSnakeCase(key)] = obj[key];
-        }
+const toDateOnly = (value?: string | Date | null): string => {
+    if (!value) return "";
+    if (typeof value === "string") {
+        return value.includes("T") ? value.split("T")[0] : value;
     }
-    return result;
+
+    return value.toISOString().split("T")[0];
 };
 
-const mapToCamelCase = <T>(obj: Record<string, unknown>): T => {
-    const result: Record<string, unknown> = {};
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            result[toCamelCase(key)] = obj[key];
-        }
-    }
-    return result as T;
-};
-
-const mapArrayToCamelCase = <T>(arr: Record<string, unknown>[]): T[] => {
-    return arr.map(item => mapToCamelCase<T>(item));
-};
-
-type SupabaseLikeError = {
-    code?: string;
-    message?: string;
-    details?: string;
-    hint?: string;
-};
-
-const getErrorText = (error: SupabaseLikeError | null | undefined): string => {
-    return `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`.toLowerCase();
-};
-
-const isNoRowsError = (error: SupabaseLikeError | null | undefined): boolean => {
-    return error?.code === 'PGRST116';
-};
-
-const isMissingTableError = (error: SupabaseLikeError | null | undefined): boolean => {
-    return error?.code === '42P01';
-};
-
-const isMissingColumnError = (error: SupabaseLikeError | null | undefined, column?: string): boolean => {
-    const text = getErrorText(error);
-    if (error?.code === '42703' || error?.code === 'PGRST204') return true;
-    if (column && text.includes(column.toLowerCase())) return true;
-    return text.includes('column') && text.includes('does not exist')
-        || text.includes('could not find the')
-        || text.includes('not found in the schema cache');
-};
-
-const isRecoverableSchemaError = (error: SupabaseLikeError | null | undefined): boolean => {
-    return Boolean(error && (isMissingColumnError(error) || error.code === 'PGRST100'));
-};
-
-const compactObject = <T extends Record<string, unknown>>(obj: T): Record<string, unknown> => {
-    return Object.fromEntries(
-        Object.entries(obj).filter(([, value]) => value !== undefined)
-    );
-};
-
-const toNumberOrUndefined = (value: unknown): number | undefined => {
-    if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : undefined;
-    }
-    if (typeof value === 'string' && value.trim() !== '') {
-        const n = Number(value);
-        return Number.isFinite(n) ? n : undefined;
+const toNumber = (value: unknown): number | undefined => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
 };
 
-const getCurrentHospitalId = (): string | null => {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('userHospitalId');
+const ensureArray = <T = string>(value: unknown): T[] => {
+    if (Array.isArray(value)) return value as T[];
+    if (typeof value === "string" && value.trim()) {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed as T[] : [];
+        } catch {
+            return [];
+        }
+    }
+    return [];
 };
 
-const withHospitalFilter = <T>(query: T, column: string = 'hospital_id'): T => {
-    const hospitalId = getCurrentHospitalId();
-    if (!hospitalId) return query;
-    return (query as { eq: (col: string, value: string) => T }).eq(column, hospitalId);
+const normalizePatient = (raw: any): Patient => {
+    const weight = toNumber(raw.weight);
+    const targetKcalPerKg =
+        raw.tneGoals?.targetKcalPerKg
+        ?? (weight && raw.targetKcal ? Number(raw.targetKcal) / weight : undefined);
+    const targetProteinPerKgActual =
+        raw.tneGoals?.targetProteinPerKgActual
+        ?? (weight && raw.targetProtein ? Number(raw.targetProtein) / weight : undefined);
+
+    return {
+        id: raw.id,
+        version: toNumber(raw.version),
+        syncStatus: raw.syncStatus ?? 'synced',
+        name: raw.name || "",
+        record: raw.record ?? raw.recordNumber ?? "",
+        dob: toDateOnly(raw.dob ?? raw.birthDate),
+        gender: raw.gender === "F" ? "female" : raw.gender === "M" ? "male" : raw.gender,
+        weight,
+        height: toNumber(raw.height),
+        idealWeight: toNumber(raw.idealWeight),
+        bed: raw.bed || "",
+        ward: raw.ward ?? raw.wardName ?? raw.wardRelation?.name ?? raw.wardModel?.name ?? raw.wardInfo?.name ?? raw.wardRef?.name ?? raw.wardDetails?.name ?? raw.wardData?.name ?? raw.wardEntity?.name ?? raw.wardObj?.name ?? raw.wardItem?.name ?? raw.wardLink?.name ?? raw.wardRecord?.name ?? raw.wardResult?.name ?? raw.wardValue?.name ?? raw.wardModelName ?? raw.ward?.name ?? "",
+        hospitalId: raw.hospitalId,
+        observation: raw.observation ?? raw.notes ?? "",
+        monitoringNotes: raw.monitoringNotes ?? raw.latestEvolutionNotes ?? raw.latestEvolution?.notes ?? raw.evolutions?.[0]?.notes ?? "",
+        admissionDate: toDateOnly(raw.admissionDate),
+        status: raw.status || "active",
+        dischargeDate: toDateOnly(raw.dischargeDate),
+        dischargeReason: raw.dischargeReason,
+        nutritionType: raw.nutritionType || "enteral",
+        tneGoals: targetKcalPerKg || targetProteinPerKgActual || raw.tneGoals?.targetProteinPerKgIdeal
+            ? {
+                targetKcalPerKg,
+                targetProteinPerKgActual,
+                targetProteinPerKgIdeal: raw.tneGoals?.targetProteinPerKgIdeal,
+            }
+            : undefined,
+        infusionPercentage24h: toNumber(raw.infusionPercentage24h),
+        tneInterruptions: raw.tneInterruptions,
+        unintentionalCalories: raw.unintentionalCalories,
+        consistency: raw.consistency,
+        safeConsistency: raw.safeConsistency,
+        mealCount: raw.mealCount,
+        createdAt: raw.createdAt || new Date().toISOString(),
+        updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+    };
 };
 
-const withHospitalPayload = <T extends Record<string, unknown>>(payload: T): T => {
-    const hospitalId = getCurrentHospitalId();
-    if (!hospitalId) return payload;
-    if (payload.hospitalId || payload.hospital_id) return payload;
-    return { ...payload, hospitalId } as T;
+const normalizeFormula = (raw: any): Formula => ({
+    id: raw.id,
+    hospitalId: raw.hospitalId,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    code: raw.code ?? raw.id ?? "",
+    name: raw.name || "",
+    manufacturer: raw.manufacturer ?? "",
+    type: raw.type ?? "standard",
+    classification: raw.classification,
+    macronutrientComplexity: raw.macronutrientComplexity,
+    ageGroup: raw.ageGroup,
+    systemType: raw.systemType ?? "both",
+    formulaTypes: ensureArray<string>(raw.formulaTypes),
+    administrationRoutes: ensureArray<NonNullable<Formula["administrationRoutes"]>[number]>(raw.administrationRoutes),
+    presentationForm: raw.presentationForm,
+    presentations: ensureArray<number>(raw.presentations),
+    presentationDescription: raw.presentationDescription,
+    description: raw.description,
+    billingUnit: raw.billingUnit,
+    conversionFactor: toNumber(raw.conversionFactor),
+    billingPrice: toNumber(raw.billingPrice),
+    caloriesPerUnit: toNumber(raw.caloriesPerUnit) ?? 0,
+    density: toNumber(raw.density),
+    proteinPerUnit: toNumber(raw.proteinPerUnit) ?? 0,
+    proteinPct: toNumber(raw.proteinPct),
+    carbPerUnit: toNumber(raw.carbPerUnit),
+    carbPct: toNumber(raw.carbPct),
+    fatPerUnit: toNumber(raw.fatPerUnit),
+    fatPct: toNumber(raw.fatPct),
+    fiberPerUnit: toNumber(raw.fiberPerUnit),
+    fiberType: raw.fiberType,
+    sodiumPerUnit: toNumber(raw.sodiumPerUnit),
+    potassiumPerUnit: toNumber(raw.potassiumPerUnit),
+    calciumPerUnit: toNumber(raw.calciumPerUnit),
+    phosphorusPerUnit: toNumber(raw.phosphorusPerUnit),
+    waterContent: toNumber(raw.waterContent),
+    osmolality: toNumber(raw.osmolality),
+    proteinSources: raw.proteinSources,
+    carbSources: raw.carbSources,
+    fatSources: raw.fatSources,
+    fiberSources: raw.fiberSources,
+    specialCharacteristics: raw.specialCharacteristics,
+    plasticG: toNumber(raw.plasticG),
+    paperG: toNumber(raw.paperG),
+    metalG: toNumber(raw.metalG),
+    glassG: toNumber(raw.glassG),
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+});
+
+const normalizeModule = (raw: any): Module => ({
+    id: raw.id,
+    hospitalId: raw.hospitalId,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    name: raw.name || "",
+    description: raw.description,
+    density: toNumber(raw.density) ?? 0,
+    referenceAmount: toNumber(raw.referenceAmount) ?? 0,
+    referenceTimesPerDay: toNumber(raw.referenceTimesPerDay) ?? 0,
+    calories: toNumber(raw.calories) ?? 0,
+    protein: toNumber(raw.protein) ?? 0,
+    carbs: toNumber(raw.carbs),
+    fat: toNumber(raw.fat),
+    sodium: toNumber(raw.sodium) ?? 0,
+    potassium: toNumber(raw.potassium) ?? 0,
+    calcium: toNumber(raw.calcium),
+    phosphorus: toNumber(raw.phosphorus),
+    fiber: toNumber(raw.fiber) ?? 0,
+    freeWater: toNumber(raw.freeWater) ?? 0,
+    billingUnit: raw.billingUnit,
+    billingPrice: toNumber(raw.billingPrice),
+    proteinSources: raw.proteinSources,
+    carbSources: raw.carbSources,
+    fatSources: raw.fatSources,
+    fiberSources: raw.fiberSources,
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+});
+
+const normalizeSupply = (raw: any): Supply => ({
+    id: raw.id,
+    hospitalId: raw.hospitalId,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    code: raw.code || "",
+    name: raw.name || "",
+    type: raw.type ?? "other",
+    category: raw.category,
+    description: raw.description,
+    billingUnit: raw.billingUnit,
+    capacityMl: toNumber(raw.capacityMl),
+    unitPrice: toNumber(raw.unitPrice) ?? 0,
+    isBillable: raw.isBillable !== false,
+    plasticG: toNumber(raw.plasticG),
+    paperG: toNumber(raw.paperG),
+    metalG: toNumber(raw.metalG),
+    glassG: toNumber(raw.glassG),
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+});
+
+const normalizeProfessional = (raw: any): Professional => ({
+    id: raw.id,
+    hospitalId: raw.hospitalId,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    name: raw.name || "",
+    role: raw.role ?? "nutritionist",
+    registrationNumber: raw.registrationNumber || "",
+    cpf: raw.cpf,
+    crn: raw.crn,
+    cpe: raw.cpe,
+    managingUnit: raw.managingUnit,
+    passwordConfigured: raw.passwordConfigured === true,
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+});
+
+const normalizePrescription = (raw: any): Prescription => {
+    const formulas = Array.isArray(raw.formulas) ? raw.formulas.map((formula: any) => ({
+        formulaId: formula.formulaId,
+        formulaName: formula.formulaName ?? formula.formula?.name ?? "",
+        volume: toNumber(formula.volume) ?? 0,
+        timesPerDay: toNumber(formula.timesPerDay) ?? 0,
+        schedules: ensureArray<string>(formula.schedules),
+    })) : [];
+
+    const modules = Array.isArray(raw.modules) ? raw.modules.map((module: any) => ({
+        moduleId: module.moduleId,
+        moduleName: module.moduleName ?? module.module?.name ?? "",
+        amount: toNumber(module.amount) ?? 0,
+        timesPerDay: toNumber(module.timesPerDay) ?? 0,
+        schedules: ensureArray<string>(module.schedules),
+        unit: module.unit,
+    })) : [];
+
+    return {
+        id: raw.id,
+        hospitalId: raw.hospitalId,
+        version: toNumber(raw.version),
+        syncStatus: raw.syncStatus ?? 'synced',
+        patientId: raw.patientId,
+        patientName: raw.patientName ?? raw.patient?.name ?? "",
+        patientRecord: raw.patientRecord ?? raw.patient?.record ?? raw.patient?.recordNumber ?? "",
+        patientBed: raw.patientBed ?? raw.patient?.bed,
+        patientWard: raw.patientWard ?? raw.patient?.ward ?? raw.patient?.ward?.name ?? "",
+        professionalId: raw.professionalId,
+        professionalName: raw.professionalName ?? raw.professional?.name,
+        therapyType: raw.therapyType,
+        systemType: raw.systemType ?? "open",
+        feedingRoute: raw.feedingRoute,
+        infusionMode: raw.infusionMode,
+        infusionRateMlH: toNumber(raw.infusionRateMlH),
+        infusionDropsMin: toNumber(raw.infusionDropsMin),
+        infusionHoursPerDay: toNumber(raw.infusionHoursPerDay),
+        equipmentVolume: toNumber(raw.equipmentVolume),
+        formulas,
+        modules,
+        hydrationVolume: toNumber(raw.hydrationVolume),
+        hydrationSchedules: ensureArray<string>(raw.hydrationSchedules),
+        totalCalories: toNumber(raw.totalCalories),
+        totalProtein: toNumber(raw.totalProtein),
+        totalCarbs: toNumber(raw.totalCarbs),
+        totalFat: toNumber(raw.totalFat),
+        totalFiber: toNumber(raw.totalFiber),
+        totalVolume: toNumber(raw.totalVolume),
+        totalFreeWater: toNumber(raw.totalFreeWater),
+        nursingTimeMinutes: toNumber(raw.nursingTimeMinutes),
+        nursingCostTotal: toNumber(raw.nursingCostTotal),
+        materialCostTotal: toNumber(raw.materialCostTotal),
+        totalCost: toNumber(raw.totalCost),
+        enteralDetails: raw.enteralDetails,
+        oralDetails: raw.oralDetails,
+        parenteralDetails: raw.parenteralDetails,
+        payloadSnapshot: raw.payloadSnapshot,
+        status: raw.status ?? "active",
+        statusReason: raw.statusReason,
+        statusChangedAt: toDateOnly(raw.statusChangedAt),
+        statusChangedBy: raw.statusChangedBy,
+        statusEvents: Array.isArray(raw.statusEvents)
+            ? raw.statusEvents.map((event: any) => ({
+                id: event.id,
+                fromStatus: event.fromStatus,
+                toStatus: event.toStatus,
+                reason: event.reason,
+                changedBy: event.changedBy,
+                effectiveDate: toDateOnly(event.effectiveDate),
+                createdAt: toDateOnly(event.createdAt),
+            }))
+            : [],
+        startDate: toDateOnly(raw.startDate),
+        endDate: toDateOnly(raw.endDate),
+        notes: raw.notes,
+        createdAt: raw.createdAt || new Date().toISOString(),
+        updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
+    };
 };
 
-const buildLegacyPrescriptionPayload = (prescription: Partial<Prescription>): Record<string, unknown> => {
-    const therapyType = prescription.therapyType || 'enteral';
-    const feedingRoutes: Record<string, unknown> = {
-        oral: therapyType === 'oral',
-        enteral: therapyType === 'enteral',
-        parenteral: therapyType === 'parenteral',
-        systemType: prescription.systemType,
-        feedingRoute: prescription.feedingRoute,
-        infusionMode: prescription.infusionMode,
-        infusionRateMlH: prescription.infusionRateMlH,
-        infusionDropsMin: prescription.infusionDropsMin,
-        infusionHoursPerDay: prescription.infusionHoursPerDay,
-        equipmentVolume: prescription.equipmentVolume,
-    };
+const normalizeEvolution = (raw: any): DailyEvolution => {
+    const volumeInfused = toNumber(raw.volumeInfused ?? raw.infusedVolume) ?? 0;
+    const metaReached =
+        toNumber(raw.metaReached)
+        ?? toNumber(raw.infusionPercentage)
+        ?? (
+            toNumber(raw.prescribedVolume) && volumeInfused
+                ? (volumeInfused / (toNumber(raw.prescribedVolume) || 1)) * 100
+                : 0
+        );
 
-    const hydration: Record<string, unknown> = {
-        volume: prescription.hydrationVolume,
-        times: prescription.hydrationSchedules,
+    return {
+        id: raw.id,
+        hospitalId: raw.hospitalId,
+        version: toNumber(raw.version),
+        syncStatus: raw.syncStatus ?? 'synced',
+        patientId: raw.patientId,
+        prescriptionId: raw.prescriptionId,
+        professionalId: raw.professionalId,
+        date: toDateOnly(raw.date),
+        volumeInfused,
+        metaReached: Number(metaReached.toFixed(2)),
+        oralKcal: toNumber(raw.oralKcal),
+        oralProtein: toNumber(raw.oralProtein),
+        enteralKcal: toNumber(raw.enteralKcal),
+        enteralProtein: toNumber(raw.enteralProtein),
+        parenteralKcal: toNumber(raw.parenteralKcal),
+        parenteralProtein: toNumber(raw.parenteralProtein),
+        nonIntentionalKcal: toNumber(raw.nonIntentionalKcal),
+        intercurrences: raw.intercurrences ?? raw.tneInterruptions,
+        notes: raw.notes,
+        createdAt: raw.createdAt || new Date().toISOString(),
     };
+};
 
-    const totalNutrition: Record<string, unknown> = {
-        calories: prescription.totalCalories,
-        protein: prescription.totalProtein,
-        carbs: prescription.totalCarbs,
-        fat: prescription.totalFat,
-        fiber: prescription.totalFiber,
-        volume: prescription.totalVolume,
-        freeWater: prescription.totalFreeWater,
-        nursingTimeMinutes: prescription.nursingTimeMinutes,
-        nursingCostTotal: prescription.nursingCostTotal,
-        materialCostTotal: prescription.materialCostTotal,
-        totalCost: prescription.totalCost,
+const normalizeHospital = (raw: any): Hospital => ({
+    id: raw.id,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    name: raw.name || "",
+    cnes: raw.cnes,
+    cep: raw.cep ?? raw.zipCode,
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+});
+
+const normalizeWard = (raw: any): Ward => ({
+    id: raw.id,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    hospitalId: raw.hospitalId,
+    name: raw.name || "",
+    code: raw.code,
+    type: raw.type ?? "other",
+    beds: toNumber(raw.beds ?? raw.bedCount),
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+});
+
+const mapPatientPayload = (data: any) => ({
+    name: data.name,
+    record: data.record,
+    recordNumber: data.record ?? data.recordNumber,
+    dob: data.dob,
+    birthDate: data.dob ?? data.birthDate,
+    bed: data.bed,
+    ward: data.ward,
+    wardId: data.wardId,
+    hospitalId: data.hospitalId,
+    observation: data.observation ?? data.notes,
+    gender: data.gender,
+    weight: data.weight,
+    height: data.height,
+    nutritionType: data.nutritionType,
+    status: data.status,
+    consistency: data.consistency,
+    safeConsistency: data.safeConsistency,
+    mealCount: data.mealCount,
+    dischargeDate: data.dischargeDate,
+    dischargeReason: data.dischargeReason,
+});
+
+const mapPrescriptionPayload = (data: any) => ({
+    ...data,
+    startDate: toDateOnly(data.startDate),
+    endDate: toDateOnly(data.endDate),
+    enteralDetails: data.enteralDetails,
+    oralDetails: data.oralDetails,
+    parenteralDetails: data.parenteralDetails,
+    hydrationSchedules: Array.isArray(data.hydrationSchedules) ? data.hydrationSchedules : undefined,
+    formulas: Array.isArray(data.formulas) ? data.formulas.map((formula: any) => ({
+        ...formula,
+        schedules: Array.isArray(formula.schedules) ? formula.schedules : [],
+    })) : [],
+    modules: Array.isArray(data.modules) ? data.modules.map((module: any) => ({
+        ...module,
+        schedules: Array.isArray(module.schedules) ? module.schedules : [],
+    })) : [],
+});
+
+const mapEvolutionPayload = (data: any) => ({
+    ...data,
+    date: toDateOnly(data.date),
+});
+
+const mapFormulaPayload = (data: any) => ({
+    ...data,
+    formulaTypes: Array.isArray(data.formulaTypes) ? data.formulaTypes : undefined,
+    administrationRoutes: Array.isArray(data.administrationRoutes) ? data.administrationRoutes : undefined,
+    presentations: Array.isArray(data.presentations) ? data.presentations : undefined,
+});
+
+const nowIso = () => new Date().toISOString();
+
+const withSyncState = <T extends Record<string, unknown>>(
+    entity: T,
+    syncStatus: 'synced' | 'pending' | 'failed' = 'synced',
+): T => ({
+    ...entity,
+    syncStatus,
+});
+
+const mergeRemoteWithOffline = async <T extends Record<string, unknown>>(
+    entityType: OfflineEntityType,
+    fetchRemote: () => Promise<T[]>,
+): Promise<T[]> => {
+    try {
+        const remote = await fetchRemote();
+        await cacheSnapshot(entityType, remote);
+        return (await getMergedRecords(entityType, remote)).map((record) =>
+            withSyncState(record as T, (record.syncStatus as T['syncStatus']) || 'synced'),
+        ) as T[];
+    } catch {
+        return (await getMergedRecords(entityType)).map((record) =>
+            withSyncState(record as T, (record.syncStatus as T['syncStatus']) || 'pending'),
+        ) as T[];
+    }
+};
+
+const buildCreateEntity = <T extends Record<string, unknown>>(
+    entityType: OfflineEntityType,
+    payload: Record<string, unknown>,
+    normalizer: (raw: any) => T,
+) => {
+    const timestamp = nowIso();
+    const tempId = createTemporaryId(entityType);
+    return {
+        entityId: tempId,
+        localEntity: withSyncState(
+            normalizer({
+                ...payload,
+                id: tempId,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+                version: 1,
+            }) as Record<string, unknown>,
+            'pending',
+        ),
     };
+};
 
-    return compactObject({
-        patientId: prescription.patientId,
-        professionalId: prescription.professionalId,
-        patientName: prescription.patientName,
-        patientRecord: prescription.patientRecord,
-        therapyType,
-        feedingRoutes: compactObject(feedingRoutes),
-        formulas: prescription.formulas || [],
-        modules: prescription.modules || [],
-        hydration: compactObject(hydration),
-        parenteral: therapyType === 'parenteral' ? { infusionMode: prescription.infusionMode } : undefined,
-        oralDiet: therapyType === 'oral' ? { notes: prescription.notes } : undefined,
-        tnoList: [],
-        nonIntentionalCalories: 0,
-        totalNutrition: compactObject(totalNutrition),
+const buildUpdatedEntity = async <T extends Record<string, unknown>>(
+    entityType: OfflineEntityType,
+    entityId: string,
+    patch: Record<string, unknown>,
+    normalizer: (raw: any) => T,
+) => {
+    const current = (await readLocalRecord(entityType, entityId)) as (T & { version?: number }) | undefined;
+    const timestamp = nowIso();
+    const version = current?.version ?? (typeof patch.version === 'number' ? patch.version : undefined) ?? 1;
+    const localEntity = withSyncState(
+        normalizer({
+            ...(current || {}),
+            ...patch,
+            id: entityId,
+            updatedAt: timestamp,
+            createdAt: (current as Record<string, unknown> | undefined)?.createdAt || timestamp,
+            version,
+        }) as Record<string, unknown>,
+        'pending',
+    );
+
+    return {
+        expectedVersion: current?.version,
+        localEntity,
+    };
+};
+
+const queueCreate = async <T extends Record<string, unknown>>(
+    entityType: OfflineEntityType,
+    endpoint: string,
+    payload: Record<string, unknown>,
+    normalizer: (raw: any) => T,
+) => {
+    const { entityId, localEntity } = buildCreateEntity(entityType, payload, normalizer);
+    return executeOrQueueMutation({
+        entityType,
+        action: 'create',
+        endpoint,
+        method: 'POST',
+        payload,
+        entityId,
+        localEntity,
     });
 };
 
-const normalizePrescription = (record: Record<string, unknown>): Prescription => {
-    const mapped = mapToCamelCase<Prescription & {
-        hydration?: Record<string, unknown>;
-        totalNutrition?: Record<string, unknown>;
-        feedingRoutes?: Record<string, unknown>;
-    }>(record);
+const queueUpdate = async <T extends Record<string, unknown>>(
+    entityType: OfflineEntityType,
+    endpoint: string,
+    entityId: string,
+    payload: Record<string, unknown>,
+    normalizer: (raw: any) => T,
+) => {
+    const { expectedVersion, localEntity } = await buildUpdatedEntity(entityType, entityId, payload, normalizer);
+    return executeOrQueueMutation({
+        entityType,
+        action: 'update',
+        endpoint,
+        method: 'PUT',
+        payload: expectedVersion !== undefined ? { ...payload, version: expectedVersion } : payload,
+        entityId,
+        localEntity,
+        expectedVersion,
+    });
+};
 
-    const hydration = mapped.hydration || {};
-    const totalNutrition = mapped.totalNutrition || {};
-    const feedingRoutes = mapped.feedingRoutes || {};
+const queueDelete = async (
+    entityType: OfflineEntityType,
+    endpoint: string,
+    entityId: string,
+) => {
+    const current = await readLocalRecord(entityType, entityId) as { version?: number } | undefined;
+    return executeOrQueueMutation({
+        entityType,
+        action: 'delete',
+        endpoint,
+        method: 'DELETE',
+        entityId,
+        expectedVersion: current?.version,
+    });
+};
 
-    const createdAtDate = typeof mapped.createdAt === 'string'
-        ? mapped.createdAt.slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
+export const patientsService = {
+    async getAll() {
+        return mergeRemoteWithOffline('patients', async () =>
+            ((await apiClient.get('/patients')) as any[]).map(normalizePatient),
+        ) as Promise<Patient[]>;
+    },
+    async getActive() { return (await this.getAll()).filter((patient: Patient) => patient.status === 'active'); },
+    async getById(id: string) {
+        const local = await readLocalRecord('patients', id);
+        if (local) return normalizePatient(local);
+        return normalizePatient(await apiClient.get(`/patients/${id}`));
+    },
+    async create(data: any) {
+        const result = await queueCreate('patients', '/patients', mapPatientPayload(data), normalizePatient);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) {
+        return queueUpdate('patients', `/patients/${id}`, id, mapPatientPayload(data), normalizePatient);
+    },
+    async delete(id: string) { return queueDelete('patients', `/patients/${id}`, id); },
+    async search(query: string) { 
+        const all = await this.getAll();
+        const q = query.toLowerCase();
+        return all.filter((p: any) => p.name.toLowerCase().includes(q) || p.record?.includes(q));
+    }
+};
 
+export const formulasService = {
+    async getAll() {
+        return mergeRemoteWithOffline('formulas', async () =>
+            ((await apiClient.get('/formulas')) as any[]).map(normalizeFormula),
+        ) as Promise<Formula[]>;
+    },
+    async getById(id: string) {
+        const local = await readLocalRecord('formulas', id);
+        if (local) return normalizeFormula(local);
+        return normalizeFormula(await apiClient.get(`/formulas/${id}`));
+    },
+    async getBySystem(systemType: string) { return (await this.getAll()).filter((f: any) => f.type === systemType); },
+    async create(data: any) {
+        const result = await queueCreate('formulas', '/formulas', mapFormulaPayload(data), normalizeFormula);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('formulas', `/formulas/${id}`, id, mapFormulaPayload(data), normalizeFormula); },
+    async delete(id: string) { return queueDelete('formulas', `/formulas/${id}`, id); },
+    async search(query: string) { 
+        const all = await this.getAll();
+        const q = query.toLowerCase();
+        return all.filter((f: any) => f.name.toLowerCase().includes(q));
+    }
+};
+
+export const modulesService = {
+    async getAll() {
+        return mergeRemoteWithOffline('modules', async () =>
+            ((await apiClient.get('/modules')) as any[]).map(normalizeModule),
+        ) as Promise<Module[]>;
+    },
+    async getById(id: string) {
+        const local = await readLocalRecord('modules', id);
+        if (local) return normalizeModule(local);
+        return normalizeModule(await apiClient.get(`/modules/${id}`));
+    },
+    async create(data: any) {
+        const result = await queueCreate('modules', '/modules', data, normalizeModule);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('modules', `/modules/${id}`, id, data, normalizeModule); },
+    async delete(id: string) { return queueDelete('modules', `/modules/${id}`, id); },
+    async search(query: string) { 
+        const all = await this.getAll();
+        const q = query.toLowerCase();
+        return all.filter((m: any) => m.name.toLowerCase().includes(q));
+    }
+};
+
+export const suppliesService = {
+    async getAll() {
+        return mergeRemoteWithOffline('supplies', async () =>
+            ((await apiClient.get('/supplies')) as any[]).map(normalizeSupply),
+        ) as Promise<Supply[]>;
+    },
+    async getById(id: string) {
+        const local = await readLocalRecord('supplies', id);
+        if (local) return normalizeSupply(local);
+        return normalizeSupply(await apiClient.get(`/supplies/${id}`));
+    },
+    async create(data: any) {
+        const result = await queueCreate('supplies', '/supplies', data, normalizeSupply);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('supplies', `/supplies/${id}`, id, data, normalizeSupply); },
+    async delete(id: string) { return queueDelete('supplies', `/supplies/${id}`, id); },
+    async search(query: string) { 
+        const all = await this.getAll();
+        const q = query.toLowerCase();
+        return all.filter((s: any) => s.name.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q));
+    }
+};
+
+export const professionalsService = {
+    async getAll() {
+        return mergeRemoteWithOffline('professionals', async () =>
+            ((await apiClient.get('/professionals')) as any[]).map(normalizeProfessional),
+        ) as Promise<Professional[]>;
+    },
+    async getByHospital(id: string) {
+        return mergeRemoteWithOffline('professionals', async () =>
+            ((await apiClient.get(`/professionals?hospitalId=${id}`)) as any[]).map(normalizeProfessional),
+        ) as Promise<Professional[]>;
+    },
+    async create(data: any) {
+        const result = await queueCreate('professionals', '/professionals', data, normalizeProfessional);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('professionals', `/professionals/${id}`, id, data, normalizeProfessional); },
+    async delete(id: string) { return queueDelete('professionals', `/professionals/${id}`, id); }
+};
+
+export const prescriptionsService = {
+    async getActiveByPatient(patientId: string) { 
+        const all = await this.getAll();
+        return all.find((p: any) => p.patientId === patientId && p.status === 'active');
+    },
+    async getHistoryByPatient(patientId: string) {
+        const all = await this.getAll();
+        return all.filter((p: any) => p.patientId === patientId);
+    },
+    async getByPatient(patientId: string) {
+        const all = await this.getAll();
+        return all.filter((p: any) => p.patientId === patientId);
+    },
+    async getHistory(id: string) {
+        return (await apiClient.get(`/prescriptions/${id}/history`)).map((event: any) => ({
+            id: event.id,
+            fromStatus: event.fromStatus,
+            toStatus: event.toStatus,
+            reason: event.reason,
+            changedBy: event.changedBy,
+            effectiveDate: toDateOnly(event.effectiveDate),
+            createdAt: toDateOnly(event.createdAt),
+        })) as PrescriptionStatusEvent[];
+    },
+    async getAll() {
+        return mergeRemoteWithOffline('prescriptions', async () =>
+            ((await apiClient.get('/prescriptions')) as any[]).map(normalizePrescription),
+        ) as Promise<Prescription[]>;
+    },
+    async getActive() { return (await this.getAll()).filter((prescription: Prescription) => prescription.status === 'active'); },
+    async getById(id: string) {
+        const local = await readLocalRecord('prescriptions', id);
+        if (local) return normalizePrescription(local);
+        return normalizePrescription(await apiClient.get(`/prescriptions/${id}`));
+    },
+    async create(data: any) {
+        const payload = mapPrescriptionPayload(data);
+        const result = await queueCreate('prescriptions', '/prescriptions', payload, normalizePrescription);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) {
+        const payload = mapPrescriptionPayload(data);
+        return queueUpdate('prescriptions', `/prescriptions/${id}`, id, payload, normalizePrescription);
+    },
+    async delete(id: string) { return queueDelete('prescriptions', `/prescriptions/${id}`, id); },
+    async updateStatus(
+        id: string,
+        payload:
+            | string
+            | {
+                status: Prescription["status"];
+                reason?: string;
+                changedBy?: string;
+                effectiveDate?: string;
+            },
+    ) {
+        const normalizedPayload = typeof payload === "string" ? { status: payload } : payload;
+        return queueUpdate(
+            'prescriptions',
+            `/prescriptions/${id}/status`,
+            id,
+            normalizedPayload as Record<string, unknown>,
+            normalizePrescription,
+        );
+    }
+};
+
+export const evolutionsService = {
+    async getAll() {
+        return mergeRemoteWithOffline('evolutions', async () =>
+            ((await apiClient.get('/evolutions').catch(() => [])) as any[]).map(normalizeEvolution),
+        ) as Promise<DailyEvolution[]>;
+    },
+    async getByDate(date: string) { return (await this.getAll()).filter((evolution: DailyEvolution) => evolution.date === toDateOnly(date)); },
+    async getByPatient(patientId: string) {
+        return (await this.getAll()).filter((evolution: DailyEvolution) => evolution.patientId === patientId);
+    },
+    async getByPatientAndDateRange(patientId: string, startDate: string, endDate: string) {
+        const start = toDateOnly(startDate);
+        const end = toDateOnly(endDate);
+        return (await this.getByPatient(patientId)).filter((evolution: DailyEvolution) => evolution.date >= start && evolution.date <= end);
+    },
+    async create(data: any) {
+        const payload = mapEvolutionPayload(data);
+        const result = await queueCreate('evolutions', '/evolutions', payload, normalizeEvolution);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('evolutions', `/evolutions/${id}`, id, mapEvolutionPayload(data), normalizeEvolution); },
+    async delete(id: string) { return queueDelete('evolutions', `/evolutions/${id}`, id); }
+};
+
+export const clinicsService = {
+    async getAll() { return apiClient.get('/clinics').catch(() => []); },
+    async getActive() { return apiClient.get('/clinics').catch(() => []); },
+    async create(data: any) { return (await apiClient.post('/clinics', data)).id; },
+    async update(id: string, data: any) { return apiClient.put(`/clinics/${id}`, data); },
+    async delete(id: string) { return apiClient.delete(`/clinics/${id}`); }
+};
+export const hospitalsService = {
+    async getAll() {
+        return mergeRemoteWithOffline('hospitals', async () =>
+            ((await apiClient.get('/hospitals').catch(() => [])) as any[]).map(normalizeHospital),
+        ) as Promise<Hospital[]>;
+    },
+    async getActive() { return (await this.getAll()).filter((hospital: Hospital) => hospital.isActive); },
+    async create(data: any) {
+        const result = await queueCreate('hospitals', '/hospitals', data, normalizeHospital);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('hospitals', `/hospitals/${id}`, id, data, normalizeHospital); },
+    async delete(id: string) { return queueDelete('hospitals', `/hospitals/${id}`, id); }
+};
+export const wardsService = {
+    async getAll() {
+        return mergeRemoteWithOffline('wards', async () =>
+            ((await apiClient.get('/wards').catch(() => [])) as any[]).map(normalizeWard),
+        ) as Promise<Ward[]>;
+    },
+    async getActive() { return (await this.getAll()).filter((ward: Ward) => ward.isActive); },
+    async getByHospital(hospitalId: string) {
+        return mergeRemoteWithOffline('wards', async () =>
+            ((await apiClient.get(`/wards/hospital/${hospitalId}`).catch(() => [])) as any[]).map(normalizeWard),
+        ) as Promise<Ward[]>;
+    },
+    async create(data: any) {
+        const result = await queueCreate('wards', '/wards', data, normalizeWard);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) { return queueUpdate('wards', `/wards/${id}`, id, data, normalizeWard); },
+    async delete(id: string) { return queueDelete('wards', `/wards/${id}`, id); }
+};
+
+const resolveSessionHospitalId = () => {
+    if (typeof window === 'undefined') return undefined;
+    return localStorage.getItem('userHospitalId') || undefined;
+};
+
+export const rolePermissionsService = {
+    async getAll() {
+        const hospitalId = resolveSessionHospitalId();
+        const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : '';
+        return (await apiClient.get(`/role-permissions${query}`).catch(() => [])) as RolePermission[];
+    },
+    async saveAll(rows: Array<Pick<RolePermission, "role" | "permissionKey" | "allowed">>) {
+        const hospitalId = resolveSessionHospitalId();
+        const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : '';
+        return (await apiClient.request(`/role-permissions${query}`, {
+            method: 'PUT',
+            body: JSON.stringify({ rows }),
+        })) as RolePermission[];
+    },
+};
+export const appToolsService = {
+    async getAll() {
+        const hospitalId = resolveSessionHospitalId();
+        const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : '';
+        return (await apiClient.get(`/app-tools${query}`).catch(() => [])) as AppTool[];
+    }
+};
+
+const SETTINGS_STORAGE_PREFIX = 'enterall-smart-rx:settings:';
+
+const resolveSettingsHospitalId = () => {
+    if (typeof window === 'undefined') return 'local-1';
+    return localStorage.getItem('userHospitalId') || 'local-1';
+};
+
+const defaultSettingsForHospital = (hospitalId?: string): AppSettings => ({
+    hospitalId: hospitalId || 'local-1',
+    hospitalName: typeof window !== 'undefined'
+        ? localStorage.getItem('userHospitalName') || 'Unidade'
+        : 'Unidade',
+    defaultSignatures: {
+        rtName: 'RT não cadastrado',
+        rtCrn: 'CRN não cadastrado',
+    },
+    labelSettings: {
+        showConservation: true,
+        defaultConservation: 'Conservação: usar em até 4h após manipulação, em temperatura ambiente.',
+        openConservation: 'Conservação: usar em até 4h após manipulação, em temperatura ambiente.',
+        closedConservation: 'Conservação: em temperatura ambiente.',
+    },
+    nursingCosts: {
+        timeOpenSystemPump: 0,
+        timeClosedSystemPump: 0,
+        timeOpenSystemGravity: 0,
+        timeClosedSystemGravity: 0,
+        timeBolus: 0,
+        hourlyRate: 0,
+    },
+    indirectCosts: {
+        laborCosts: 0,
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+});
+
+const normalizeSettings = (raw: Partial<AppSettings> | undefined, hospitalId?: string): AppSettings => {
+    const defaults = defaultSettingsForHospital(hospitalId);
     return {
-        ...mapped,
-        formulas: Array.isArray(mapped.formulas) ? mapped.formulas : [],
-        modules: Array.isArray(mapped.modules) ? mapped.modules : [],
-        therapyType: mapped.therapyType || (feedingRoutes.enteral ? 'enteral' : feedingRoutes.parenteral ? 'parenteral' : 'oral'),
-        systemType: mapped.systemType || (feedingRoutes.systemType === 'closed' ? 'closed' : 'open'),
-        hydrationVolume: mapped.hydrationVolume ?? toNumberOrUndefined(hydration.volume),
-        hydrationSchedules: mapped.hydrationSchedules ?? (Array.isArray(hydration.times) ? hydration.times as string[] : undefined),
-        totalCalories: mapped.totalCalories ?? toNumberOrUndefined(totalNutrition.calories ?? totalNutrition.kcal),
-        totalProtein: mapped.totalProtein ?? toNumberOrUndefined(totalNutrition.protein),
-        totalCarbs: mapped.totalCarbs ?? toNumberOrUndefined(totalNutrition.carbs),
-        totalFat: mapped.totalFat ?? toNumberOrUndefined(totalNutrition.fat),
-        totalFiber: mapped.totalFiber ?? toNumberOrUndefined(totalNutrition.fiber),
-        totalVolume: mapped.totalVolume ?? toNumberOrUndefined(totalNutrition.volume),
-        totalFreeWater: mapped.totalFreeWater ?? toNumberOrUndefined(totalNutrition.freeWater),
-        status: mapped.status || 'active',
-        startDate: mapped.startDate || createdAtDate,
+        ...defaults,
+        ...raw,
+        version: toNumber(raw?.version),
+        syncStatus: raw?.syncStatus ?? 'synced',
+        hospitalId: hospitalId || raw?.hospitalId || defaults.hospitalId,
+        hospitalName: raw?.hospitalName || defaults.hospitalName,
+        defaultSignatures: {
+            ...defaults.defaultSignatures,
+            ...(raw?.defaultSignatures || {}),
+        },
+        labelSettings: {
+            ...defaults.labelSettings,
+            ...(raw?.labelSettings || {}),
+        },
+        nursingCosts: {
+            ...defaults.nursingCosts,
+            ...(raw?.nursingCosts || {}),
+        },
+        indirectCosts: {
+            ...defaults.indirectCosts,
+            ...(raw?.indirectCosts || {}),
+        },
+        createdAt: raw?.createdAt || defaults.createdAt,
+        updatedAt: raw?.updatedAt || new Date().toISOString(),
     };
 };
 
-const normalizePrescriptionArray = (rows: Record<string, unknown>[]): Prescription[] => {
-    return rows.map(normalizePrescription);
-};
-
-// ============================================
-// CRUD SERVICES - Using Supabase
-// ============================================
-
-// --- PATIENTS ---
-export const patientsService = {
-    async getAll(): Promise<Patient[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Patient>(data || []);
-    },
-
-    async getById(id: string): Promise<Patient | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Patient>(data) : undefined;
-    },
-
-    async getByRecord(record: string): Promise<Patient | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .select('*')
-            .eq('record', record)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Patient>(data) : undefined;
-    },
-
-    async getActive(): Promise<Patient[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .select('*')
-            .eq('status', 'active')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Patient>(data || []);
-    },
-
-    async create(patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const payload = withHospitalPayload(patient as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('patients')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Patient>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('patients')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async search(query: string): Promise<Patient[]> {
-        const scopedQuery = withHospitalFilter(
-            supabase
-            .from('patients')
-            .select('*')
-            .or(`name.ilike.%${query}%,record.ilike.%${query}%`)
-        );
-        const { data, error } = await scopedQuery;
-        if (error) throw error;
-        return mapArrayToCamelCase<Patient>(data || []);
-    }
-};
-
-// --- FORMULAS ---
-export const formulasService = {
-    async getAll(): Promise<Formula[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Formula>(data || []);
-    },
-
-    async getById(id: string): Promise<Formula | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Formula>(data) : undefined;
-    },
-
-    async getActive(): Promise<Formula[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .select('*')
-            .eq('is_active', true)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Formula>(data || []);
-    },
-
-    async getBySystem(systemType: 'open' | 'closed'): Promise<Formula[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .select('*')
-            .or(`system_type.eq.${systemType},system_type.eq.both`)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Formula>(data || []);
-    },
-
-    async create(formula: Omit<Formula, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const payload = withHospitalPayload(formula as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('formulas')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Formula>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async search(query: string): Promise<Formula[]> {
-        const scopedQuery = withHospitalFilter(
-            supabase
-            .from('formulas')
-            .select('*')
-            .or(`name.ilike.%${query}%,code.ilike.%${query}%,manufacturer.ilike.%${query}%`)
-        );
-        const { data, error } = await scopedQuery;
-        if (error) throw error;
-        return mapArrayToCamelCase<Formula>(data || []);
-    }
-};
-
-// --- MODULES ---
-export const modulesService = {
-    async getAll(): Promise<Module[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('modules')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Module>(data || []);
-    },
-
-    async getById(id: string): Promise<Module | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('modules')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Module>(data) : undefined;
-    },
-
-    async create(module: Omit<Module, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const payload = withHospitalPayload(module as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('modules')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Module>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('modules')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('modules')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- SUPPLIES ---
-export const suppliesService = {
-    async getAll(): Promise<Supply[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('supplies')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Supply>(data || []);
-    },
-
-    async getById(id: string): Promise<Supply | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('supplies')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Supply>(data) : undefined;
-    },
-
-    async getActive(): Promise<Supply[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('supplies')
-            .select('*')
-            .eq('is_active', true)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Supply>(data || []);
-    },
-
-    async create(supply: Omit<Supply, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const payload = withHospitalPayload(supply as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('supplies')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Supply>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('supplies')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('supplies')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- PROFESSIONALS ---
-export const professionalsService = {
-    async getAll(): Promise<Professional[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('professionals')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Professional>(data || []);
-    },
-
-    async getByHospital(hospitalId: string): Promise<Professional[]> {
-        const { data, error } = await supabase
-            .from('professionals')
-            .select('*')
-            .eq('hospital_id', hospitalId)
-            .order('name');
-        if (error) throw error;
-        return mapArrayToCamelCase<Professional>(data || []);
-    },
-
-    async getById(id: string): Promise<Professional | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('professionals')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && error.code !== 'PGRST116') throw error;
-        return data ? mapToCamelCase<Professional>(data) : undefined;
-    },
-
-    async getActive(): Promise<Professional[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('professionals')
-            .select('*')
-            .eq('is_active', true)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Professional>(data || []);
-    },
-
-    async create(professional: Omit<Professional, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const payload = withHospitalPayload(professional as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('professionals')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Professional>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('professionals')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('professionals')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- PRESCRIPTIONS ---
-export const prescriptionsService = {
-    async getAll(): Promise<Prescription[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .select('*')
-            .order('created_at', { ascending: false })
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return normalizePrescriptionArray(data || []);
-    },
-
-    async getById(id: string): Promise<Prescription | undefined> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .select('*')
-            .eq('id', id)
-        );
-        const { data, error } = await query.single();
-        if (error && !isNoRowsError(error)) throw error;
-        return data ? normalizePrescription(data) : undefined;
-    },
-
-    async getByPatient(patientId: string): Promise<Prescription[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .select('*')
-            .eq('patient_id', patientId)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return normalizePrescriptionArray(data || []);
-    },
-
-    async getActive(): Promise<Prescription[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .select('*')
-            .eq('status', 'active')
-        );
-        const { data, error } = await query;
-        if (error && isMissingColumnError(error, 'status')) {
-            const fallbackQuery = withHospitalFilter(
-                supabase
-                .from('prescriptions')
-                .select('*')
-            );
-            const fallback = await fallbackQuery;
-            if (fallback.error) throw fallback.error;
-            return normalizePrescriptionArray((fallback.data || []).filter((row) => {
-                const mapped = normalizePrescription(row);
-                return mapped.status === 'active';
-            }));
-        }
-        if (error) throw error;
-        return normalizePrescriptionArray(data || []);
-    },
-
-    async getByDate(date: string): Promise<Prescription[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .select('*')
-            .lte('start_date', date)
-            .or(`end_date.gte.${date},end_date.is.null`)
-        );
-        const { data, error } = await query;
-        if (error && isMissingColumnError(error, 'start_date')) {
-            const fallbackQuery = withHospitalFilter(
-                supabase
-                .from('prescriptions')
-                .select('*')
-            );
-            const fallback = await fallbackQuery;
-            if (fallback.error) throw fallback.error;
-            return normalizePrescriptionArray((fallback.data || []).filter((row) => {
-                const mapped = normalizePrescription(row);
-                return mapped.startDate <= date && (!mapped.endDate || mapped.endDate >= date);
-            }));
-        }
-        if (error) throw error;
-        return normalizePrescriptionArray(data || []);
-    },
-
-    async create(prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const modernPayload = compactObject(withHospitalPayload(prescription as Record<string, unknown>));
-        const legacyPayload = compactObject(withHospitalPayload(buildLegacyPrescriptionPayload(prescription)));
-
-        const payloadCandidates = [
-            modernPayload,
-            legacyPayload,
-            compactObject((() => {
-                const clone = { ...modernPayload };
-                delete clone.hospitalId;
-                delete clone.hospital_id;
-                return clone;
-            })()),
-            compactObject((() => {
-                const clone = { ...legacyPayload };
-                delete clone.hospitalId;
-                delete clone.hospital_id;
-                return clone;
-            })()),
-        ];
-
-        let lastError: SupabaseLikeError | null = null;
-        for (const payload of payloadCandidates) {
-            const { data, error } = await supabase
-                .from('prescriptions')
-                .insert(mapToSnakeCase(payload))
-                .select('id')
-                .single();
-
-            if (!error) return data.id;
-            lastError = error;
-            if (!isRecoverableSchemaError(error)) break;
-        }
-
-        throw lastError;
-    },
-
-    async update(id: string, data: Partial<Prescription>): Promise<void> {
-        const modernPayload = compactObject(withHospitalPayload(data as Record<string, unknown>));
-        const legacyPayload = compactObject(withHospitalPayload(buildLegacyPrescriptionPayload(data)));
-
-        const payloadCandidates = [
-            modernPayload,
-            legacyPayload,
-            compactObject((() => {
-                const clone = { ...modernPayload };
-                delete clone.hospitalId;
-                delete clone.hospital_id;
-                return clone;
-            })()),
-            compactObject((() => {
-                const clone = { ...legacyPayload };
-                delete clone.hospitalId;
-                delete clone.hospital_id;
-                return clone;
-            })()),
-        ];
-
-        let lastError: SupabaseLikeError | null = null;
-
-        for (const payload of payloadCandidates) {
-            const scopedQuery = withHospitalFilter(
-                supabase
-                .from('prescriptions')
-                .update(mapToSnakeCase(payload))
-                .eq('id', id)
-            );
-            let { error } = await scopedQuery;
-
-            if (error && isMissingColumnError(error, 'hospital_id')) {
-                const unscoped = await supabase
-                    .from('prescriptions')
-                    .update(mapToSnakeCase(payload))
-                    .eq('id', id);
-                error = unscoped.error;
-            }
-
-            if (!error) return;
-            lastError = error;
-            if (!isRecoverableSchemaError(error)) break;
-        }
-
-        throw lastError;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('prescriptions')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- DAILY EVOLUTIONS ---
-export const evolutionsService = {
-    async getAll(): Promise<DailyEvolution[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('daily_evolutions')
-            .select('*')
-            .order('date', { ascending: false })
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<DailyEvolution>(data || []);
-    },
-
-    async getByPatient(patientId: string): Promise<DailyEvolution[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('daily_evolutions')
-            .select('*')
-            .eq('patient_id', patientId)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<DailyEvolution>(data || []);
-    },
-
-    async getByDate(date: string): Promise<DailyEvolution[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('daily_evolutions')
-            .select('*')
-            .eq('date', date)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<DailyEvolution>(data || []);
-    },
-
-    async create(evolution: Omit<DailyEvolution, 'id' | 'createdAt'>): Promise<string> {
-        const payload = compactObject(withHospitalPayload(evolution as Record<string, unknown>));
-        const { data, error } = await supabase
-            .from('daily_evolutions')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-
-        if (!error) return data.id;
-        if (isMissingColumnError(error, 'notes')) {
-            const fallbackPayload = { ...payload };
-            delete fallbackPayload.notes;
-            const fallback = await supabase
-                .from('daily_evolutions')
-                .insert(mapToSnakeCase(fallbackPayload))
-                .select('id')
-                .single();
-            if (fallback.error) throw fallback.error;
-            return fallback.data.id;
-        }
-        throw error;
-    },
-
-    async update(id: string, data: Partial<DailyEvolution>): Promise<void> {
-        const payload = compactObject(data as Record<string, unknown>);
-        const query = withHospitalFilter(
-            supabase
-            .from('daily_evolutions')
-            .update(mapToSnakeCase(payload))
-            .eq('id', id)
-        );
-        let { error } = await query;
-
-        if (error && isMissingColumnError(error, 'notes')) {
-            const fallbackPayload = { ...payload };
-            delete fallbackPayload.notes;
-            const fallbackQuery = withHospitalFilter(
-                supabase
-                .from('daily_evolutions')
-                .update(mapToSnakeCase(fallbackPayload))
-                .eq('id', id)
-            );
-            const fallback = await fallbackQuery;
-            error = fallback.error;
-        }
-
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('daily_evolutions')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- CLINICS ---
-export const clinicsService = {
-    async getAll(): Promise<Clinic[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('clinics')
-            .select('*')
-            .order('name')
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Clinic>(data || []);
-    },
-
-    async getActive(): Promise<Clinic[]> {
-        const query = withHospitalFilter(
-            supabase
-            .from('clinics')
-            .select('*')
-            .eq('is_active', true)
-        );
-        const { data, error } = await query;
-        if (error) throw error;
-        return mapArrayToCamelCase<Clinic>(data || []);
-    },
-
-    async create(clinic: Omit<Clinic, 'id' | 'createdAt'>): Promise<string> {
-        const payload = withHospitalPayload(clinic as Record<string, unknown>);
-        const { data, error } = await supabase
-            .from('clinics')
-            .insert(mapToSnakeCase(payload))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Clinic>): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('clinics')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const query = withHospitalFilter(
-            supabase
-            .from('clinics')
-            .delete()
-            .eq('id', id)
-        );
-        const { error } = await query;
-        if (error) throw error;
-    }
-};
-
-// --- HOSPITALS ---
-export const hospitalsService = {
-    async getAll(): Promise<Hospital[]> {
-        const { data, error } = await supabase
-            .from('hospitals')
-            .select('*')
-            .order('name');
-        if (error) throw error;
-        return mapArrayToCamelCase<Hospital>(data || []);
-    },
-
-    async getActive(): Promise<Hospital[]> {
-        const { data, error } = await supabase
-            .from('hospitals')
-            .select('*')
-            .eq('is_active', true);
-        if (error) throw error;
-        return mapArrayToCamelCase<Hospital>(data || []);
-    },
-
-    async create(hospital: Omit<Hospital, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-        const { data, error } = await supabase
-            .from('hospitals')
-            .insert(mapToSnakeCase(hospital as Record<string, unknown>))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Hospital>): Promise<void> {
-        const { error } = await supabase
-            .from('hospitals')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id);
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const { error } = await supabase
-            .from('hospitals')
-            .delete()
-            .eq('id', id);
-        if (error) throw error;
-    }
-};
-
-// --- WARDS ---
-export const wardsService = {
-    async getAll(): Promise<Ward[]> {
-        const { data, error } = await supabase
-            .from('wards')
-            .select('*')
-            .order('name');
-        if (error) throw error;
-        return mapArrayToCamelCase<Ward>(data || []);
-    },
-
-    async getByHospital(hospitalId: string): Promise<Ward[]> {
-        const { data, error } = await supabase
-            .from('wards')
-            .select('*')
-            .eq('hospital_id', hospitalId);
-        if (error) throw error;
-        return mapArrayToCamelCase<Ward>(data || []);
-    },
-
-    async getActive(): Promise<Ward[]> {
-        const { data, error } = await supabase
-            .from('wards')
-            .select('*')
-            .eq('is_active', true);
-        if (error) throw error;
-        return mapArrayToCamelCase<Ward>(data || []);
-    },
-
-    async create(ward: Omit<Ward, 'id' | 'createdAt'>): Promise<string> {
-        const { data, error } = await supabase
-            .from('wards')
-            .insert(mapToSnakeCase(ward as Record<string, unknown>))
-            .select('id')
-            .single();
-        if (error) throw error;
-        return data.id;
-    },
-
-    async update(id: string, data: Partial<Ward>): Promise<void> {
-        const { error } = await supabase
-            .from('wards')
-            .update(mapToSnakeCase(data as Record<string, unknown>))
-            .eq('id', id);
-        if (error) throw error;
-    },
-
-    async delete(id: string): Promise<void> {
-        const { error } = await supabase
-            .from('wards')
-            .delete()
-            .eq('id', id);
-        if (error) throw error;
-    }
-};
-
-// --- ROLE PERMISSIONS ---
-export const rolePermissionsService = {
-    async getAll(): Promise<RolePermission[]> {
-        const { data, error } = await supabase
-            .from('role_permissions')
-            .select('*')
-            .order('role')
-            .order('permission_key');
-
-        // Table may not exist yet in older environments
-        if (error && (error as { code?: string }).code === '42P01') return [];
-        if (error) throw error;
-        return mapArrayToCamelCase<RolePermission>(data || []);
-    },
-};
-
-// --- APP TOOLS CATALOG ---
-export const appToolsService = {
-    async getAll(): Promise<AppTool[]> {
-        const hospitalId = getCurrentHospitalId();
-        const buildBaseQuery = () => supabase
-            .from('app_tools')
-            .select('*')
-            .eq('is_active', true)
-            .order('category')
-            .order('name');
-
-        let data: Record<string, unknown>[] = [];
-
-        if (!hospitalId) {
-            const result = await buildBaseQuery();
-            if (result.error && isMissingTableError(result.error)) return [];
-            if (result.error) throw result.error;
-            return mapArrayToCamelCase<AppTool>(result.data || []);
-        }
-
-        const scoped = await buildBaseQuery().eq('hospital_id', hospitalId);
-        if (scoped.error && isMissingTableError(scoped.error)) return [];
-
-        // Older schemas may not have hospital_id in app_tools yet.
-        if (scoped.error && (isMissingColumnError(scoped.error, 'hospital_id') || scoped.error.code === 'PGRST100')) {
-            const fallback = await buildBaseQuery();
-            if (fallback.error && isMissingTableError(fallback.error)) return [];
-            if (fallback.error) throw fallback.error;
-            return mapArrayToCamelCase<AppTool>(fallback.data || []);
-        }
-
-        if (scoped.error) throw scoped.error;
-
-        const globalRows = await buildBaseQuery().is('hospital_id', null);
-        if (globalRows.error && !isMissingColumnError(globalRows.error, 'hospital_id') && globalRows.error.code !== 'PGRST100') {
-            if (isMissingTableError(globalRows.error)) return [];
-            throw globalRows.error;
-        }
-
-        // Hospital rows override global rows by code.
-        const mergedByCode = new Map<string, Record<string, unknown>>();
-        for (const row of globalRows.data || []) {
-            const code = String((row as { code?: string }).code || '');
-            if (code) mergedByCode.set(code, row);
-        }
-        for (const row of scoped.data || []) {
-            const code = String((row as { code?: string }).code || '');
-            if (code) mergedByCode.set(code, row);
-        }
-
-        data = Array.from(mergedByCode.values());
-        return mapArrayToCamelCase<AppTool>(data);
-    },
-};
-
-// --- SETTINGS ---
 export const settingsService = {
-    async get(): Promise<AppSettings | undefined> {
-        const hospitalId = getCurrentHospitalId();
-        const buildQuery = () => {
-            let query = supabase
-                .from('app_settings')
-                .select('*')
-                .order('updated_at', { ascending: false })
-                .limit(1);
-            if (hospitalId) {
-                query = query.eq('hospital_id', hospitalId);
+    async get() {
+        const hospitalId = resolveSettingsHospitalId();
+        try {
+            const remote = await apiClient.get(`/settings/${hospitalId}`);
+            const normalized = normalizeSettings(remote, hospitalId);
+
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(`${SETTINGS_STORAGE_PREFIX}${hospitalId}`, JSON.stringify(normalized));
+                if (normalized.hospitalName) {
+                    localStorage.setItem('userHospitalName', normalized.hospitalName);
+                }
             }
-            return query;
-        };
 
-        let { data, error } = await buildQuery();
-
-        if (error && isMissingColumnError(error, 'hospital_id')) {
-            const fallback = await supabase
-                .from('app_settings')
-                .select('*')
-                .order('updated_at', { ascending: false })
-                .limit(1);
-            data = fallback.data;
-            error = fallback.error;
-        }
-
-        if (error && isMissingTableError(error)) return undefined;
-        if (error) throw error;
-
-        if (hospitalId && (!data || data.length === 0)) {
-            // Fallback to a global/default settings row when no hospital-specific config exists.
-            const globalResult = await supabase
-                .from('app_settings')
-                .select('*')
-                .is('hospital_id', null)
-                .order('updated_at', { ascending: false })
-                .limit(1);
-
-            if (!globalResult.error && globalResult.data && globalResult.data.length > 0) {
-                return mapToCamelCase<AppSettings>(globalResult.data[0]);
+            return normalized;
+        } catch {
+            if (typeof window !== 'undefined') {
+                const stored = localStorage.getItem(`${SETTINGS_STORAGE_PREFIX}${hospitalId}`);
+                if (stored) {
+                    try {
+                        return normalizeSettings(JSON.parse(stored), hospitalId);
+                    } catch {
+                        return defaultSettingsForHospital(hospitalId);
+                    }
+                }
             }
-        }
 
-        return data && data.length > 0 ? mapToCamelCase<AppSettings>(data[0]) : undefined;
+            return defaultSettingsForHospital(hospitalId);
+        }
     },
+    async save(data: Omit<AppSettings, 'id' | 'createdAt' | 'updatedAt'>) {
+        const hospitalId = data.hospitalId || resolveSettingsHospitalId();
+        const current = await this.get();
+        const next = normalizeSettings(
+            {
+                ...current,
+                ...data,
+                hospitalId,
+                updatedAt: new Date().toISOString(),
+            },
+            hospitalId,
+        );
 
-    async save(settings: Omit<AppSettings, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
-        const payload = withHospitalPayload(settings as Record<string, unknown>);
-        const hospitalId = (payload.hospitalId as string | undefined) || getCurrentHospitalId() || undefined;
-        let existingId: string | undefined;
+        let persisted = next;
+        try {
+            const remote = await apiClient.put(`/settings/${hospitalId}`, next, {
+                headers: typeof current.version === 'number'
+                    ? { 'x-expected-version': String(current.version) }
+                    : undefined,
+            });
+            persisted = normalizeSettings(remote, hospitalId);
+        } catch (error) {
+            console.error('Error saving settings to API, keeping local fallback:', error);
+        }
 
-        if (hospitalId) {
-            const existingByHospital = await supabase
-                .from('app_settings')
-                .select('id')
-                .eq('hospital_id', hospitalId)
-                .limit(1);
-
-            if (!existingByHospital.error && existingByHospital.data && existingByHospital.data.length > 0) {
-                existingId = existingByHospital.data[0].id as string;
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(`${SETTINGS_STORAGE_PREFIX}${hospitalId}`, JSON.stringify(persisted));
+            if (persisted.hospitalName) {
+                localStorage.setItem('userHospitalName', persisted.hospitalName);
             }
-        } else {
-            const existing = await this.get();
-            existingId = existing?.id;
         }
 
-        if (existingId) {
-            const { error } = await supabase
-                .from('app_settings')
-                .update(mapToSnakeCase(payload))
-                .eq('id', existingId);
-            if (error) throw error;
-        } else {
-            const { error } = await supabase
-                .from('app_settings')
-                .insert(mapToSnakeCase(payload));
-            if (error) throw error;
-        }
+        return persisted;
     }
 };
-
-// ============================================
-// DATABASE INITIALIZATION (for hooks compatibility)
-// ============================================
 
 export const initializeDatabase = async (): Promise<void> => {
-    // Database is in Supabase - no local initialization needed
-    console.log('✅ Connected to Supabase database');
+    console.log('Connected to Local Database API');
 };
 
-// Export supabase client for direct access if needed
-export { supabase };
-export const db = supabase; // Alias for compatibility
+export const supabase = {
+    // Legacy no-op adapter kept only to avoid breaking older hooks while the app
+    // finishes migrating away from the previous Supabase abstraction.
+    channel: () => ({ on: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }) })
+};
+export const db = supabase;

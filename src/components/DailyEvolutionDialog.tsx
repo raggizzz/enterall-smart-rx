@@ -49,7 +49,7 @@ export function DailyEvolutionDialog({
         if (infusedVolume && prescribedVolume > 0) {
             const vol = parseFloat(infusedVolume);
             const pct = (vol / prescribedVolume) * 100;
-            setPercentage(Math.min(pct, 100));
+            setPercentage(Math.min(pct, 140));
         } else {
             setPercentage(0);
         }
@@ -63,7 +63,7 @@ export function DailyEvolutionDialog({
         const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
         const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
         if (!sessionHospitalId) {
-            toast.error("Hospital da sessao nao identificado. Refaça o login.");
+      toast.error("Unidade da sessão não identificada. Refaça o login.");
             return;
         }
 
@@ -74,22 +74,26 @@ export function DailyEvolutionDialog({
 
         setIsSaving(true);
         try {
-            const intercurrencesWithNotes = notes.trim()
-                ? [...intercurrences, `OBS: ${notes.trim()}`]
-                : intercurrences;
+            const targetDate = new Date();
+            targetDate.setDate(targetDate.getDate() - 1);
+            const serializedIntercurrences = intercurrences.length > 0
+                ? `Intercorrências: ${intercurrences.join(", ")}`
+                : "";
+            const serializedNotes = notes.trim();
+            const combinedNotes = [serializedIntercurrences, serializedNotes].filter(Boolean).join(" | ");
 
             await createEvolution({
                 hospitalId: sessionHospitalId,
                 professionalId: sessionProfessionalId,
                 patientId,
                 prescriptionId,
-                date: new Date().toISOString().slice(0, 10),
+                date: targetDate.toISOString().slice(0, 10),
                 volumeInfused: parseFloat(infusedVolume),
                 metaReached: Number(percentage.toFixed(2)),
-                intercurrences: intercurrencesWithNotes.length > 0 ? intercurrencesWithNotes : undefined,
+                notes: combinedNotes || undefined,
             });
 
-            toast.success("Evolucao registrada com sucesso");
+            toast.success("Acompanhamento registrado com sucesso");
             onOpenChange(false);
             setInfusedVolume("");
             setIntercurrences([]);
@@ -122,9 +126,9 @@ export function DailyEvolutionDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-md bg-card/95 backdrop-blur border-primary/10">
                 <DialogHeader>
-                    <DialogTitle>Evolucao diaria - {patientName}</DialogTitle>
+                <DialogTitle>Acompanhamento diário - {patientName}</DialogTitle>
                     <DialogDescription>
-                        Registre o volume infundido nas ultimas 24h e intercorrencias.
+                        Registre o volume infundido nas últimas 24h e intercorrências.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -179,10 +183,10 @@ export function DailyEvolutionDialog({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="notes">Observacoes</Label>
+                        <Label htmlFor="notes">Observações</Label>
                         <Textarea
                             id="notes"
-                            placeholder="Outras observacoes relevantes..."
+                            placeholder="Outras observações relevantes..."
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                         />
