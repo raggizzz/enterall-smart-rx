@@ -30,9 +30,13 @@ const THERAPY_OPTIONS = [
 
 type TherapyFilter = (typeof THERAPY_OPTIONS)[number]["value"];
 
-const formatDate = (date: Date | undefined) => {
+const formatDate = (date: Date | string | undefined | null) => {
     if (!date) return "-";
-    return new Intl.DateTimeFormat("pt-BR").format(date);
+
+    const parsedDate = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) return "-";
+
+    return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
 
 const Billing = () => {

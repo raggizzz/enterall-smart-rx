@@ -18,6 +18,13 @@ import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules, Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
 import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
+import {
+  addNutritionAccumulators,
+  calculateFormulaNutrition,
+  calculateModuleNutrition,
+  createNutritionAccumulator,
+  finalizeNutritionTotals,
+} from "@/lib/prescriptionCalculations";
 
 interface FormulaEntry {
   id: string;
@@ -50,6 +57,39 @@ type ExtendedCatalogFormula = CatalogFormula & {
   administrationRoutes?: Array<"enteral" | "oral" | "translactation">;
   fiberType?: string;
   specialCharacteristics?: string;
+  density?: number;
+  caloriesPerUnit?: number;
+  proteinPerUnit?: number;
+  proteinPct?: number;
+  carbPerUnit?: number;
+  carbPct?: number;
+  fatPerUnit?: number;
+  fatPct?: number;
+  fiberPerUnit?: number;
+  waterContent?: number;
+  sodiumPerUnit?: number;
+  potassiumPerUnit?: number;
+  calciumPerUnit?: number;
+  phosphorusPerUnit?: number;
+  plasticG?: number;
+  paperG?: number;
+  metalG?: number;
+  glassG?: number;
+  proteinSources?: string;
+  carbSources?: string;
+  fatSources?: string;
+  fiberSources?: string;
+};
+
+type ExtendedCatalogModule = CatalogModule & {
+  carbs?: number;
+  fat?: number;
+  calcium?: number;
+  phosphorus?: number;
+  proteinSources?: string;
+  carbSources?: string;
+  fatSources?: string;
+  fiberSources?: string;
 };
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription) =>
@@ -140,6 +180,28 @@ const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
     billingPrice: formula.billingPrice,
     fiberType: formula.fiberType,
     specialCharacteristics: formula.specialCharacteristics,
+    density,
+    caloriesPerUnit: formula.caloriesPerUnit,
+    proteinPerUnit: formula.proteinPerUnit,
+    proteinPct: formula.proteinPct,
+    carbPerUnit: formula.carbPerUnit,
+    carbPct: formula.carbPct,
+    fatPerUnit: formula.fatPerUnit,
+    fatPct: formula.fatPct,
+    fiberPerUnit: formula.fiberPerUnit,
+    waterContent: formula.waterContent,
+    sodiumPerUnit: formula.sodiumPerUnit,
+    potassiumPerUnit: formula.potassiumPerUnit,
+    calciumPerUnit: formula.calciumPerUnit,
+    phosphorusPerUnit: formula.phosphorusPerUnit,
+    plasticG: formula.plasticG,
+    paperG: formula.paperG,
+    metalG: formula.metalG,
+    glassG: formula.glassG,
+    proteinSources: formula.proteinSources,
+    carbSources: formula.carbSources,
+    fatSources: formula.fatSources,
+    fiberSources: formula.fiberSources,
     composition: {
       calories: Math.round(density * 100),
       density,
@@ -201,6 +263,28 @@ const mergeFormulasWithCatalog = (dbFormulas: any[], staticFormulas: CatalogForm
       billingPrice: dbFormula.billingPrice ?? staticMatch.billingPrice,
       fiberType: dbFormula.fiberType ?? (staticMatch as ExtendedCatalogFormula).fiberType,
       specialCharacteristics: dbFormula.specialCharacteristics ?? (staticMatch as ExtendedCatalogFormula).specialCharacteristics,
+      density: dbFormula.density ?? staticMatch.composition.density,
+      caloriesPerUnit: dbFormula.caloriesPerUnit ?? staticMatch.composition.calories,
+      proteinPerUnit: dbFormula.proteinPerUnit ?? staticMatch.composition.protein,
+      proteinPct: dbFormula.proteinPct ?? staticMatch.composition.proteinPct,
+      carbPerUnit: dbFormula.carbPerUnit ?? staticMatch.composition.carbohydrates,
+      carbPct: dbFormula.carbPct ?? staticMatch.composition.carbohydratesPct,
+      fatPerUnit: dbFormula.fatPerUnit ?? staticMatch.composition.fat,
+      fatPct: dbFormula.fatPct ?? staticMatch.composition.fatPct,
+      fiberPerUnit: dbFormula.fiberPerUnit ?? staticMatch.composition.fiber,
+      waterContent: dbFormula.waterContent ?? staticMatch.composition.waterContent,
+      sodiumPerUnit: dbFormula.sodiumPerUnit ?? staticMatch.composition.sodium,
+      potassiumPerUnit: dbFormula.potassiumPerUnit ?? staticMatch.composition.potassium,
+      calciumPerUnit: dbFormula.calciumPerUnit ?? staticMatch.composition.calcium,
+      phosphorusPerUnit: dbFormula.phosphorusPerUnit ?? staticMatch.composition.phosphorus,
+      plasticG: dbFormula.plasticG ?? staticMatch.residueInfo?.plastic ?? 0,
+      paperG: dbFormula.paperG ?? staticMatch.residueInfo?.paper ?? 0,
+      metalG: dbFormula.metalG ?? staticMatch.residueInfo?.metal ?? 0,
+      glassG: dbFormula.glassG ?? staticMatch.residueInfo?.glass ?? 0,
+      proteinSources: dbFormula.proteinSources,
+      carbSources: dbFormula.carbSources,
+      fatSources: dbFormula.fatSources,
+      fiberSources: dbFormula.fiberSources,
       composition: {
         ...staticMatch.composition,
         density: dbFormula.density ?? staticMatch.composition.density,
@@ -234,7 +318,7 @@ const mergeFormulasWithCatalog = (dbFormulas: any[], staticFormulas: CatalogForm
   });
 };
 
-const mergeModulesWithCatalog = (dbModules: any[], staticModules: CatalogModule[]): CatalogModule[] => {
+const mergeModulesWithCatalog = (dbModules: any[], staticModules: CatalogModule[]): ExtendedCatalogModule[] => {
   if (dbModules.length === 0) return staticModules;
 
   return dbModules.map((dbModule) => {
@@ -262,13 +346,49 @@ const mergeModulesWithCatalog = (dbModules: any[], staticModules: CatalogModule[
       referenceTimesPerDay: dbModule.referenceTimesPerDay ?? staticMatch?.referenceTimesPerDay ?? 0,
       calories: dbModule.calories ?? staticMatch?.calories ?? 0,
       protein: dbModule.protein ?? staticMatch?.protein ?? 0,
+      carbs: dbModule.carbs ?? (staticMatch as ExtendedCatalogModule | undefined)?.carbs,
+      fat: dbModule.fat ?? (staticMatch as ExtendedCatalogModule | undefined)?.fat,
       sodium: dbModule.sodium ?? staticMatch?.sodium ?? 0,
       potassium: dbModule.potassium ?? staticMatch?.potassium ?? 0,
+      calcium: dbModule.calcium ?? (staticMatch as ExtendedCatalogModule | undefined)?.calcium,
+      phosphorus: dbModule.phosphorus ?? (staticMatch as ExtendedCatalogModule | undefined)?.phosphorus,
       fiber: dbModule.fiber ?? staticMatch?.fiber ?? 0,
       freeWater: dbModule.freeWater ?? staticMatch?.freeWater ?? 0,
+      proteinSources: dbModule.proteinSources,
+      carbSources: dbModule.carbSources,
+      fatSources: dbModule.fatSources,
+      fiberSources: dbModule.fiberSources,
     };
   });
 };
+
+const toFormulaCalculationInput = (formula: ExtendedCatalogFormula) => ({
+  id: formula.id,
+  name: formula.name,
+  presentationForm: formula.presentationForm,
+  density: formula.density ?? formula.composition.density,
+  caloriesPerUnit: formula.caloriesPerUnit ?? formula.composition.calories,
+  proteinPerUnit: formula.proteinPerUnit ?? formula.composition.protein,
+  proteinPct: formula.proteinPct ?? formula.composition.proteinPct,
+  carbPerUnit: formula.carbPerUnit ?? formula.composition.carbohydrates,
+  carbPct: formula.carbPct ?? formula.composition.carbohydratesPct,
+  fatPerUnit: formula.fatPerUnit ?? formula.composition.fat,
+  fatPct: formula.fatPct ?? formula.composition.fatPct,
+  fiberPerUnit: formula.fiberPerUnit ?? formula.composition.fiber,
+  waterContent: formula.waterContent ?? formula.composition.waterContent,
+  sodiumPerUnit: formula.sodiumPerUnit ?? formula.composition.sodium,
+  potassiumPerUnit: formula.potassiumPerUnit ?? formula.composition.potassium,
+  calciumPerUnit: formula.calciumPerUnit ?? formula.composition.calcium,
+  phosphorusPerUnit: formula.phosphorusPerUnit ?? formula.composition.phosphorus,
+  plasticG: formula.plasticG ?? formula.residueInfo?.plastic,
+  paperG: formula.paperG ?? formula.residueInfo?.paper,
+  metalG: formula.metalG ?? formula.residueInfo?.metal,
+  glassG: formula.glassG ?? formula.residueInfo?.glass,
+  proteinSources: formula.proteinSources,
+  carbSources: formula.carbSources,
+  fatSources: formula.fatSources,
+  fiberSources: formula.fiberSources,
+});
 
 const PrescriptionNew = () => {
   const navigate = useNavigate();
@@ -387,7 +507,7 @@ const PrescriptionNew = () => {
     () => mergeFormulasWithCatalog(dbFormulas, staticFormulas),
     [dbFormulas, staticFormulas],
   );
-  const availableModules = useMemo(
+  const availableModules = useMemo<ExtendedCatalogModule[]>(
     () => mergeModulesWithCatalog(dbModules, staticModules),
     [dbModules, staticModules],
   );
@@ -467,71 +587,50 @@ const PrescriptionNew = () => {
     });
   }, [availableFormulas, oralSupplements, suggestedAgeGroup]);
 
-  // Oral totals
-  const oralTotals = useMemo(() => {
-    let kcal = oralEstimatedVET;
-    let protein = oralEstimatedProtein;
-    let carbs = 0;
-    let fat = 0;
-    let fiber = 0;
-    let freeWater = 0;
-    let sodium = 0;
-    let potassium = 0;
-    let calcium = 0;
-    let phosphorus = 0;
+  const buildOralNutritionAccumulator = useCallback(() => {
+    const totals = createNutritionAccumulator();
 
-    oralSupplements.forEach(sup => {
-      const formula = availableFormulas.find(f => f.id === sup.supplementId);
+    totals.calories += oralEstimatedVET;
+    totals.protein += oralEstimatedProtein;
+
+    oralSupplements.forEach((supplement) => {
+      const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
       if (!formula) return;
-      const timesPerDay = Object.values(sup.schedules).filter(v => v === true).length;
-      const volumePerServing = sup.amount || 200;
-      const factor = (volumePerServing * timesPerDay) / 100;
-      kcal += (formula.composition.calories || 0) * factor;
-      protein += (formula.composition.protein || 0) * factor;
-      carbs += (formula.composition.carbohydrates || 0) * factor;
-      fat += (formula.composition.fat || 0) * factor;
-      fiber += (formula.composition.fiber || 0) * factor;
-      freeWater += volumePerServing * timesPerDay * ((formula.composition.waterContent || 0) / 100);
-      sodium += (formula.composition.sodium || 0) * factor;
-      potassium += (formula.composition.potassium || 0) * factor;
-      calcium += (formula.composition.calcium || 0) * factor;
-      phosphorus += (formula.composition.phosphorus || 0) * factor;
+
+      const totalAmount = (supplement.amount || 200) * Object.values(supplement.schedules).filter((value) => value === true).length;
+      addNutritionAccumulators(totals, calculateFormulaNutrition(toFormulaCalculationInput(formula), totalAmount));
     });
-    oralTherapyModules.forEach(om => {
-      const mod = availableModules.find(m => m.id === om.moduleId);
-      if (!mod) return;
-      const timesPerDay = Object.values(om.schedules).filter(v => v === true).length;
-      const amount = om.amount || mod.referenceAmount || 1;
-      const factor = mod.referenceAmount ? (amount / mod.referenceAmount) : amount;
-      kcal += (mod.calories || 0) * timesPerDay * factor;
-      protein += (mod.protein || 0) * timesPerDay * factor;
-      carbs += (mod.carbs || 0) * timesPerDay * factor;
-      fat += (mod.fat || 0) * timesPerDay * factor;
-      fiber += (mod.fiber || 0) * timesPerDay * factor;
-      freeWater += (mod.freeWater || 0) * timesPerDay * factor;
-      sodium += (mod.sodium || 0) * timesPerDay * factor;
-      potassium += (mod.potassium || 0) * timesPerDay * factor;
-      calcium += ((mod as any).calcium || 0) * timesPerDay * factor;
-      phosphorus += ((mod as any).phosphorus || 0) * timesPerDay * factor;
+
+    oralTherapyModules.forEach((oralModule) => {
+      const moduleItem = availableModules.find((item) => item.id === oralModule.moduleId);
+      if (!moduleItem) return;
+
+      const totalAmount = (oralModule.amount || moduleItem.referenceAmount || 1)
+        * Object.values(oralModule.schedules).filter((value) => value === true).length;
+      addNutritionAccumulators(totals, calculateModuleNutrition(moduleItem, totalAmount));
     });
+
     if (oralNeedsThickener && oralThickenerVolume && oralThickenerTimes.length > 0) {
-      freeWater += (parseFloat(oralThickenerVolume) || 0) * oralThickenerTimes.length;
+      totals.freeWater += (parseFloat(oralThickenerVolume) || 0) * oralThickenerTimes.length;
     }
-    return {
-      kcal,
-      protein,
-      carbs,
-      fat,
-      fiber,
-      freeWater,
-      sodium,
-      potassium,
-      calcium,
-      phosphorus,
-      kcalPerKg: selectedPatient?.weight ? kcal / selectedPatient.weight : 0,
-      proteinPerKg: selectedPatient?.weight ? protein / selectedPatient.weight : 0,
-    };
-  }, [oralEstimatedVET, oralEstimatedProtein, oralSupplements, oralTherapyModules, availableFormulas, availableModules, selectedPatient, oralNeedsThickener, oralThickenerVolume, oralThickenerTimes]);
+
+    return totals;
+  }, [
+    oralEstimatedVET,
+    oralEstimatedProtein,
+    oralSupplements,
+    oralTherapyModules,
+    availableFormulas,
+    availableModules,
+    oralNeedsThickener,
+    oralThickenerVolume,
+    oralThickenerTimes,
+  ]);
+
+  const oralTotals = useMemo(
+    () => finalizeNutritionTotals(buildOralNutritionAccumulator(), selectedPatient),
+    [buildOralNutritionAccumulator, selectedPatient],
+  );
 
   // Oral supplement handlers
   const addOralSupplement = () => {
@@ -923,204 +1022,65 @@ const PrescriptionNew = () => {
 
   // Nutrition calculations
   const nutritionSummary = useMemo(() => {
-    let totalCalories = 0;
-    let totalProtein = 0;
-    let totalCarbs = 0;
-    let totalFat = 0;
-    let totalFiber = 0;
-    let totalFreeWater = 0;
-    let totalSodium = 0;
-    let totalPotassium = 0;
-    let totalCalcium = 0;
-    let totalPhosphorus = 0;
-    let totalResiduePlastic = 0;
-    let totalResiduePaper = 0;
-    let totalResidueMetal = 0;
-    let totalResidueGlass = 0;
-    const proteinSources = new Set<string>();
-    const carbSources = new Set<string>();
-    const fatSources = new Set<string>();
-    const fiberSources = new Set<string>();
+    const totals = createNutritionAccumulator();
 
-    // --- ENTERAL totals (only when enteral is active) ---
     if (feedingRoutes.enteral) {
       if (systemType === "closed" && closedFormula.formulaId) {
-        const formula = availableFormulas.find(f => f.id === closedFormula.formulaId);
+        const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
         if (formula) {
           const rate = parseFloat(closedFormula.rate) || 0;
           const duration = parseFloat(closedFormula.duration) || 0;
-          let totalVolume = closedFormula.infusionMode === "pump" ? rate * duration : (rate / 20) * 60 * duration;
-          const density = formula.composition.density || formula.composition.calories / 100;
-          totalCalories += totalVolume * density;
-          totalProtein += (totalVolume / 100) * formula.composition.protein;
-          totalCarbs += (totalVolume / 100) * (formula.composition.carbohydrates || 0);
-          totalFat += (totalVolume / 100) * (formula.composition.fat || 0);
-          totalFiber += (totalVolume / 100) * (formula.composition.fiber || 0);
-          totalFreeWater += (totalVolume * (formula.composition.waterContent || 80)) / 100;
-          totalSodium += (totalVolume / 100) * (formula.composition.sodium || 0);
-          totalPotassium += (totalVolume / 100) * (formula.composition.potassium || 0);
-          totalCalcium += (totalVolume / 100) * (formula.composition.calcium || 0);
-          totalPhosphorus += (totalVolume / 100) * (formula.composition.phosphorus || 0);
-          if (formula.proteinSources) proteinSources.add(`${formula.name}: ${formula.proteinSources}`);
-          if (formula.carbSources) carbSources.add(`${formula.name}: ${formula.carbSources}`);
-          if (formula.fatSources) fatSources.add(`${formula.name}: ${formula.fatSources}`);
-          if (formula.fiberSources) fiberSources.add(`${formula.name}: ${formula.fiberSources}`);
-          if (formula.residueInfo) {
-            const factor = totalVolume / 1000;
-            totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
-            totalResiduePaper += (formula.residueInfo.paper || 0) * factor;
-            totalResidueMetal += (formula.residueInfo.metal || 0) * factor;
-            totalResidueGlass += (formula.residueInfo.glass || 0) * factor;
-          }
+          const totalAmount = closedFormula.infusionMode === "pump" ? rate * duration : (rate / 20) * 60 * duration;
+          addNutritionAccumulators(totals, calculateFormulaNutrition(toFormulaCalculationInput(formula), totalAmount));
         }
       }
 
       if (systemType === "open") {
-        openFormulas.forEach(entry => {
-          const formula = availableFormulas.find(f => f.id === entry.formulaId);
+        openFormulas.forEach((entry) => {
+          const formula = availableFormulas.find((item) => item.id === entry.formulaId);
           if (formula && entry.volume && entry.times.length > 0) {
-            const totalVolume = parseFloat(entry.volume) * entry.times.length;
-            const density = formula.composition.density || formula.composition.calories / 100;
-            totalCalories += totalVolume * density;
-            totalProtein += (totalVolume / 100) * formula.composition.protein;
-            totalCarbs += (totalVolume / 100) * (formula.composition.carbohydrates || 0);
-            totalFat += (totalVolume / 100) * (formula.composition.fat || 0);
-            totalFiber += (totalVolume / 100) * (formula.composition.fiber || 0);
-            totalFreeWater += (totalVolume * (formula.composition.waterContent || 80)) / 100;
-            totalSodium += (totalVolume / 100) * (formula.composition.sodium || 0);
-            totalPotassium += (totalVolume / 100) * (formula.composition.potassium || 0);
-            totalCalcium += (totalVolume / 100) * (formula.composition.calcium || 0);
-            totalPhosphorus += (totalVolume / 100) * (formula.composition.phosphorus || 0);
-            if (formula.proteinSources) proteinSources.add(`${formula.name}: ${formula.proteinSources}`);
-            if (formula.carbSources) carbSources.add(`${formula.name}: ${formula.carbSources}`);
-            if (formula.fatSources) fatSources.add(`${formula.name}: ${formula.fatSources}`);
-            if (formula.fiberSources) fiberSources.add(`${formula.name}: ${formula.fiberSources}`);
-            if (formula.residueInfo) {
-              const factor = totalVolume / 1000;
-              totalResiduePlastic += (formula.residueInfo.plastic || 0) * factor;
-              totalResiduePaper += (formula.residueInfo.paper || 0) * factor;
-              totalResidueMetal += (formula.residueInfo.metal || 0) * factor;
-              totalResidueGlass += (formula.residueInfo.glass || 0) * factor;
-            }
+            const totalAmount = parseFloat(entry.volume) * entry.times.length;
+            addNutritionAccumulators(totals, calculateFormulaNutrition(toFormulaCalculationInput(formula), totalAmount));
           }
         });
       }
 
-      modules.forEach(mod => {
-        const module = availableModules.find(m => m.id === mod.moduleId);
-        if (module && mod.quantity && mod.times.length > 0) {
-          const totalQty = parseFloat(mod.quantity) * mod.times.length;
-          totalCalories += totalQty * module.density;
-          const proteinRatio = (module.protein > 0 && module.referenceAmount > 0) ? (module.protein / module.referenceAmount) : 0;
-          const carbRatio = (module.carbs && module.referenceAmount > 0) ? (module.carbs / module.referenceAmount) : 0;
-          const fatRatio = (module.fat && module.referenceAmount > 0) ? (module.fat / module.referenceAmount) : 0;
-          const fiberRatio = (module.fiber > 0 && module.referenceAmount > 0) ? (module.fiber / module.referenceAmount) : 0;
-          const waterRatio = (module.freeWater > 0 && module.referenceAmount > 0) ? (module.freeWater / module.referenceAmount) : 0;
-          const sodiumRatio = (module.sodium > 0 && module.referenceAmount > 0) ? (module.sodium / module.referenceAmount) : 0;
-          const potassiumRatio = (module.potassium > 0 && module.referenceAmount > 0) ? (module.potassium / module.referenceAmount) : 0;
-          const calciumRatio = ((module as any).calcium && module.referenceAmount > 0) ? ((module as any).calcium / module.referenceAmount) : 0;
-          const phosphorusRatio = ((module as any).phosphorus && module.referenceAmount > 0) ? ((module as any).phosphorus / module.referenceAmount) : 0;
-          totalProtein += totalQty * proteinRatio;
-          totalCarbs += totalQty * carbRatio;
-          totalFat += totalQty * fatRatio;
-          totalFiber += totalQty * fiberRatio;
-          totalFreeWater += totalQty * waterRatio;
-          totalSodium += totalQty * sodiumRatio;
-          totalPotassium += totalQty * potassiumRatio;
-          totalCalcium += totalQty * calciumRatio;
-          totalPhosphorus += totalQty * phosphorusRatio;
-          if ((module as any).proteinSources) proteinSources.add(`${module.name}: ${(module as any).proteinSources}`);
-          if ((module as any).carbSources) carbSources.add(`${module.name}: ${(module as any).carbSources}`);
-          if ((module as any).fatSources) fatSources.add(`${module.name}: ${(module as any).fatSources}`);
-          if ((module as any).fiberSources) fiberSources.add(`${module.name}: ${(module as any).fiberSources}`);
+      modules.forEach((moduleEntry) => {
+        const moduleItem = availableModules.find((item) => item.id === moduleEntry.moduleId);
+        if (moduleItem && moduleEntry.quantity && moduleEntry.times.length > 0) {
+          const totalAmount = parseFloat(moduleEntry.quantity) * moduleEntry.times.length;
+          addNutritionAccumulators(totals, calculateModuleNutrition(moduleItem, totalAmount));
         }
       });
 
       if (hydration.volume && hydration.times.length > 0) {
-        totalFreeWater += parseFloat(hydration.volume) * hydration.times.length;
+        totals.freeWater += parseFloat(hydration.volume) * hydration.times.length;
       }
     }
 
-    // --- ORAL totals (add to enteral if both active) ---
     if (feedingRoutes.oral) {
-      totalCalories += oralTotals.kcal;
-      totalProtein += oralTotals.protein;
-      totalCarbs += oralTotals.carbs;
-      totalFat += oralTotals.fat;
-      totalFiber += oralTotals.fiber;
-      totalFreeWater += oralTotals.freeWater;
-      totalSodium += oralTotals.sodium;
-      totalPotassium += oralTotals.potassium;
-      totalCalcium += oralTotals.calcium;
-      totalPhosphorus += oralTotals.phosphorus;
+      addNutritionAccumulators(totals, buildOralNutritionAccumulator());
     }
 
-    // --- PARENTERAL totals (add to enteral if both active) ---
     if (feedingRoutes.parenteral) {
-      totalCalories += parenteralVET;
-      totalProtein += parenteralAminoacids; // aminoacids in grams of protein
-      totalCarbs += parenteralGlucose;
-      totalFat += parenteralLipids;
+      totals.calories += parenteralVET;
+      totals.protein += parenteralAminoacids;
+      totals.carbs += parenteralGlucose;
+      totals.fat += parenteralLipids;
     }
 
-    const weight = selectedPatient?.weight || 70;
-    const proteinKcal = totalProtein * 4;
-    const carbKcal = totalCarbs * 4;
-    const fatKcal = totalFat * 9;
-    const macroKcal = proteinKcal + carbKcal + fatKcal;
-    return {
-      vet: Math.round(totalCalories),
-      vetPerKg: Math.round((totalCalories / weight) * 10) / 10,
-      protein: Math.round(totalProtein * 10) / 10,
-      proteinPerKg: Math.round((totalProtein / weight) * 10) / 10,
-      carbs: Math.round(totalCarbs * 10) / 10,
-      carbsPerKg: Math.round((totalCarbs / weight) * 10) / 10,
-      fat: Math.round(totalFat * 10) / 10,
-      fatPerKg: Math.round((totalFat / weight) * 10) / 10,
-      fiber: Math.round(totalFiber * 10) / 10,
-      freeWater: Math.round(totalFreeWater),
-      freeWaterPerKg: Math.round((totalFreeWater / weight) * 10) / 10,
-      sodium: Math.round(totalSodium * 10) / 10,
-      potassium: Math.round(totalPotassium * 10) / 10,
-      calcium: Math.round(totalCalcium * 10) / 10,
-      phosphorus: Math.round(totalPhosphorus * 10) / 10,
-      proteinPct: macroKcal > 0 ? Math.round((proteinKcal / macroKcal) * 1000) / 10 : 0,
-      carbPct: macroKcal > 0 ? Math.round((carbKcal / macroKcal) * 1000) / 10 : 0,
-      fatPct: macroKcal > 0 ? Math.round((fatKcal / macroKcal) * 1000) / 10 : 0,
-      sources: {
-        protein: Array.from(proteinSources),
-        carbs: Array.from(carbSources),
-        fat: Array.from(fatSources),
-        fiber: Array.from(fiberSources),
-      },
-      residues: {
-        plastic: Math.round(totalResiduePlastic * 10) / 10,
-        paper: Math.round(totalResiduePaper * 10) / 10,
-        metal: Math.round(totalResidueMetal * 10) / 10,
-        glass: Math.round(totalResidueGlass * 10) / 10,
-      },
-      residueTotal: Math.round((totalResiduePlastic + totalResiduePaper + totalResidueMetal + totalResidueGlass) * 10) / 10,
-    };
-  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, oralTotals, parenteralVET, parenteralAminoacids, parenteralGlucose, parenteralLipids]);
+    return finalizeNutritionTotals(totals, selectedPatient);
+  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, buildOralNutritionAccumulator, parenteralVET, parenteralAminoacids, parenteralGlucose, parenteralLipids]);
 
-  const bmi = useMemo(() => {
-    if (!selectedPatient?.weight || !selectedPatient?.height) return null;
-    const heightM = selectedPatient.height / 100;
-    return selectedPatient.weight / (heightM * heightM);
-  }, [selectedPatient]);
-
-  const idealWeight = useMemo(() => {
-    if (!selectedPatient?.height) return null;
-    const heightM = selectedPatient.height / 100;
-    return 25 * heightM * heightM;
-  }, [selectedPatient]);
+  const bmi = nutritionSummary.weightMetrics.bmi;
+  const idealWeight = nutritionSummary.weightMetrics.idealWeight;
 
   const sidebarSummary = useMemo(() => {
     if (currentStep === 8 && feedingRoutes.oral) {
       return {
         title: "Resumo da via oral",
-        calories: oralTotals.kcal.toFixed(0),
-        caloriesPerKg: oralTotals.kcalPerKg.toFixed(1),
+        calories: oralTotals.vet.toFixed(0),
+        caloriesPerKg: oralTotals.vetPerKg.toFixed(1),
         protein: oralTotals.protein.toFixed(1),
         proteinPerKg: oralTotals.proteinPerKg.toFixed(2),
         freeWater: "-",
@@ -1402,8 +1362,12 @@ const PrescriptionNew = () => {
           feedingRoute: "oral",
           formulas: oralFormulas,
           modules: oralModulesPayload,
-          totalCalories: oralTotals.kcal,
+          totalCalories: oralTotals.vet,
           totalProtein: oralTotals.protein,
+          totalCarbs: oralTotals.carbs,
+          totalFat: oralTotals.fat,
+          totalFiber: oralTotals.fiber,
+          totalFreeWater: oralTotals.freeWater,
           oralDetails: {
             administrationRoute: oralAdministrationRoute,
             deliveryMethod: shouldShowInfantFeedingControls ? oralDeliveryMethod : undefined,
@@ -1534,8 +1498,8 @@ const PrescriptionNew = () => {
                     {idealWeight && <span> | Peso ideal (IMC 25): {idealWeight.toFixed(1)}kg</span>}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.carbsPerKg} g/kg | {nutritionSummary.carbPct}% VET</p></div>
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Lipidios</p><p>{nutritionSummary.fat} g/dia</p><p className="text-muted-foreground">{nutritionSummary.fatPerKg} g/kg | {nutritionSummary.fatPct}% VET</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.carbsPerKgIdeal !== null ? `${nutritionSummary.carbsPerKg} g/kg PA | ${nutritionSummary.carbsPerKgIdeal} g/kg PI` : `${nutritionSummary.carbsPerKg} g/kg`} | {nutritionSummary.carbPct}% VET</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Lipidios</p><p>{nutritionSummary.fat} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.fatPerKgIdeal !== null ? `${nutritionSummary.fatPerKg} g/kg PA | ${nutritionSummary.fatPerKgIdeal} g/kg PI` : `${nutritionSummary.fatPerKg} g/kg`} | {nutritionSummary.fatPct}% VET</p></div>
                     <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Fibras</p><p>{nutritionSummary.fiber} g/dia</p><p className="text-muted-foreground">Resumo global das vias</p></div>
                     <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Micronutrientes</p><p>Na {nutritionSummary.sodium} | K {nutritionSummary.potassium}</p><p className="text-muted-foreground">Ca {nutritionSummary.calcium} | P {nutritionSummary.phosphorus} mg/dia</p></div>
                   </div>
@@ -1547,7 +1511,7 @@ const PrescriptionNew = () => {
                       </div>
                       <div className="text-xs text-muted-foreground">kcal</div>
                       <div className="text-xs font-semibold text-orange-700">
-                        {sidebarSummary.caloriesPerKg} kcal/kg
+                        {nutritionSummary.weightMetrics.isObese && nutritionSummary.caloriesPerKgIdeal !== null ? `${sidebarSummary.caloriesPerKg} kcal/kg PA | ${nutritionSummary.caloriesPerKgIdeal} kcal/kg PI` : `${sidebarSummary.caloriesPerKg} kcal/kg`}
                       </div>
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
@@ -1556,7 +1520,7 @@ const PrescriptionNew = () => {
                       </div>
                       <div className="text-xs text-muted-foreground">proteínas</div>
                       <div className="text-xs font-semibold text-blue-700">
-                        {sidebarSummary.proteinPerKg} g/kg
+                        {nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${sidebarSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${sidebarSummary.proteinPerKg} g/kg`}
                       </div>
                     </div>
                   </div>
@@ -1915,14 +1879,14 @@ const PrescriptionNew = () => {
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center p-4 bg-white rounded-lg shadow-sm">
-                        <div className="text-3xl font-bold text-orange-600">{oralTotals.kcal.toFixed(0)}</div>
+                        <div className="text-3xl font-bold text-orange-600">{oralTotals.vet.toFixed(0)}</div>
                         <div className="text-sm text-muted-foreground">kcal/dia</div>
-                        {oralTotals.kcalPerKg > 0 && <div className="text-lg font-semibold text-orange-700 mt-1">{oralTotals.kcalPerKg.toFixed(1)} kcal/kg</div>}
+                        {oralTotals.vetPerKg > 0 && <div className="text-lg font-semibold text-orange-700 mt-1">{oralTotals.weightMetrics.isObese && oralTotals.vetPerKgIdeal !== null ? `${oralTotals.vetPerKg.toFixed(1)} kcal/kg PA | ${oralTotals.vetPerKgIdeal.toFixed(1)} kcal/kg PI` : `${oralTotals.vetPerKg.toFixed(1)} kcal/kg`}</div>}
                       </div>
                       <div className="text-center p-4 bg-white rounded-lg shadow-sm">
                         <div className="text-3xl font-bold text-blue-600">{oralTotals.protein.toFixed(1)}</div>
                         <div className="text-sm text-muted-foreground">g proteínas/dia</div>
-                        {oralTotals.proteinPerKg > 0 && <div className="text-lg font-semibold text-blue-700 mt-1">{oralTotals.proteinPerKg.toFixed(2)} g/kg</div>}
+                        {oralTotals.proteinPerKg > 0 && <div className="text-lg font-semibold text-blue-700 mt-1">{oralTotals.weightMetrics.isObese && oralTotals.proteinPerKgIdeal !== null ? `${oralTotals.proteinPerKg.toFixed(2)} g/kg PA | ${oralTotals.proteinPerKgIdeal.toFixed(2)} g/kg PI` : `${oralTotals.proteinPerKg.toFixed(2)} g/kg`}</div>}
                       </div>
                     </div>
                   </CardContent>
@@ -2265,9 +2229,9 @@ const PrescriptionNew = () => {
                 <CardContent className="space-y-6">
                   {selectedPatient && <div className="p-4 bg-muted rounded-lg"><p className="font-semibold">{selectedPatient.name}</p><p className="text-sm text-muted-foreground">{selectedPatient.bed} - Peso: {selectedPatient.weight}kg {bmi && `(IMC: ${bmi.toFixed(1)})`} {idealWeight && `(PI: ${idealWeight.toFixed(1)}kg)`}</p></div>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.vetPerKg} kcal/kg)</p><p className="text-xs font-medium mt-1">VET</p></div>
-                    <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.proteinPerKg} g/kg)</p><p className="text-xs font-medium mt-1">Proteínas</p></div>
-                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.freeWaterPerKg} ml/kg)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
+                    <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.vetPerKgIdeal !== null ? `${nutritionSummary.vetPerKg} kcal/kg PA | ${nutritionSummary.vetPerKgIdeal} kcal/kg PI` : `${nutritionSummary.vetPerKg} kcal/kg`})</p><p className="text-xs font-medium mt-1">VET</p></div>
+                    <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${nutritionSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${nutritionSummary.proteinPerKg} g/kg`})</p><p className="text-xs font-medium mt-1">Proteínas</p></div>
+                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.freeWaterPerKgIdeal !== null ? `${nutritionSummary.freeWaterPerKg} ml/kg PA | ${nutritionSummary.freeWaterPerKgIdeal} ml/kg PI` : `${nutritionSummary.freeWaterPerKg} ml/kg`})</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
                   <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Fórmula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusão:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{systemType === "open" && equipmentVolume && <p><strong>Volume para equipo:</strong> {equipmentVolume} ml por frasco</p>}{modules.length > 0 && <p><strong>Módulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}{feedingRoutes.oral && <p><strong>Oral:</strong> {oralAdministrationRoute === "translactation" ? "Translactacao" : "Via oral"} | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia{shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""}</p>}{feedingRoutes.parenteral && <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>}{feedingRoutes.enteral && <div className="pt-2"><p><strong>Resíduos (g/dia):</strong></p><p className="text-sm text-muted-foreground">Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g</p></div>}</CollapsibleContent></Collapsible>

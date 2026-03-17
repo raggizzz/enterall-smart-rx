@@ -762,9 +762,10 @@ const Reports = () => {
 
     return rows.map((item) => ({
       product: item.productName,
+      volumeMl: Number(item.totalVolumeMl.toFixed(1)),
       quantity: Number(item.totalQuantity.toFixed(1)),
       cost: Number(item.totalCost.toFixed(2)),
-      calories: Number(item.totalCalories.toFixed(0)),
+      estimatedUnits: Number(item.estimatedUnits.toFixed(1)),
     }));
   }, [productUsage, selectedProducts]);
 
@@ -1272,8 +1273,8 @@ const Reports = () => {
               <TabsContent value="comparativo" className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Comparacao por produto</CardTitle>
-                    <CardDescription>Selecione ate 3 produtos para comparar quantidade, custo e calorias.</CardDescription>
+                    <CardTitle>Comparação por produto</CardTitle>
+                    <CardDescription>Selecione até 3 produtos para comparar volume total em mL e custo.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-3">
@@ -1310,11 +1311,10 @@ const Reports = () => {
                           <BarChart data={comparisonRows}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="product" />
-                            <YAxis />
-                            <Tooltip />
+                            <YAxis unit=" mL" />
+                            <Tooltip formatter={(value: number) => `${numberFormatter.format(value)} mL`} />
                             <Legend />
-                            <Bar dataKey="quantity" fill="#2563eb" name="Quantidade total" />
-                            <Bar dataKey="calories" fill="#16a34a" name="Calorias totais" />
+                            <Bar dataKey="volumeMl" fill="#2563eb" name="Volume total (mL)" />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -1331,6 +1331,31 @@ const Reports = () => {
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
+                    </div>
+
+                    <div className="overflow-auto rounded-md border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr className="text-left">
+                            <th className="p-3 font-medium">Produto</th>
+                            <th className="p-3 font-medium text-right">Volume total (mL)</th>
+                            <th className="p-3 font-medium text-right">Quantidade total</th>
+                            <th className="p-3 font-medium text-right">Unidades estimadas</th>
+                            <th className="p-3 font-medium text-right">Custo total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {comparisonRows.map((item) => (
+                            <tr key={`comparison-${item.product}`} className="border-t">
+                              <td className="p-3 font-medium">{item.product}</td>
+                              <td className="p-3 text-right">{numberFormatter.format(item.volumeMl)}</td>
+                              <td className="p-3 text-right">{numberFormatter.format(item.quantity)}</td>
+                              <td className="p-3 text-right">{numberFormatter.format(item.estimatedUnits)}</td>
+                              <td className="p-3 text-right font-medium">{formatCurrency(item.cost)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </CardContent>
                 </Card>

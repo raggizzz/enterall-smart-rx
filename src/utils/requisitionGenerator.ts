@@ -18,6 +18,18 @@ const parseISO = (dateString: string): Date => {
     return new Date(dateString);
 };
 
+const normalizeScheduleTime = (value?: string | null): string => {
+    if (!value) return "";
+
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{1,2})(?::?(\d{2}))?\s*h?$/i);
+    if (!match) return trimmed;
+
+    const hours = match[1].padStart(2, "0");
+    const minutes = (match[2] || "00").padStart(2, "0");
+    return `${hours}:${minutes}`;
+};
+
 const formatDate = (date: Date): string => {
     return new Intl.DateTimeFormat('pt-BR').format(date);
 };
@@ -66,6 +78,7 @@ export const generateRequisitionData = ({
     const dietMap: DietMapItem[] = [];
     const consolidatedMap = new Map<string, ConsolidatedItem>();
     const patientsById = new Map(patients.map((patient) => [patient.id, patient]));
+    const selectedTimeSet = new Set(selectedTimes.map((time) => normalizeScheduleTime(time)).filter(Boolean));
 
     // Helper to add to consolidated list
     const addToConsolidated = (
@@ -117,13 +130,14 @@ export const generateRequisitionData = ({
     const dayDiff = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
     activePrescriptions.forEach(p => {
+        const patient = patientsById.get(p.patientId);
         const patientInfo = {
             patientId: p.patientId,
-            patientName: p.patientName,
-            patientRecord: p.patientRecord,
-            bed: p.patientBed || '-',
-            ward: p.patientWard || '-',
-            dob: patientsById.get(p.patientId)?.dob,
+            patientName: patient?.name || p.patientName || 'Paciente sem nome',
+            patientRecord: patient?.record || p.patientRecord || '-',
+            bed: patient?.bed || p.patientBed || '-',
+            ward: patient?.ward || p.patientWard || '-',
+            dob: patient?.dob,
             route: p.therapyType === 'oral'
                 ? (p.oralDetails?.administrationRoute === 'translactation' ? 'Translactacao' : 'Oral')
                 : p.feedingRoute || p.therapyType,
@@ -134,7 +148,9 @@ export const generateRequisitionData = ({
 
         // --- Process Formulas ---
         p.formulas.forEach(f => {
-            const matchingTimes = f.schedules.filter(t => selectedTimes.includes(t));
+            const matchingTimes = (f.schedules || [])
+                .map((time) => normalizeScheduleTime(time))
+                .filter((time) => selectedTimeSet.has(time));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -218,7 +234,9 @@ export const generateRequisitionData = ({
 
         // --- Process Modules ---
         p.modules.forEach(m => {
-            const matchingTimes = (m.schedules || []).filter(t => selectedTimes.includes(t));
+            const matchingTimes = (m.schedules || [])
+                .map((time) => normalizeScheduleTime(time))
+                .filter((time) => selectedTimeSet.has(time));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -239,7 +257,9 @@ export const generateRequisitionData = ({
 
         // --- Process Hydration ---
         if (p.hydrationVolume && p.hydrationSchedules) {
-            const matchingTimes = p.hydrationSchedules.filter(t => selectedTimes.includes(t));
+            const matchingTimes = p.hydrationSchedules
+                .map((time) => normalizeScheduleTime(time))
+                .filter((time) => selectedTimeSet.has(time));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -293,7 +313,9 @@ export const generateRequisitionData = ({
             const feedingBottle = findSupplyByCategory('feeding-bottle') || supplies.find(s => s.type === 'bottle' && s.isActive && s.isBillable !== false);
             if (feedingBottle) {
                 const oralAdministrations = p.formulas.reduce((sum, formula) => {
-                    const matchingTimes = formula.schedules.filter(t => selectedTimes.includes(t));
+                    const matchingTimes = (formula.schedules || [])
+                        .map((time) => normalizeScheduleTime(time))
+                        .filter((time) => selectedTimeSet.has(time));
                     return sum + matchingTimes.length;
                 }, 0);
                 const totalUnits = Math.max(oralAdministrations, 1) * dayDiff;
@@ -324,7 +346,7 @@ export const generateRequisitionData = ({
         startDate: formatDate(startDate),
         endDate: formatDate(endDate),
         printDate: formatDateTime(new Date()),
-        selectedTimes: selectedTimes.sort(),
+        selectedTimes: Array.from(selectedTimeSet).sort(),
         dietMap,
         consolidated,
         signatures

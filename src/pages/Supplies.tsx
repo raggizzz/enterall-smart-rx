@@ -18,7 +18,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Search, Package, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
@@ -29,14 +28,29 @@ import { Supply } from "@/lib/database";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 
-const SUPPLY_CATEGORY_OPTIONS: Array<{ value: NonNullable<Supply["category"]>; label: string }> = [
-    { value: "standard", label: "Padrao" },
-    { value: "thickener", label: "Espessante" },
-    { value: "cup", label: "Copo" },
-    { value: "baby-bottle", label: "Mamadeira" },
-    { value: "feeding-bottle", label: "Frasco para dieta" },
-    { value: "other", label: "Outro" },
-];
+const toOptionalNumber = (value: unknown) => {
+    if (typeof value === "number") {
+        return Number.isFinite(value) ? value : undefined;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.replace(",", ".").trim();
+        if (!normalized) return undefined;
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+};
+
+type SupplyFormState = Partial<Omit<Supply, 'capacityMl' | 'unitPrice' | 'plasticG' | 'paperG' | 'metalG' | 'glassG'>> & {
+    capacityMl?: number | string;
+    unitPrice?: number | string;
+    plasticG?: number | string;
+    paperG?: number | string;
+    metalG?: number | string;
+    glassG?: number | string;
+};
 
 const Supplies = () => {
     const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
@@ -45,7 +59,7 @@ const Supplies = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingSupply, setEditingSupply] = useState<Supply | null>(null);
-    const [currentSupply, setCurrentSupply] = useState<Partial<Supply>>({});
+    const [currentSupply, setCurrentSupply] = useState<SupplyFormState>({});
 
     const resetForm = () => {
         setCurrentSupply({});
@@ -54,12 +68,12 @@ const Supplies = () => {
 
     const handleSave = async () => {
         if (!canManageSupplies) {
-            toast.error("Sem permissao para gerenciar insumos");
+            toast.error("Sem permissão para gerenciar insumos");
             return;
         }
 
         if (!currentSupply.name || !currentSupply.code || !currentSupply.type) {
-            toast.error("Preencha os campos obrigatÃ³rios");
+            toast.error("Preencha os campos obrigatórios");
             return;
         }
 
@@ -68,16 +82,15 @@ const Supplies = () => {
                 code: currentSupply.code!,
                 name: currentSupply.name!,
                 type: currentSupply.type!,
-                category: currentSupply.category || 'standard',
-                description: currentSupply.description,
-                billingUnit: currentSupply.billingUnit || 'unit',
-                capacityMl: currentSupply.capacityMl,
-                unitPrice: currentSupply.unitPrice || 0,
-                isBillable: currentSupply.isBillable !== false,
-                plasticG: currentSupply.plasticG,
-                paperG: currentSupply.paperG,
-                metalG: currentSupply.metalG,
-                glassG: currentSupply.glassG,
+                category: 'standard' as const,
+                billingUnit: 'unit' as const,
+                capacityMl: currentSupply.type === 'bottle' ? toOptionalNumber(currentSupply.capacityMl) : undefined,
+                unitPrice: toOptionalNumber(currentSupply.unitPrice) || 0,
+                isBillable: true,
+                plasticG: toOptionalNumber(currentSupply.plasticG),
+                paperG: toOptionalNumber(currentSupply.paperG),
+                metalG: toOptionalNumber(currentSupply.metalG),
+                glassG: toOptionalNumber(currentSupply.glassG),
                 isActive: true,
             };
 
@@ -99,7 +112,7 @@ const Supplies = () => {
 
     const handleEdit = (supply: Supply) => {
         if (!canManageSupplies) {
-            toast.error("Sem permissao para editar insumos");
+            toast.error("Sem permissão para editar insumos");
             return;
         }
 
@@ -113,7 +126,7 @@ const Supplies = () => {
 
     const handleDelete = async (id: string) => {
         if (!canManageSupplies) {
-            toast.error("Sem permissao para excluir insumos");
+            toast.error("Sem permissão para excluir insumos");
             return;
         }
 
@@ -121,7 +134,7 @@ const Supplies = () => {
 
         try {
             await deleteSupply(id);
-            toast.success("Insumo excluÃ­do com sucesso!");
+            toast.success("Insumo excluído com sucesso!");
         } catch (error) {
             console.error('Error deleting supply:', error);
             toast.error("Erro ao excluir insumo");
@@ -157,12 +170,19 @@ const Supplies = () => {
                             <DialogHeader>
                                 <DialogTitle>{editingSupply ? 'Editar' : 'Novo'} Insumo</DialogTitle>
                                 <DialogDescription>
-                                    Preencha os dados do insumo para uso em prescricoes, faturamento e relatorios.
+                                    Cadastre apenas os dados necessários para frascos, equipos e outros insumos.
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-                                {/* Tipo e CÃ³digo */}
                                 <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label>Código *</Label>
+                                        <Input
+                                            placeholder="Ex: FR100"
+                                            value={currentSupply.code || ''}
+                                            onChange={e => setCurrentSupply({ ...currentSupply, code: e.target.value })}
+                                        />
+                                    </div>
                                     <div className="grid gap-2">
                                         <Label>Tipo *</Label>
                                         <Select
@@ -179,164 +199,62 @@ const Supplies = () => {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="grid gap-2">
-                                        <Label>CÃ³digo *</Label>
-                                        <Input
-                                            placeholder="Ex: FR100"
-                                            value={currentSupply.code || ''}
-                                            onChange={e => setCurrentSupply({ ...currentSupply, code: e.target.value })}
-                                        />
-                                    </div>
                                 </div>
 
-                                {/* Nome */}
                                 <div className="grid gap-2">
                                     <Label>Nome do Produto *</Label>
                                     <Input
-                                        placeholder="Ex: Frasco DescartÃ¡vel 100ml"
+                                        placeholder="Ex: Frasco Biobase 100"
                                         value={currentSupply.name || ''}
                                         onChange={e => setCurrentSupply({ ...currentSupply, name: e.target.value })}
                                     />
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="grid gap-2">
-                                        <Label>Categoria funcional</Label>
-                                        <Select
-                                            value={currentSupply.category || 'standard'}
-                                            onValueChange={(val: NonNullable<Supply["category"]>) => setCurrentSupply({ ...currentSupply, category: val })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Selecione a categoria" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {SUPPLY_CATEGORY_OPTIONS.map((option) => (
-                                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label className="mb-1">Item faturavel</Label>
-                                        <div className="flex h-10 items-center gap-2 rounded-md border px-3">
-                                            <Checkbox
-                                                checked={currentSupply.isBillable !== false}
-                                                onCheckedChange={(checked) => setCurrentSupply({ ...currentSupply, isBillable: checked === true })}
-                                            />
-                                            <span className="text-sm text-muted-foreground">Cobrar este item no faturamento</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <Label>Descricao</Label>
-                                    <Input
-                                        placeholder="Ex: usar para agua espessada / nao faturar em translactacao"
-                                        value={currentSupply.description || ''}
-                                        onChange={e => setCurrentSupply({ ...currentSupply, description: e.target.value })}
-                                    />
-                                </div>
-
-                                {/* Unidade de Faturamento */}
-                                <div className="grid gap-2">
-                                    <Label>Unidade de Faturamento</Label>
-                                    <Select
-                                        value={currentSupply.billingUnit || 'unit'}
-                                        onValueChange={(val: 'unit' | 'pack' | 'box' | 'other') => setCurrentSupply({ ...currentSupply, billingUnit: val })}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Selecione" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="unit">Unidade</SelectItem>
-                                            <SelectItem value="pack">Pacote</SelectItem>
-                                            <SelectItem value="box">Caixa</SelectItem>
-                                            <SelectItem value="other">Outros</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {/* Campos especÃ­ficos para Frasco */}
-                                {currentSupply.type === 'bottle' && (
-                                    <div className="border rounded-lg p-4 bg-blue-50/50 space-y-4">
-                                        <div className="flex items-center gap-2">
-                                            <Package className="h-5 w-5 text-blue-600" />
-                                            <Label className="font-semibold text-blue-800">Dados do Frasco (para cÃ¡lculo automÃ¡tico)</Label>
-                                        </div>
-                                        <p className="text-xs text-blue-700">
-                                            A capacidade do frasco serÃ¡ usada para calcular automaticamente o nÃºmero de frascos
-                                            necessÃ¡rios com base no volume de dieta e Ã¡gua prescritos.
-                                        </p>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="grid gap-2">
-                                                <Label>Capacidade (mL) *</Label>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="Ex: 100, 200, 500"
-                                                    value={currentSupply.capacityMl || ''}
-                                                    onChange={e => setCurrentSupply({ ...currentSupply, capacityMl: parseFloat(e.target.value) })}
-                                                />
-                                            </div>
-                                            <div className="grid gap-2">
-                                                <Label>Valor UnitÃ¡rio (R$) *</Label>
-                                                <Input
-                                                    type="number"
-                                                    step="0.01"
-                                                    placeholder="0.00"
-                                                    value={currentSupply.unitPrice || ''}
-                                                    onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: parseFloat(e.target.value) })}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Campos para Equipo e Outros */}
-                                {currentSupply.type && currentSupply.type !== 'bottle' && (
-                                    <div className="grid grid-cols-2 gap-4">
+                                    {currentSupply.type === 'bottle' && (
                                         <div className="grid gap-2">
-                                            <Label>Capacidade (mL) - Opcional</Label>
+                                            <Label>Capacidade (mL)</Label>
                                             <Input
                                                 type="number"
+                                                placeholder="Ex: 100"
                                                 value={currentSupply.capacityMl || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, capacityMl: parseFloat(e.target.value) })}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, capacityMl: e.target.value })}
                                             />
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label>Valor UnitÃ¡rio (R$) *</Label>
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                placeholder="0.00"
-                                                value={currentSupply.unitPrice || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: parseFloat(e.target.value) })}
-                                            />
-                                        </div>
+                                    )}
+                                    <div className="grid gap-2">
+                                        <Label>Valor Unitário (R$)</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            placeholder="0.00"
+                                            value={currentSupply.unitPrice || ''}
+                                            onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: e.target.value })}
+                                        />
                                     </div>
-                                )}
+                                </div>
 
-                                {/* SeÃ§Ã£o de ResÃ­duos */}
-                                <div className="border-t pt-4 mt-2">
-                                    <Label className="mb-3 block font-semibold">GeraÃ§Ã£o de ResÃ­duos por Unidade (g)</Label>
-                                    <div className="grid grid-cols-4 gap-3">
+                                <div className="border-t pt-4 mt-2 space-y-3">
+                                    <Label className="block font-semibold">Informações sobre resíduo gerado por unidade (g)</Label>
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div className="grid gap-1">
-                                            <Label className="text-xs">PlÃ¡stico</Label>
+                                            <Label className="text-xs">Plástico</Label>
                                             <Input
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
                                                 value={currentSupply.plasticG || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, plasticG: parseFloat(e.target.value) })}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, plasticG: e.target.value })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
-                                            <Label className="text-xs">Papel/PapelÃ£o</Label>
+                                            <Label className="text-xs">Papel</Label>
                                             <Input
                                                 type="number"
                                                 className="h-9"
                                                 placeholder="0"
                                                 value={currentSupply.paperG || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, paperG: parseFloat(e.target.value) })}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, paperG: e.target.value })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
@@ -346,7 +264,7 @@ const Supplies = () => {
                                                 className="h-9"
                                                 placeholder="0"
                                                 value={currentSupply.metalG || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, metalG: parseFloat(e.target.value) })}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, metalG: e.target.value })}
                                             />
                                         </div>
                                         <div className="grid gap-1">
@@ -356,14 +274,14 @@ const Supplies = () => {
                                                 className="h-9"
                                                 placeholder="0"
                                                 value={currentSupply.glassG || ''}
-                                                onChange={e => setCurrentSupply({ ...currentSupply, glassG: parseFloat(e.target.value) })}
+                                                onChange={e => setCurrentSupply({ ...currentSupply, glassG: e.target.value })}
                                             />
                                         </div>
                                     </div>
                                 </div>
 
                                 <Button onClick={handleSave} className="w-full mt-4">
-                                    {editingSupply ? 'Salvar AlteraÃ§Ãµes' : 'Criar Insumo'}
+                                    {editingSupply ? 'Salvar Alterações' : 'Criar Insumo'}
                                 </Button>
                             </div>
                         </DialogContent>
@@ -376,7 +294,7 @@ const Supplies = () => {
                         <div className="relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Buscar por nome ou cÃ³digo..."
+                                placeholder="Buscar por nome ou código..."
                                 className="pl-8"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -387,24 +305,23 @@ const Supplies = () => {
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>CÃ³digo</TableHead>
+                                    <TableHead>Código</TableHead>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Tipo</TableHead>
-                                    <TableHead>Categoria</TableHead>
-                                    <TableHead>Unid. Faturamento</TableHead>
                                     <TableHead>Capacidade</TableHead>
                                     <TableHead>Valor</TableHead>
-                                    <TableHead className="text-right">AÃ§Ãµes</TableHead>
+                                    <TableHead>Resíduos</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : filteredSupplies.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                             Nenhum insumo encontrado
                                         </TableCell>
                                     </TableRow>
@@ -427,22 +344,17 @@ const Supplies = () => {
                                                 </span>
                                             </TableCell>
                                             <TableCell>
-                                                <div className="text-xs">
-                                                    {SUPPLY_CATEGORY_OPTIONS.find((option) => option.value === (supply.category || 'standard'))?.label || 'Padrao'}
-                                                </div>
-                                                <div className="text-[11px] text-muted-foreground">{supply.isBillable === false ? 'Nao faturavel' : 'Faturavel'}</div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs">
-                                                    {supply.billingUnit === 'pack' ? 'Pacote' :
-                                                        supply.billingUnit === 'box' ? 'Caixa' :
-                                                            supply.billingUnit === 'other' ? 'Outros' : 'Unidade'}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell>
                                                 {supply.capacityMl ? `${supply.capacityMl} mL` : '-'}
                                             </TableCell>
                                             <TableCell>R$ {supply.unitPrice?.toFixed(2) || '0.00'}</TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {[
+                                                    supply.plasticG ? `Plástico ${supply.plasticG}g` : undefined,
+                                                    supply.paperG ? `Papel ${supply.paperG}g` : undefined,
+                                                    supply.metalG ? `Metal ${supply.metalG}g` : undefined,
+                                                    supply.glassG ? `Vidro ${supply.glassG}g` : undefined,
+                                                ].filter(Boolean).join(' | ') || '-'}
+                                            </TableCell>
                                             <TableCell className="text-right">
                                                 {canManageSupplies && (
                                                 <div className="flex justify-end gap-2">

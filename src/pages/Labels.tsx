@@ -27,6 +27,18 @@ const normalize = (value?: string | null): string => {
     return value;
 };
 
+const normalizeScheduleTime = (value?: string | null): string => {
+    if (!value) return "";
+
+    const trimmed = value.trim();
+    const match = trimmed.match(/^(\d{1,2})(?::?(\d{2}))?\s*h?$/i);
+    if (!match) return trimmed;
+
+    const hours = match[1].padStart(2, "0");
+    const minutes = (match[2] || "00").padStart(2, "0");
+    return `${hours}:${minutes}`;
+};
+
 const truncate = (text: string, limit: number): string => {
     if (text.length <= limit) return text;
     return `${text.slice(0, limit - 3)}...`;
@@ -45,6 +57,16 @@ const Labels = () => {
     const { settings } = useSettings();
     const { formulas } = useFormulas();
     const { modules } = useModules();
+
+    const patientsById = useMemo(() => {
+        const map = new Map<string, (typeof patients)[number]>();
+        patients.forEach((patient) => {
+            if (patient.id) {
+                map.set(patient.id, patient);
+            }
+        });
+        return map;
+    }, [patients]);
 
     // Deduplicate prescriptions to avoid double labels if database returns duplicates
     const pIds = new Set();
@@ -145,6 +167,10 @@ const Labels = () => {
 
     const activeDate = useMemo(() => date || new Date(), [date]);
     const activeDateText = useMemo(() => toDateOnly(activeDate), [activeDate]);
+    const selectedTimeSet = useMemo(
+        () => new Set(selectedTimes.map((time) => normalizeScheduleTime(time)).filter(Boolean)),
+        [selectedTimes],
+    );
 
     const labels = useMemo<LabelData[]>(() => {
         const list: LabelData[] = [];
@@ -178,7 +204,8 @@ const Labels = () => {
             const dd = String(activeDate.getDate()).padStart(2, '0');
             const dateKey = `${yyyy}${mm}${dd}`;
 
-            const timeKey = (time || "0000").replace(":", "");
+            const normalizedTime = normalizeScheduleTime(time);
+            const timeKey = (normalizedTime || "00:00").replace(":", "");
             const idKey = (prescriptionId || "XXXX").replace(/-/g, "").slice(0, 6).toUpperCase();
             return `${dateKey}-${timeKey}-${suffix}-${idKey}`;
         };
@@ -243,7 +270,7 @@ const Labels = () => {
         uniquePrescriptions
             .filter((prescription) => prescription.status === "active")
             .forEach((prescription) => {
-                const patient = patients.find((p) => p.id === prescription.patientId);
+                const patient = patientsById.get(prescription.patientId);
 
                 const patientName = normalize(prescription.patientName || patient?.name);
                 const bed = normalize(prescription.patientBed || patient?.bed);
@@ -263,18 +290,18 @@ const Labels = () => {
 
                 const getSafeSchedules = (val: any): string[] => {
                     if (!val) return [];
-                    if (Array.isArray(val)) return val;
+                    if (Array.isArray(val)) return val.map((item) => normalizeScheduleTime(String(item))).filter(Boolean);
                     if (typeof val === 'string') {
                         try {
                             const parsed = JSON.parse(val);
-                            if (Array.isArray(parsed)) return parsed;
+                            if (Array.isArray(parsed)) return parsed.map((item) => normalizeScheduleTime(String(item))).filter(Boolean);
                         } catch (e) {
                             // If it's a comma-separated string
-                            if (val.includes(',')) return val.split(',').map((s: string) => s.trim());
-                            return [val];
+                            if (val.includes(',')) return val.split(',').map((s: string) => normalizeScheduleTime(s)).filter(Boolean);
+                            return [normalizeScheduleTime(val)].filter(Boolean);
                         }
                     }
-                    return [val];
+                    return [normalizeScheduleTime(String(val))].filter(Boolean);
                 };
 
                 const formulaSchedules = Array.from(
@@ -578,16 +605,16 @@ const Labels = () => {
             });
 
         return list;
-    }, [activeDate, activeDateText, formulaMap, patients, settings, uniquePrescriptions]);
+    }, [activeDate, activeDateText, formulaMap, moduleMap, patientsById, settings, uniquePrescriptions]);
 
     const filteredLabels = useMemo(() => {
         return labels.filter((label) => {
             const matchClinic = clinic === "all" || label.clinic.toLowerCase() === clinic.toLowerCase();
             const matchPatient = label.patientName.toLowerCase().includes(patientSearch.toLowerCase());
-            const matchTime = label.scheduleTime ? selectedTimes.includes(label.scheduleTime) : true;
+            const matchTime = label.scheduleTime ? selectedTimeSet.has(normalizeScheduleTime(label.scheduleTime)) : true;
             return matchClinic && matchPatient && matchTime;
         });
-    }, [clinic, labels, patientSearch, selectedTimes]);
+    }, [clinic, labels, patientSearch, selectedTimeSet]);
 
     useEffect(() => {
         const filteredIds = new Set(filteredLabels.map((label) => label.id));

@@ -13,11 +13,32 @@ const OralMap = () => {
     const { prescriptions, isLoading: prescriptionsLoading } = usePrescriptions();
     const [selectedClinic, setSelectedClinic] = useState<string>("all");
 
+    const activePrescriptionsByPatientId = useMemo(() => {
+        const map = new Map<string, typeof prescriptions>();
+
+        prescriptions
+            .filter((prescription) => prescription.status === "active")
+            .forEach((prescription) => {
+                const current = map.get(prescription.patientId) || [];
+                current.push(prescription);
+                map.set(prescription.patientId, current);
+            });
+
+        return map;
+    }, [prescriptions]);
+
     const oralMapPatients = useMemo(() => {
-        let filtered = patients.filter((patient) =>
-            patient.status === 'active' &&
-            (patient.nutritionType === 'oral' || patient.nutritionType === 'enteral' || patient.nutritionType === 'jejum')
-        );
+        let filtered = patients.filter((patient) => {
+            if (patient.status !== "active") return false;
+
+            const activePatientPrescriptions = activePrescriptionsByPatientId.get(patient.id || "") || [];
+            if (activePatientPrescriptions.length === 0) {
+                return patient.nutritionType === "oral" || patient.nutritionType === "enteral" || patient.nutritionType === "jejum";
+            }
+
+            return activePatientPrescriptions.some((prescription) => prescription.therapyType === "oral" || prescription.therapyType === "enteral")
+                || patient.nutritionType === "jejum";
+        });
 
         if (selectedClinic !== "all") {
             filtered = filtered.filter((patient) => patient.ward === selectedClinic);
@@ -29,7 +50,7 @@ const OralMap = () => {
             if (bedA !== bedB) return bedA.localeCompare(bedB);
             return a.name.localeCompare(b.name);
         });
-    }, [patients, selectedClinic]);
+    }, [activePrescriptionsByPatientId, patients, selectedClinic]);
 
     const wards = useMemo(() => {
         const uniqueWards = new Set<string>();
@@ -40,10 +61,16 @@ const OralMap = () => {
     }, [patients]);
 
     const mapTitle = selectedClinic === "all" ? "Todos os setores" : selectedClinic;
-    const printPatients = useMemo(
-        () => oralMapPatients.filter((patient) => patient.nutritionType === "oral"),
-        [oralMapPatients],
-    );
+    const printPatients = oralMapPatients;
+
+    const getPatientTherapyType = (patientId?: string, fallback?: string) => {
+        const activePatientPrescriptions = activePrescriptionsByPatientId.get(patientId || "") || [];
+
+        if (activePatientPrescriptions.some((prescription) => prescription.therapyType === "oral")) return "oral";
+        if (activePatientPrescriptions.some((prescription) => prescription.therapyType === "enteral")) return "enteral";
+        if (fallback === "jejum") return "jejum";
+        return fallback || "oral";
+    };
 
     const getDietLabel = (nutritionType: string) => {
         if (nutritionType === 'oral') return 'Dieta Oral';
@@ -115,17 +142,17 @@ const OralMap = () => {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {oralMapPatients.map((patient) => {
-                            // Find active enteral prescription for this patient if nutrition type is enteral
-                            const activeEnteralPrescription = patient.nutritionType === 'enteral'
+                            const patientTherapyType = getPatientTherapyType(patient.id, patient.nutritionType);
+                            const activeEnteralPrescription = patientTherapyType === 'enteral'
                                 ? prescriptions.find(p => p.patientId === patient.id && p.therapyType === 'enteral' && p.status === 'active')
                                 : null;
 
                             return (
                                 <Card
                                     key={patient.id}
-                                    className={`border-l-4 ${patient.nutritionType === 'oral'
+                                    className={`border-l-4 ${patientTherapyType === 'oral'
                                         ? 'border-l-green-500'
-                                        : patient.nutritionType === 'enteral'
+                                        : patientTherapyType === 'enteral'
                                             ? 'border-l-purple-500'
                                             : 'border-l-red-500'
                                         }`}
@@ -137,8 +164,8 @@ const OralMap = () => {
                                                 <p className="text-sm font-medium text-muted-foreground">{patient.name}</p>
                                                 <p className="text-xs text-muted-foreground">Prontuário: {patient.record}</p>
                                             </div>
-                                            <Badge className={getDietBadgeClass(patient.nutritionType)}>
-                                                {getDietLabel(patient.nutritionType)}
+                                            <Badge className={getDietBadgeClass(patientTherapyType)}>
+                                                {getDietLabel(patientTherapyType)}
                                             </Badge>
                                         </div>
                                     </CardHeader>
@@ -182,10 +209,10 @@ const OralMap = () => {
 
                                         <div className="text-sm bg-green-50 p-2 rounded border border-green-200">
                                             <p className="font-medium text-green-800">Características da dieta</p>
-                                            <p className="text-green-700">{getDietCharacteristics(patient.nutritionType, patient.observation)}</p>
+                                            <p className="text-green-700">{getDietCharacteristics(patientTherapyType, patient.observation)}</p>
                                         </div>
 
-                                        {patient.observation && patient.nutritionType !== 'oral' && (
+                                        {patient.observation && patientTherapyType !== 'oral' && (
                                             <div className="flex items-start gap-2 text-sm bg-yellow-50 p-2 rounded text-yellow-800">
                                                 <AlertCircle className="h-4 w-4 mt-0.5 min-w-4" />
                                                 <span>{patient.observation}</span>
@@ -216,7 +243,7 @@ const OralMap = () => {
 
             <div className="hidden print:block p-4 text-black bg-white">
                 <h1 className="text-xl font-bold mb-1">Mapa da Copa - Dietas e Suplementos</h1>
-                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes (oral): {printPatients.length}</p>
+                <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes: {printPatients.length}</p>
 
                 <table className="w-full border-collapse text-sm">
                     <thead>
@@ -232,7 +259,8 @@ const OralMap = () => {
                     </thead>
                     <tbody>
                         {printPatients.map((patient) => {
-                            const activeEnteralPrescription = patient.nutritionType === 'enteral'
+                            const patientTherapyType = getPatientTherapyType(patient.id, patient.nutritionType);
+                            const activeEnteralPrescription = patientTherapyType === 'enteral'
                                 ? prescriptions.find(p => p.patientId === patient.id && p.therapyType === 'enteral' && p.status === 'active')
                                 : null;
 
@@ -242,7 +270,7 @@ const OralMap = () => {
                                     <td className="border border-black p-2">{patient.name}</td>
                                     <td className="border border-black p-2">{patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-'}</td>
                                     <td className="border border-black p-2">
-                                        <div className="font-bold">{getDietLabel(patient.nutritionType)}</div>
+                                        <div className="font-bold">{getDietLabel(patientTherapyType)}</div>
                                         {activeEnteralPrescription && activeEnteralPrescription.formulas && (
                                             <div className="text-xs mt-1">
                                                 {activeEnteralPrescription.formulas.map((f, i) => (
@@ -254,7 +282,7 @@ const OralMap = () => {
                                     </td>
                                     <td className="border border-black p-2">{patient.consistency || '-'} <br /> <span className="text-xs text-gray-500">Refeições: {patient.mealCount || '-'}</span></td>
                                     <td className="border border-black p-2">{patient.safeConsistency || '–'} <br /> <span className="text-xs text-gray-500">Fono: {patient.safeConsistency ? 'Sim' : '-'}</span></td>
-                                    <td className="border border-black p-2">{getDietCharacteristics(patient.nutritionType, patient.observation)}</td>
+                                    <td className="border border-black p-2">{getDietCharacteristics(patientTherapyType, patient.observation)}</td>
                                 </tr>
                             )
                         })}

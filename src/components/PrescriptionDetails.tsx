@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Prescription, Patient, Formula, Module, AppSettings } from "@/lib/database";
+import { calculateStoredPrescriptionNutrition } from "@/lib/prescriptionCalculations";
 
 interface PrescriptionDetailsProps {
     prescription: Prescription;
@@ -96,7 +97,7 @@ export const PrescriptionDetails = ({
     }, [patient.height]);
 
     // Calcular totais nutricionais
-    const nutritionTotals = useMemo(() => {
+    const legacyNutritionTotals = useMemo(() => {
         let calories = 0;
         let protein = 0;
         let carbs = 0;
@@ -215,6 +216,12 @@ export const PrescriptionDetails = ({
             fiberSources
         };
     }, [prescription, formulas, modules]);
+
+    const preciseNutritionTotals = useMemo(
+        () => calculateStoredPrescriptionNutrition({ prescription, patient, formulas, modules }),
+        [prescription, patient, formulas, modules],
+    );
+    const nutritionTotals = preciseNutritionTotals;
 
     // Calcular custos
     const costs = useMemo(() => {
