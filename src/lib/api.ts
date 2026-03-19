@@ -13,6 +13,12 @@ const resolveApiUrl = () => {
         return "http://localhost:3000/api";
     }
 
+    // In production we prefer a same-origin /api path so Vercel can proxy requests
+    // to the backend via rewrites without exposing a hardcoded host in the bundle.
+    if (import.meta.env.PROD) {
+        return `${window.location.origin}/api`;
+    }
+
     const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) || "3000";
     const { protocol, hostname } = window.location;
     return `${protocol}//${hostname}:${apiPort}/api`;
