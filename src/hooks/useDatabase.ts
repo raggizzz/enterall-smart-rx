@@ -33,6 +33,53 @@ import {
     supabase
 } from '@/lib/database';
 
+const AUTO_REFRESH_INTERVAL_MS = 10000;
+
+const useAutoRefresh = (refresh: () => Promise<void>, deps: unknown[] = []) => {
+    useEffect(() => {
+        let cancelled = false;
+
+        const runRefresh = async () => {
+            if (cancelled) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+            try {
+                await refresh();
+            } catch (error) {
+                console.error('Auto refresh error:', error);
+            }
+        };
+
+        void runRefresh();
+
+        const handleFocus = () => {
+            void runRefresh();
+        };
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                void runRefresh();
+            }
+        };
+
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                void runRefresh();
+            }
+        }, AUTO_REFRESH_INTERVAL_MS);
+
+        return () => {
+            cancelled = true;
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.clearInterval(intervalId);
+        };
+    }, [refresh, ...deps]);
+};
+
 // ============================================
 // DATABASE INITIALIZATION HOOK
 // ============================================
@@ -72,21 +119,7 @@ export function usePatients() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchPatients();
-
-        // Set up real-time subscription
-        const subscription = supabase
-            .channel('patients_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
-                fetchPatients();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchPatients]);
+    useAutoRefresh(fetchPatients, [fetchPatients]);
 
     const createPatient = useCallback(async (patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await patientsService.create(patient);
@@ -140,11 +173,18 @@ export function useActivePatients() {
     const [patients, setPatients] = useState<Patient[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        patientsService.getActive()
-            .then(setPatients)
-            .finally(() => setIsLoading(false));
+    const fetchActivePatients = useCallback(async () => {
+        try {
+            const data = await patientsService.getActive();
+            setPatients(data);
+        } catch (error) {
+            console.error('Error fetching active patients:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
+
+    useAutoRefresh(fetchActivePatients, [fetchActivePatients]);
 
     return { patients, isLoading };
 }
@@ -168,20 +208,7 @@ export function useFormulas() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchFormulas();
-
-        const subscription = supabase
-            .channel('formulas_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'formulas' }, () => {
-                fetchFormulas();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchFormulas]);
+    useAutoRefresh(fetchFormulas, [fetchFormulas]);
 
     const createFormula = useCallback(async (formula: Omit<Formula, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await formulasService.create(formula);
@@ -235,11 +262,18 @@ export function useFormulasBySystem(systemType: 'open' | 'closed') {
     const [formulas, setFormulas] = useState<Formula[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        formulasService.getBySystem(systemType)
-            .then(setFormulas)
-            .finally(() => setIsLoading(false));
+    const fetchFormulasBySystem = useCallback(async () => {
+        try {
+            const data = await formulasService.getBySystem(systemType);
+            setFormulas(data);
+        } catch (error) {
+            console.error('Error fetching formulas by system:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, [systemType]);
+
+    useAutoRefresh(fetchFormulasBySystem, [fetchFormulasBySystem]);
 
     return { formulas, isLoading };
 }
@@ -263,20 +297,7 @@ export function useModules() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchModules();
-
-        const subscription = supabase
-            .channel('modules_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'modules' }, () => {
-                fetchModules();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchModules]);
+    useAutoRefresh(fetchModules, [fetchModules]);
 
     const createModule = useCallback(async (module: Omit<Module, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await modulesService.create(module);
@@ -323,20 +344,7 @@ export function useSupplies() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchSupplies();
-
-        const subscription = supabase
-            .channel('supplies_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'supplies' }, () => {
-                fetchSupplies();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchSupplies]);
+    useAutoRefresh(fetchSupplies, [fetchSupplies]);
 
     const createSupply = useCallback(async (supply: Omit<Supply, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await suppliesService.create(supply);
@@ -388,20 +396,7 @@ export function useProfessionals(hospitalId?: string) {
         }
     }, [hospitalId]);
 
-    useEffect(() => {
-        fetchProfessionals();
-
-        const subscription = supabase
-            .channel('professionals_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'professionals' }, () => {
-                fetchProfessionals();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchProfessionals]);
+    useAutoRefresh(fetchProfessionals, [fetchProfessionals]);
 
     const createProfessional = useCallback(async (professional: Omit<Professional, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await professionalsService.create(professional);
@@ -448,20 +443,7 @@ export function usePrescriptions() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchPrescriptions();
-
-        const subscription = supabase
-            .channel('prescriptions_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'prescriptions' }, () => {
-                fetchPrescriptions();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchPrescriptions]);
+    useAutoRefresh(fetchPrescriptions, [fetchPrescriptions]);
 
     const createPrescription = useCallback(async (prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await prescriptionsService.create(prescription);
@@ -510,16 +492,24 @@ export function usePatientPrescriptions(patientId: string | undefined) {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        if (patientId) {
-            prescriptionsService.getByPatient(patientId)
-                .then(setPrescriptions)
-                .finally(() => setIsLoading(false));
-        } else {
+    const fetchPatientPrescriptions = useCallback(async () => {
+        if (!patientId) {
             setPrescriptions([]);
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const data = await prescriptionsService.getByPatient(patientId);
+            setPrescriptions(data);
+        } catch (error) {
+            console.error('Error fetching patient prescriptions:', error);
+        } finally {
             setIsLoading(false);
         }
     }, [patientId]);
+
+    useAutoRefresh(fetchPatientPrescriptions, [fetchPatientPrescriptions]);
 
     return { prescriptions, isLoading };
 }
@@ -528,11 +518,18 @@ export function useActivePrescriptions() {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        prescriptionsService.getActive()
-            .then(setPrescriptions)
-            .finally(() => setIsLoading(false));
+    const fetchActivePrescriptions = useCallback(async () => {
+        try {
+            const data = await prescriptionsService.getActive();
+            setPrescriptions(data);
+        } catch (error) {
+            console.error('Error fetching active prescriptions:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
+
+    useAutoRefresh(fetchActivePrescriptions, [fetchActivePrescriptions]);
 
     return { prescriptions, isLoading };
 }
@@ -556,20 +553,7 @@ export function useEvolutions() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchEvolutions();
-
-        const subscription = supabase
-            .channel('evolutions_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_evolutions' }, () => {
-                fetchEvolutions();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchEvolutions]);
+    useAutoRefresh(fetchEvolutions, [fetchEvolutions]);
 
     const createEvolution = useCallback(async (evolution: Omit<DailyEvolution, 'id' | 'createdAt'>) => {
         const id = await evolutionsService.create(evolution);
@@ -601,16 +585,24 @@ export function usePatientEvolutions(patientId: string | undefined) {
     const [evolutions, setEvolutions] = useState<DailyEvolution[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        if (patientId) {
-            evolutionsService.getByPatient(patientId)
-                .then(setEvolutions)
-                .finally(() => setIsLoading(false));
-        } else {
+    const fetchPatientEvolutions = useCallback(async () => {
+        if (!patientId) {
             setEvolutions([]);
+            setIsLoading(false);
+            return;
+        }
+
+        try {
+            const data = await evolutionsService.getByPatient(patientId);
+            setEvolutions(data);
+        } catch (error) {
+            console.error('Error fetching patient evolutions:', error);
+        } finally {
             setIsLoading(false);
         }
     }, [patientId]);
+
+    useAutoRefresh(fetchPatientEvolutions, [fetchPatientEvolutions]);
 
     return { evolutions, isLoading };
 }
@@ -634,20 +626,7 @@ export function useClinics() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchClinics();
-
-        const subscription = supabase
-            .channel('clinics_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'clinics' }, () => {
-                fetchClinics();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchClinics]);
+    useAutoRefresh(fetchClinics, [fetchClinics]);
 
     const createClinic = useCallback(async (clinic: Omit<Clinic, 'id' | 'createdAt'>) => {
         const id = await clinicsService.create(clinic);
@@ -694,20 +673,7 @@ export function useHospitals() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchHospitals();
-
-        const subscription = supabase
-            .channel('hospitals_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'hospitals' }, () => {
-                fetchHospitals();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchHospitals]);
+    useAutoRefresh(fetchHospitals, [fetchHospitals]);
 
     const createHospital = useCallback(async (hospital: Omit<Hospital, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await hospitalsService.create(hospital);
@@ -756,20 +722,7 @@ export function useWards(hospitalId?: string) {
         }
     }, [hospitalId]);
 
-    useEffect(() => {
-        fetchWards();
-
-        const subscription = supabase
-            .channel('wards_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wards' }, () => {
-                fetchWards();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchWards]);
+    useAutoRefresh(fetchWards, [fetchWards]);
 
     const createWard = useCallback(async (ward: Omit<Ward, 'id' | 'createdAt'>) => {
         const id = await wardsService.create(ward);
@@ -816,20 +769,7 @@ export function useSettings() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchSettings();
-
-        const subscription = supabase
-            .channel('settings_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
-                fetchSettings();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchSettings]);
+    useAutoRefresh(fetchSettings, [fetchSettings]);
 
     const saveSettings = useCallback(async (data: Omit<AppSettings, 'id' | 'createdAt' | 'updatedAt'>) => {
         await settingsService.save(data);
@@ -863,20 +803,7 @@ export function useAppTools() {
         }
     }, []);
 
-    useEffect(() => {
-        fetchTools();
-
-        const subscription = supabase
-            .channel('app_tools_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'app_tools' }, () => {
-                fetchTools();
-            })
-            .subscribe();
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [fetchTools]);
+    useAutoRefresh(fetchTools, [fetchTools]);
 
     return {
         tools,
@@ -1004,33 +931,31 @@ export function useDashboardData() {
     });
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const today = new Date().toISOString().split('T')[0];
+    const fetchDashboardData = useCallback(async () => {
+        try {
+            const today = new Date().toISOString().split('T')[0];
 
-                const [patients, prescriptions, evolutions, formulas] = await Promise.all([
-                    patientsService.getAll(),
-                    prescriptionsService.getActive(),
-                    evolutionsService.getByDate(today),
-                    formulasService.getAll()
-                ]);
+            const [patients, prescriptions, evolutions, formulas] = await Promise.all([
+                patientsService.getAll(),
+                prescriptionsService.getActive(),
+                evolutionsService.getByDate(today),
+                formulasService.getAll()
+            ]);
 
-                setData({
-                    patientsCount: patients.length,
-                    activePrescriptions: prescriptions.length,
-                    todayEvolutions: evolutions.length,
-                    formulasCount: formulas.length
-                });
-            } catch (error) {
-                console.error('Error fetching dashboard data:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchData();
+            setData({
+                patientsCount: patients.length,
+                activePrescriptions: prescriptions.length,
+                todayEvolutions: evolutions.length,
+                formulasCount: formulas.length
+            });
+        } catch (error) {
+            console.error('Error fetching dashboard data:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, []);
+
+    useAutoRefresh(fetchDashboardData, [fetchDashboardData]);
 
     return { ...data, isLoading };
 }
@@ -1039,24 +964,22 @@ export function useLabelData(date?: string) {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const targetDate = date || new Date().toISOString().split('T')[0];
-                const active = await prescriptionsService.getActive();
-                const filtered = active.filter(p =>
-                    p.startDate <= targetDate && (!p.endDate || p.endDate >= targetDate)
-                );
-                setPrescriptions(filtered);
-            } catch (error) {
-                console.error('Error fetching label data:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchData();
+    const fetchLabelData = useCallback(async () => {
+        try {
+            const targetDate = date || new Date().toISOString().split('T')[0];
+            const active = await prescriptionsService.getActive();
+            const filtered = active.filter(p =>
+                p.startDate <= targetDate && (!p.endDate || p.endDate >= targetDate)
+            );
+            setPrescriptions(filtered);
+        } catch (error) {
+            console.error('Error fetching label data:', error);
+        } finally {
+            setIsLoading(false);
+        }
     }, [date]);
+
+    useAutoRefresh(fetchLabelData, [fetchLabelData]);
 
     return { prescriptions, isLoading };
 }
