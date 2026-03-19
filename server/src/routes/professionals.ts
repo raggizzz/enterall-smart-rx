@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, getScopedHospitalId, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -42,11 +43,16 @@ const buildProfessionalPayload = async (body: any) => {
 
 router.get('/', async (req, res) => {
   try {
-    const hospitalId = typeof req.query.hospitalId === 'string' ? req.query.hospitalId : undefined;
+    const hospitalId = getScopedHospitalId(req, req.query.hospitalId);
+    if (!hospitalId) {
+      res.status(400).json({ error: 'Hospital scope is required' });
+      return;
+    }
+
     const professionals = await prisma.professional.findMany({
       where: {
         isActive: true,
-        ...(hospitalId ? { hospitalId } : {}),
+        hospitalId,
       },
       orderBy: { name: 'asc' },
     });
@@ -58,10 +64,16 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
       const data = await buildProfessionalPayload(req.body);
       const created = await prisma.professional.create({
-        data,
+        data: {
+          ...data,
+          hospitalId,
+        },
       });
       return { statusCode: 201, body: sanitizeProfessional(created) };
     });
@@ -72,13 +84,16 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
-      const current = await prisma.professional.findUnique({
-        where: { id: req.params.id },
-        select: { version: true },
+      const current = await prisma.professional.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { version: true, hospitalId: true },
       });
 
-      if (!current) {
+      if (!ensureScopedEntity(current, hospitalId)) {
         return { statusCode: 404, body: { error: 'Professional not found' } };
       }
 
@@ -89,6 +104,7 @@ router.put('/:id', async (req, res) => {
         where: { id: req.params.id },
         data: {
           ...data,
+          hospitalId,
           version: { increment: 1 },
         },
       });

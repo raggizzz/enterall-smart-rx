@@ -1,13 +1,17 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     const supplies = await prisma.supply.findMany({
-      where: { isActive: true },
+      where: { isActive: true, hospitalId },
       orderBy: { name: 'asc' },
     });
     res.json(supplies);
@@ -18,9 +22,15 @@ router.get('/', async (_req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
       const created = await prisma.supply.create({
-        data: req.body,
+        data: {
+          ...req.body,
+          hospitalId,
+        },
       });
       return { statusCode: 201, body: created };
     });
@@ -31,13 +41,16 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
-      const current = await prisma.supply.findUnique({
-        where: { id: req.params.id },
-        select: { version: true },
+      const current = await prisma.supply.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { version: true, hospitalId: true },
       });
 
-      if (!current) {
+      if (!ensureScopedEntity(current, hospitalId)) {
         return { statusCode: 404, body: { error: 'Supply not found' } };
       }
 
@@ -47,6 +60,7 @@ router.put('/:id', async (req, res) => {
         where: { id: req.params.id },
         data: {
           ...req.body,
+          hospitalId,
           version: { increment: 1 },
         },
       });

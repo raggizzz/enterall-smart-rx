@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -73,8 +74,8 @@ const mapPrescriptionToClient = (prescription: any) => ({
     })),
 });
 
-const buildPrescriptionData = (payload: any) => ({
-    hospitalId: payload.hospitalId || undefined,
+const buildPrescriptionData = (payload: any, hospitalId: string) => ({
+    hospitalId,
     patientId: payload.patientId,
     patientName: payload.patientName || undefined,
     patientRecord: payload.patientRecord || undefined,
@@ -151,10 +152,94 @@ const buildSupplyCreates = (supplies?: any[]) =>
             }))
         : [];
 
+const ensurePrescriptionReferences = async ({
+    hospitalId,
+    patientId,
+    professionalId,
+    formulas,
+    modules,
+    supplies,
+}: {
+    hospitalId: string;
+    patientId: string;
+    professionalId?: string;
+    formulas?: any[];
+    modules?: any[];
+    supplies?: any[];
+}) => {
+    const patient = await prisma.patient.findFirst({
+        where: { id: patientId, hospitalId, isActive: true },
+        select: { id: true, hospitalId: true },
+    });
+
+    if (!ensureScopedEntity(patient, hospitalId)) {
+        return { ok: false as const, error: 'Patient not found' };
+    }
+
+    if (professionalId) {
+        const professional = await prisma.professional.findFirst({
+            where: { id: professionalId, hospitalId, isActive: true },
+            select: { id: true, hospitalId: true },
+        });
+
+        if (!ensureScopedEntity(professional, hospitalId)) {
+            return { ok: false as const, error: 'Professional not found' };
+        }
+    }
+
+    const formulaIds = Array.isArray(formulas)
+        ? formulas
+            .map((formula) => typeof formula?.formulaId === 'string' ? formula.formulaId.trim() : '')
+            .filter(Boolean)
+        : [];
+    if (formulaIds.length > 0) {
+        const count = await prisma.formula.count({
+            where: { id: { in: formulaIds }, hospitalId, isActive: true },
+        });
+        if (count !== formulaIds.length) {
+            return { ok: false as const, error: 'Formula not found' };
+        }
+    }
+
+    const moduleIds = Array.isArray(modules)
+        ? modules
+            .map((module) => typeof module?.moduleId === 'string' ? module.moduleId.trim() : '')
+            .filter(Boolean)
+        : [];
+    if (moduleIds.length > 0) {
+        const count = await prisma.module.count({
+            where: { id: { in: moduleIds }, hospitalId, isActive: true },
+        });
+        if (count !== moduleIds.length) {
+            return { ok: false as const, error: 'Module not found' };
+        }
+    }
+
+    const supplyIds = Array.isArray(supplies)
+        ? supplies
+            .map((supply) => typeof supply?.supplyId === 'string' ? supply.supplyId.trim() : '')
+            .filter(Boolean)
+        : [];
+    if (supplyIds.length > 0) {
+        const count = await prisma.supply.count({
+            where: { id: { in: supplyIds }, hospitalId, isActive: true },
+        });
+        if (count !== supplyIds.length) {
+            return { ok: false as const, error: 'Supply not found' };
+        }
+    }
+
+    return { ok: true as const };
+};
+
 // Get all active prescriptions
 router.get('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const prescriptions = await prisma.prescription.findMany({
+            where: { hospitalId },
             include: {
                 patient: { include: { ward: true } },
                 professional: true,
@@ -174,8 +259,11 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const prescription = await prisma.prescription.findUnique({
-            where: { id: req.params.id },
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
+        const prescription = await prisma.prescription.findFirst({
+            where: { id: req.params.id, hospitalId },
             include: {
                 patient: { include: { ward: true } },
                 professional: true,
@@ -186,7 +274,7 @@ router.get('/:id', async (req, res) => {
             },
         });
 
-        if (!prescription) {
+        if (!ensureScopedEntity(prescription, hospitalId)) {
             res.status(404).json({ error: 'Prescription not found' });
             return;
         }
@@ -200,9 +288,25 @@ router.get('/:id', async (req, res) => {
 // Create a new prescription
 router.post('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { formulas, modules, supplies, ...prescriptionData } = req.body;
-            const normalizedData = buildPrescriptionData(prescriptionData);
+            const normalizedData = buildPrescriptionData(prescriptionData, hospitalId);
+
+            const referenceCheck = await ensurePrescriptionReferences({
+                hospitalId,
+                patientId: normalizedData.patientId,
+                professionalId: normalizedData.professionalId || undefined,
+                formulas,
+                modules,
+                supplies,
+            });
+
+            if (!referenceCheck.ok) {
+                return { statusCode: 404, body: { error: referenceCheck.error } };
+            }
 
             const previousEndDate = normalizedData.startDate
                 ? new Date(normalizedData.startDate.getTime())
@@ -214,6 +318,7 @@ router.post('/', async (req, res) => {
             if (normalizedData.patientId && normalizedData.therapyType) {
                 const previousActivePrescriptions = await prisma.prescription.findMany({
                     where: {
+                        hospitalId,
                         patientId: normalizedData.patientId,
                         therapyType: normalizedData.therapyType,
                         status: 'active',
@@ -279,25 +384,41 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         if (!req.body || typeof req.body !== 'object') {
             res.status(400).json({ error: 'Prescription payload is required' });
             return;
         }
 
         await withIdempotency(prisma, req, res, async () => {
-            const current = await prisma.prescription.findUnique({
-                where: { id },
-                select: { version: true },
+            const current = await prisma.prescription.findFirst({
+                where: { id, hospitalId },
+                select: { version: true, hospitalId: true },
             });
 
-            if (!current) {
+            if (!ensureScopedEntity(current, hospitalId)) {
                 return { statusCode: 404, body: { error: 'Prescription not found' } };
             }
 
             assertExpectedVersion(current.version, resolveExpectedVersion(req), 'prescription');
 
             const { formulas, modules, supplies, ...prescriptionData } = req.body;
-            const normalizedData = buildPrescriptionData(prescriptionData);
+            const normalizedData = buildPrescriptionData(prescriptionData, hospitalId);
+
+            const referenceCheck = await ensurePrescriptionReferences({
+                hospitalId,
+                patientId: normalizedData.patientId,
+                professionalId: normalizedData.professionalId || undefined,
+                formulas,
+                modules,
+                supplies,
+            });
+
+            if (!referenceCheck.ok) {
+                return { statusCode: 404, body: { error: referenceCheck.error } };
+            }
 
             await prisma.$transaction([
                 prisma.prescriptionFormula.deleteMany({ where: { prescriptionId: id } }),
@@ -343,6 +464,9 @@ router.put('/:id', async (req, res) => {
 router.put('/:id/status', async (req, res) => {
     try {
         const { id } = req.params;
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         if (!req.body || typeof req.body !== 'object') {
             res.status(400).json({ error: 'Prescription status payload is required' });
             return;
@@ -357,16 +481,17 @@ router.put('/:id/status', async (req, res) => {
                     : undefined,
         );
 
-        const current = await prisma.prescription.findUnique({
-            where: { id },
+        const current = await prisma.prescription.findFirst({
+            where: { id, hospitalId },
             select: {
                 id: true,
+                hospitalId: true,
                 status: true,
                 version: true,
             },
         });
 
-        if (!current) {
+        if (!ensureScopedEntity(current, hospitalId)) {
             res.status(404).json({ error: 'Prescription not found' });
             return;
         }
@@ -415,6 +540,19 @@ router.put('/:id/status', async (req, res) => {
 
 router.get('/:id/history', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
+        const prescription = await prisma.prescription.findFirst({
+            where: { id: req.params.id, hospitalId },
+            select: { id: true, hospitalId: true },
+        });
+
+        if (!ensureScopedEntity(prescription, hospitalId)) {
+            res.status(404).json({ error: 'Prescription not found' });
+            return;
+        }
+
         const events = await prisma.prescriptionStatusEvent.findMany({
             where: { prescriptionId: req.params.id },
             orderBy: { createdAt: 'desc' },
@@ -437,8 +575,20 @@ router.get('/:id/history', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
+            const current = await prisma.prescription.findFirst({
+                where: { id, hospitalId },
+                select: { id: true, hospitalId: true },
+            });
+
+            if (!ensureScopedEntity(current, hospitalId)) {
+                return { statusCode: 404, body: { error: 'Prescription not found' } };
+            }
+
             await prisma.prescription.delete({ where: { id } });
             return { body: { success: true } };
         });

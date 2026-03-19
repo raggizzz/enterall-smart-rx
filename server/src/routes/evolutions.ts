@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -46,7 +47,7 @@ const mapEvolutionToClient = (evo: any) => ({
     unintentionalCalories: evo.unintentionalCalories ? JSON.parse(evo.unintentionalCalories) : undefined,
 });
 
-const buildEvolutionPayload = (payload: any) => {
+const buildEvolutionPayload = (payload: any, hospitalId: string) => {
     const intercurrenceNotes = Array.isArray(payload.intercurrences) && payload.intercurrences.length > 0
         ? payload.intercurrences.join(' | ')
         : undefined;
@@ -56,7 +57,7 @@ const buildEvolutionPayload = (payload: any) => {
     const mergedNotes = [intercurrenceNotes, providedNotes].filter(Boolean).join(' | ') || undefined;
 
     return {
-        hospitalId: payload.hospitalId || undefined,
+        hospitalId,
         patientId: payload.patientId,
         prescriptionId: payload.prescriptionId || undefined,
         professionalId: payload.professionalId || undefined,
@@ -87,7 +88,11 @@ const buildEvolutionPayload = (payload: any) => {
 
 router.get('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const evolutions = await prisma.dailyEvolution.findMany({
+            where: { hospitalId },
             orderBy: { date: 'desc' }
         });
         res.json(evolutions.map(mapEvolutionToClient));
@@ -98,9 +103,12 @@ router.get('/', async (req, res) => {
 
 router.get('/patient/:patientId', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const { patientId } = req.params;
         const evolutions = await prisma.dailyEvolution.findMany({
-            where: { patientId },
+            where: { patientId, hospitalId },
             orderBy: { date: 'desc' }
         });
         res.json(evolutions.map(mapEvolutionToClient));
@@ -111,13 +119,29 @@ router.get('/patient/:patientId', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
-            const payload = buildEvolutionPayload(req.body);
+            const payload = buildEvolutionPayload(req.body, hospitalId);
             const targetDate = payload.date;
+
+            const patient = await prisma.patient.findFirst({
+                where: {
+                    id: payload.patientId,
+                    hospitalId,
+                },
+                select: { id: true, hospitalId: true },
+            });
+
+            if (!ensureScopedEntity(patient, hospitalId)) {
+                return { statusCode: 404, body: { error: 'Patient not found' } };
+            }
 
             const existingEvolution = targetDate
                 ? await prisma.dailyEvolution.findFirst({
                     where: {
+                        hospitalId,
                         patientId: payload.patientId,
                         date: targetDate,
                         prescriptionId: payload.prescriptionId || null,
@@ -146,14 +170,17 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
-            const current = await prisma.dailyEvolution.findUnique({
-                where: { id },
-                select: { version: true },
+            const current = await prisma.dailyEvolution.findFirst({
+                where: { id, hospitalId },
+                select: { version: true, hospitalId: true },
             });
 
-            if (!current) {
+            if (!ensureScopedEntity(current, hospitalId)) {
                 return { statusCode: 404, body: { error: 'Evolution not found' } };
             }
 
@@ -162,7 +189,7 @@ router.put('/:id', async (req, res) => {
             const updatedEvo = await prisma.dailyEvolution.update({
                 where: { id },
                 data: {
-                    ...buildEvolutionPayload(req.body),
+                    ...buildEvolutionPayload(req.body, hospitalId),
                     version: { increment: 1 },
                 },
             });
@@ -179,8 +206,20 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
+            const current = await prisma.dailyEvolution.findFirst({
+                where: { id, hospitalId },
+                select: { id: true, hospitalId: true },
+            });
+
+            if (!ensureScopedEntity(current, hospitalId)) {
+                return { statusCode: 404, body: { error: 'Evolution not found' } };
+            }
+
             await prisma.dailyEvolution.delete({ where: { id } });
             return { statusCode: 204, body: null as unknown as { success: boolean } };
         });

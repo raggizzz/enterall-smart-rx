@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const wards = await prisma.ward.findMany();
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
+    const wards = await prisma.ward.findMany({
+      where: { hospitalId },
+    });
     res.json(wards);
   } catch (error) {
     console.error('Error fetching wards:', error);
@@ -16,8 +22,11 @@ router.get('/', async (_req, res) => {
 
 router.get('/hospital/:hospitalId', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res, req.params.hospitalId);
+    if (!hospitalId) return;
+
     const wards = await prisma.ward.findMany({
-      where: { hospitalId: req.params.hospitalId },
+      where: { hospitalId },
     });
     res.json(wards);
   } catch (error) {
@@ -28,8 +37,16 @@ router.get('/hospital/:hospitalId', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
-      const created = await prisma.ward.create({ data: req.body });
+      const created = await prisma.ward.create({
+        data: {
+          ...req.body,
+          hospitalId,
+        },
+      });
       return { statusCode: 201, body: created };
     });
   } catch {
@@ -39,13 +56,16 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
-      const current = await prisma.ward.findUnique({
-        where: { id: req.params.id },
-        select: { version: true },
+      const current = await prisma.ward.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { version: true, hospitalId: true },
       });
 
-      if (!current) {
+      if (!ensureScopedEntity(current, hospitalId)) {
         return { statusCode: 404, body: { error: 'Ward not found' } };
       }
 
@@ -55,6 +75,7 @@ router.put('/:id', async (req, res) => {
         where: { id: req.params.id },
         data: {
           ...req.body,
+          hospitalId,
           version: { increment: 1 },
         },
       });
@@ -72,7 +93,19 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
+      const current = await prisma.ward.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { id: true, hospitalId: true },
+      });
+
+      if (!ensureScopedEntity(current, hospitalId)) {
+        return { statusCode: 404, body: { error: 'Ward not found' } };
+      }
+
       await prisma.ward.delete({ where: { id: req.params.id } });
       return { statusCode: 204, body: null as unknown as { success: boolean } };
     });

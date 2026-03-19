@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -13,8 +14,8 @@ const toNumber = (value: unknown) => {
   return undefined;
 };
 
-const buildModulePayload = (payload: any) => ({
-  hospitalId: payload.hospitalId || undefined,
+const buildModulePayload = (payload: any, hospitalId: string) => ({
+  hospitalId,
   name: payload.name,
   description: payload.description || undefined,
   density: toNumber(payload.density) ?? 0,
@@ -39,10 +40,13 @@ const buildModulePayload = (payload: any) => ({
   isActive: payload.isActive !== false,
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     const modules = await prisma.module.findMany({
-      where: { isActive: true },
+      where: { isActive: true, hospitalId },
       orderBy: { name: 'asc' },
     });
     res.json(modules);
@@ -53,9 +57,12 @@ router.get('/', async (_req, res) => {
 
 router.post('/', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
       const created = await prisma.module.create({
-        data: buildModulePayload(req.body),
+        data: buildModulePayload(req.body, hospitalId),
       });
       return { statusCode: 201, body: created };
     });
@@ -66,13 +73,16 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
     await withIdempotency(prisma, req, res, async () => {
-      const current = await prisma.module.findUnique({
-        where: { id: req.params.id },
-        select: { version: true },
+      const current = await prisma.module.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { version: true, hospitalId: true },
       });
 
-      if (!current) {
+      if (!ensureScopedEntity(current, hospitalId)) {
         return { statusCode: 404, body: { error: 'Module not found' } };
       }
 
@@ -81,7 +91,7 @@ router.put('/:id', async (req, res) => {
       const updated = await prisma.module.update({
         where: { id: req.params.id },
         data: {
-          ...buildModulePayload(req.body),
+          ...buildModulePayload(req.body, hospitalId),
           version: { increment: 1 },
         },
       });

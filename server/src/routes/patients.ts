@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -79,8 +80,8 @@ const resolveWardId = async (hospitalId?: string, ward?: string, wardId?: string
     return wardRecord?.id;
 };
 
-const buildPatientData = async (payload: any) => {
-    const wardId = await resolveWardId(payload.hospitalId, payload.ward, payload.wardId);
+const buildPatientData = async (payload: any, hospitalId: string) => {
+    const wardId = await resolveWardId(hospitalId, payload.ward, payload.wardId);
     const weight = typeof payload.weight === 'number' ? payload.weight : undefined;
     const targetKcal = payload.tneGoals?.targetKcalPerKg && weight
         ? payload.tneGoals.targetKcalPerKg * weight
@@ -110,12 +111,12 @@ const buildPatientData = async (payload: any) => {
         consistency: payload.consistency || undefined,
         safeConsistency: payload.safeConsistency || undefined,
         mealCount: typeof payload.mealCount === 'number' ? payload.mealCount : undefined,
-        hospitalId: payload.hospitalId || undefined,
+        hospitalId,
         wardId,
     };
 };
 
-const buildPatientUpdateData = async (payload: Record<string, unknown>) => {
+const buildPatientUpdateData = async (payload: Record<string, unknown>, hospitalId: string) => {
     const data: Record<string, unknown> = {};
 
     if (hasOwn(payload, 'name')) {
@@ -169,16 +170,14 @@ const buildPatientUpdateData = async (payload: Record<string, unknown>) => {
         }
     }
 
-    if (hasOwn(payload, 'hospitalId')) {
-        data.hospitalId = toOptionalString(payload.hospitalId);
-    }
+    data.hospitalId = hospitalId;
 
     if (hasOwn(payload, 'wardId')) {
         data.wardId = toOptionalString(payload.wardId);
     } else if (hasOwn(payload, 'ward')) {
         const hospitalId = typeof data.hospitalId === 'string'
             ? data.hospitalId
-            : (typeof payload.hospitalId === 'string' ? payload.hospitalId : undefined);
+            : hospitalId;
         data.wardId = await resolveWardId(hospitalId, typeof payload.ward === 'string' ? payload.ward : undefined) ?? null;
     }
 
@@ -188,8 +187,11 @@ const buildPatientUpdateData = async (payload: Record<string, unknown>) => {
 // Get all active patients
 router.get('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const patients = await prisma.patient.findMany({
-            where: { isActive: true },
+            where: { isActive: true, hospitalId },
             include: {
                 ward: true,
                 evolutions: {
@@ -207,8 +209,11 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const patient = await prisma.patient.findUnique({
-            where: { id: req.params.id },
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
+        const patient = await prisma.patient.findFirst({
+            where: { id: req.params.id, hospitalId },
             include: {
                 ward: true,
                 evolutions: {
@@ -218,7 +223,7 @@ router.get('/:id', async (req, res) => {
             },
         });
 
-        if (!patient) {
+        if (!ensureScopedEntity(patient, hospitalId)) {
             res.status(404).json({ error: 'Patient not found' });
             return;
         }
@@ -232,9 +237,12 @@ router.get('/:id', async (req, res) => {
 // Create a new patient
 router.post('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const newPatient = await prisma.patient.create({
-                data: await buildPatientData(req.body)
+                data: await buildPatientData(req.body, hospitalId)
             });
             return { statusCode: 201, body: { id: newPatient.id, version: newPatient.version } };
         });
@@ -246,14 +254,17 @@ router.post('/', async (req, res) => {
 // Update a patient
 router.put('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
-            const current = await prisma.patient.findUnique({
-                where: { id },
-                select: { version: true },
+            const current = await prisma.patient.findFirst({
+                where: { id, hospitalId },
+                select: { version: true, hospitalId: true },
             });
 
-            if (!current) {
+            if (!ensureScopedEntity(current, hospitalId)) {
                 return { statusCode: 404, body: { error: 'Patient not found' } };
             }
 
@@ -262,7 +273,7 @@ router.put('/:id', async (req, res) => {
             const updated = await prisma.patient.update({
                 where: { id },
                 data: {
-                    ...(await buildPatientUpdateData(req.body as Record<string, unknown>)),
+                    ...(await buildPatientUpdateData(req.body as Record<string, unknown>, hospitalId)),
                     version: { increment: 1 },
                 }
             });
@@ -280,8 +291,20 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
+            const current = await prisma.patient.findFirst({
+                where: { id, hospitalId },
+                select: { id: true, hospitalId: true },
+            });
+
+            if (!ensureScopedEntity(current, hospitalId)) {
+                return { statusCode: 404, body: { error: 'Patient not found' } };
+            }
+
             await prisma.patient.update({
                 where: { id },
                 data: { isActive: false, version: { increment: 1 } },

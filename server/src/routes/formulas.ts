@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
 
 const router = Router();
@@ -26,8 +27,8 @@ const mapFormulaToClient = (formula: any) => ({
     administrationRoutes: formula.administrationRoutes ? JSON.parse(formula.administrationRoutes) : undefined,
 });
 
-const buildFormulaPayload = (payload: any) => ({
-    hospitalId: payload.hospitalId || undefined,
+const buildFormulaPayload = (payload: any, hospitalId: string) => ({
+    hospitalId,
     code: payload.code || undefined,
     name: payload.name,
     manufacturer: payload.manufacturer || undefined,
@@ -75,8 +76,11 @@ const buildFormulaPayload = (payload: any) => ({
 
 router.get('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const formulas = await prisma.formula.findMany({
-            where: { isActive: true },
+            where: { isActive: true, hospitalId },
             orderBy: { name: 'asc' }
         });
         res.json(formulas.map(mapFormulaToClient));
@@ -87,11 +91,14 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
     try {
-        const formula = await prisma.formula.findUnique({
-            where: { id: req.params.id },
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
+        const formula = await prisma.formula.findFirst({
+            where: { id: req.params.id, hospitalId },
         });
 
-        if (!formula) {
+        if (!ensureScopedEntity(formula, hospitalId)) {
             res.status(404).json({ error: 'Formula not found' });
             return;
         }
@@ -104,9 +111,12 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const newFormula = await prisma.formula.create({
-                data: buildFormulaPayload(req.body)
+                data: buildFormulaPayload(req.body, hospitalId)
             });
             return { statusCode: 201, body: { id: newFormula.id, version: newFormula.version } };
         });
@@ -117,14 +127,17 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         await withIdempotency(prisma, req, res, async () => {
             const { id } = req.params;
-            const current = await prisma.formula.findUnique({
-                where: { id },
-                select: { version: true },
+            const current = await prisma.formula.findFirst({
+                where: { id, hospitalId },
+                select: { version: true, hospitalId: true },
             });
 
-            if (!current) {
+            if (!ensureScopedEntity(current, hospitalId)) {
                 return { statusCode: 404, body: { error: 'Formula not found' } };
             }
 
@@ -133,7 +146,7 @@ router.put('/:id', async (req, res) => {
             const updated = await prisma.formula.update({
                 where: { id },
                 data: {
-                    ...buildFormulaPayload(req.body),
+                    ...buildFormulaPayload(req.body, hospitalId),
                     version: { increment: 1 },
                 }
             });

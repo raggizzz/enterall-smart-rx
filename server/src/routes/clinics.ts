@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireScopedHospitalId } from '../lib/hospital-scope';
 
 const router = Router();
 const prisma = new PrismaClient({
@@ -16,10 +17,13 @@ const mapWardToClinic = (ward: any) => ({
     createdAt: ward.createdAt?.toISOString?.() || new Date().toISOString(),
 });
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
     try {
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const wards = await prisma.ward.findMany({
-            where: { isActive: true },
+            where: { isActive: true, hospitalId },
             orderBy: { name: 'asc' },
         });
 
