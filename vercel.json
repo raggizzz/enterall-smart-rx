@@ -2,6 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/health",
+      "destination": "https://citation-cingular-loves-dining.trycloudflare.com/health"
+    },
+    {
+      "source": "/health/:path*",
+      "destination": "https://citation-cingular-loves-dining.trycloudflare.com/health/:path*"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://citation-cingular-loves-dining.trycloudflare.com/api/:path*"
     }

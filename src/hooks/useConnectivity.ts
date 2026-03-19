@@ -10,6 +10,10 @@ const resolveHealthUrl = () => {
     return "http://localhost:3000/health";
   }
 
+  if (import.meta.env.PROD) {
+    return `${window.location.origin}/health`;
+  }
+
   const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) || "3000";
   const { protocol, hostname } = window.location;
   return `${protocol}//${hostname}:${apiPort}/health`;

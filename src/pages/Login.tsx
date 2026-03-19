@@ -29,7 +29,7 @@ const Login = () => {
     role: "nutritionist",
   });
   const { professionals } = useProfessionals(formData.hospital || undefined);
-  const { hospitals } = useHospitals();
+  const { hospitals, isLoading: hospitalsLoading } = useHospitals();
 
   const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
   const hospitalProfessionals = professionals;
@@ -58,7 +58,7 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.hospital || !formData.identifier || !formData.password) {
+    if (!formData.hospital || !formData.identifier || !formData.password || !formData.role) {
       toast.error("Preencha todos os campos.");
       return;
     }
@@ -164,6 +164,26 @@ const Login = () => {
             <CardContent>
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="hospital">Hospital</Label>
+                  <Select
+                    value={formData.hospital}
+                    onValueChange={(value) => setFormData({ ...formData, hospital: value })}
+                    disabled={hospitalsLoading || hospitals.length === 0}
+                  >
+                    <SelectTrigger id="hospital">
+                      <SelectValue placeholder={hospitalsLoading ? "Carregando hospitais..." : "Selecione o hospital"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hospitals.map((hospital) => (
+                        <SelectItem key={hospital.id} value={hospital.id || ""}>
+                          {hospital.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="role">Funcao</Label>
                   <Select
                     value={formData.role}
@@ -229,7 +249,7 @@ const Login = () => {
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full" size="lg">
+                <Button type="submit" className="w-full" size="lg" disabled={hospitalsLoading || hospitals.length === 0}>
                   Entrar
                 </Button>
               </form>
