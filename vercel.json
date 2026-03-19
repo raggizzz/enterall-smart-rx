@@ -12,6 +12,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://citation-cingular-loves-dining.trycloudflare.com/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
