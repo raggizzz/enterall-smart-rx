@@ -2234,7 +2234,134 @@ const PrescriptionNew = () => {
                     <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.freeWaterPerKgIdeal !== null ? `${nutritionSummary.freeWaterPerKg} ml/kg PA | ${nutritionSummary.freeWaterPerKgIdeal} ml/kg PI` : `${nutritionSummary.freeWaterPerKg} ml/kg`})</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
-                  <Collapsible open={showDetails} onOpenChange={setShowDetails}><CollapsibleTrigger asChild><Button variant="outline" className="w-full"><ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />{showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}</Button></CollapsibleTrigger><CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-2"><p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>{systemType === "closed" && closedFormula.formulaId && <><p><strong>Fórmula:</strong> {availableFormulas.find(f => f.id === closedFormula.formulaId)?.name}</p><p><strong>Infusão:</strong> {closedFormula.rate} {closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"} por {closedFormula.duration}h</p></>}{systemType === "open" && equipmentVolume && <p><strong>Volume para equipo:</strong> {equipmentVolume} ml por frasco</p>}{modules.length > 0 && <p><strong>Módulos:</strong> {modules.map(m => availableModules.find(am => am.id === m.moduleId)?.name).join(", ")}</p>}{feedingRoutes.oral && <p><strong>Oral:</strong> {oralAdministrationRoute === "translactation" ? "Translactacao" : "Via oral"} | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia{shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""}</p>}{feedingRoutes.parenteral && <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>}{feedingRoutes.enteral && <div className="pt-2"><p><strong>Resíduos (g/dia):</strong></p><p className="text-sm text-muted-foreground">Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g</p></div>}</CollapsibleContent></Collapsible>
+                  <Collapsible open={showDetails} onOpenChange={setShowDetails}>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="outline" className="w-full">
+                        <ChevronDown className={`h-4 w-4 mr-2 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+                        {showDetails ? "Ocultar Detalhes" : "Mais Detalhes"}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-4 p-4 border rounded-lg space-y-4 text-sm">
+                      <p><strong>Via:</strong> {feedingRoutes.enteral && `Enteral (${enteralAccess})`} {feedingRoutes.oral && "Oral"} {feedingRoutes.parenteral && "Parenteral"}</p>
+                      
+                      {/* Macros */}
+                      <div>
+                        <h4 className="font-semibold mb-2">Macronutrientes</h4>
+                        <p><strong>Proteínas:</strong> {nutritionSummary.protein}g ({nutritionSummary.proteinPerKg}g/kg) - {nutritionSummary.proteinPct}% VET</p>
+                        {nutritionSummary.sources.protein.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.protein.join("; ")}</p>}
+                        <p><strong>Carboidratos:</strong> {nutritionSummary.carbs}g ({nutritionSummary.carbsPerKg}g/kg) - {nutritionSummary.carbsPct}% VET</p>
+                        {nutritionSummary.sources.carbs.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.carbs.join("; ")}</p>}
+                        <p><strong>Lipídeos:</strong> {nutritionSummary.fat}g ({nutritionSummary.fatPerKg}g/kg) - {nutritionSummary.fatPct}% VET</p>
+                        {nutritionSummary.sources.fat.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.fat.join("; ")}</p>}
+                        <p><strong>Fibras:</strong> {nutritionSummary.fiber}g/dia</p>
+                        {nutritionSummary.sources.fiber.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.fiber.join("; ")}</p>}
+                      </div>
+
+                      <Separator />
+
+                      {/* Micros */}
+                      <div>
+                        <h4 className="font-semibold mb-2">Micronutrientes (Estimativa)</h4>
+                        <p><strong>Cálcio:</strong> {nutritionSummary.calcium.toFixed(1)} mg/dia</p>
+                        <p><strong>Fósforo:</strong> {nutritionSummary.phosphorus.toFixed(1)} mg/dia</p>
+                        <p><strong>Sódio:</strong> {nutritionSummary.sodium.toFixed(1)} mg/dia</p>
+                        <p><strong>Potássio:</strong> {nutritionSummary.potassium.toFixed(1)} mg/dia</p>
+                      </div>
+
+                      <Separator />
+
+                      {/* Residuos e Enfermagem */}
+                      <div>
+                        <h4 className="font-semibold mb-2">Resíduos e Enfermagem</h4>
+                        <p><strong>Resíduos Potencialmente Recicláveis:</strong> {nutritionSummary.residueTotal.toFixed(1)} g/dia</p>
+                        <p className="text-muted-foreground ml-2 text-xs">
+                          Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g
+                        </p>
+                        <p><strong>Tempo Estimado de Enfermagem:</strong> {systemType === "closed" ? "45 minutos/dia" : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15) + " minutos/dia"}</p>
+                      </div>
+
+                      {feedingRoutes.enteral && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h4 className="font-semibold mb-2">Sugestão de Registro em Prontuário</h4>
+                            <div className="bg-muted p-3 rounded text-xs select-all">
+                              {systemType === "closed" && closedFormula.formulaId && (() => {
+                                const f = availableFormulas.find(x => x.id === closedFormula.formulaId);
+                                const fiberText = f?.fiberPerUnit && f.fiberPerUnit > 0 ? `com fibras (${f.fiberSources || 'presentes'})` : 'isenta de fibras';
+                                const modText = modules.map(m => {
+                                  const am = availableModules.find(x => x.id === m.moduleId);
+                                  return am ? `${am.name} ${m.quantity}${m.unit}, ${m.times.length} vezes ao dia` : '';
+                                }).filter(Boolean).join("; ");
+                                const totalVol = bagCalculation?.totalVolume || 0;
+                                return `Sistema fechado: ${f?.name || ''} ${f?.macronutrientComplexity === 'polymeric' ? 'polimérica' : 'oligomérica'}, ${f?.classification || 'padrão'}, ${fiberText}, ${totalVol} ml/dia, com infusão de ${closedFormula.duration}h e velocidade de ${closedFormula.rate} ${closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}, administrada via ${closedFormula.infusionMode === "pump" ? "bomba de infusão" : "gravitacional"}, através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
+                              })()}
+                              
+                              {systemType === "open" && (() => {
+                                const formulasText = openFormulas.map(of => {
+                                  const f = availableFormulas.find(x => x.id === of.formulaId);
+                                  const fiberText = f?.fiberPerUnit && f.fiberPerUnit > 0 ? `com fibras (${f.fiberSources || 'presentes'})` : 'isenta de fibras';
+                                  return `${f?.name || ''} ${f?.macronutrientComplexity === 'polymeric' ? 'polimérica' : 'oligomérica'}, ${f?.classification || 'padrão'}, ${fiberText}, fracionado em ${of.times.length} etapas de ${of.volume} ml/dia`;
+                                }).join("; ");
+                                const modText = modules.map(m => {
+                                  const am = availableModules.find(x => x.id === m.moduleId);
+                                  return am ? `${am.name} ${m.quantity}${m.unit}, ${m.times.length} vezes ao dia` : '';
+                                }).filter(Boolean).join("; ");
+                                return `Sistema aberto: ${formulasText}, administrada através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
+                              })()}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {feedingRoutes.oral && (
+                        <>
+                          <Separator />
+                          <p><strong>Oral:</strong> {oralAdministrationRoute === "translactation" ? "Translactação" : "Via oral"} | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia{shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""}</p>
+                        </>
+                      )}
+
+                      {feedingRoutes.parenteral && (
+                        <>
+                          <Separator />
+                          <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>
+                        </>
+                      )}
+
+                      <Separator />
+
+                      {/* Custos */}
+                      <div>
+                        <h4 className="font-semibold mb-2">Custos Estimados (Diários)</h4>
+                        <p><strong>Custo Material (Fórmulas e Módulos):</strong> R$ {(() => {
+                            let cost = 0;
+                            if (systemType === "closed" && closedFormula.formulaId) {
+                                const f = availableFormulas.find(x => x.id === closedFormula.formulaId);
+                                cost += (bagCalculation?.numBags || 1) * (f?.billingPrice || 100);
+                            } else if (systemType === "open") {
+                                openFormulas.forEach(of => {
+                                    const f = availableFormulas.find(x => x.id === of.formulaId);
+                                    const mlTotal = (parseFloat(of.volume) || 0) * of.times.length;
+                                    const costPerMl = (f?.billingPrice || 50) / (f?.presentations?.[0] || 1000);
+                                    cost += mlTotal * costPerMl;
+                                });
+                            }
+                            modules.forEach(m => {
+                              const am = availableModules.find(x => x.id === m.moduleId);
+                              const totalP = (parseFloat(m.quantity) || 0) * m.times.length;
+                              const costPerUnit = (am?.billingPrice || 80) / (am?.referenceAmount || 100);
+                              cost += totalP * costPerUnit;
+                            });
+                            return cost.toFixed(2).replace('.', ',');
+                        })()}</p>
+                        <p><strong>Custos de Enfermagem:</strong> R$ {(() => {
+                            const time = systemType === "closed" ? 45 : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15);
+                            return ((time / 60) * 40).toFixed(2).replace('.', ',');
+                        })()}</p>
+                        <p><strong>Outros Custos (Indiretos / Insumos):</strong> R$ 25,00</p>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                   <div className="flex justify-between">
                     <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(10))}>Voltar</Button>
                     <Button onClick={handleSave} disabled={isSaving} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />{isSaving ? "Salvando..." : "Salvar Prescrição"}</Button>

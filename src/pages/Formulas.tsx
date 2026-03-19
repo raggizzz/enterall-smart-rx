@@ -714,107 +714,107 @@ const Formulas = () => {
                     {/* Legacy advanced fields remain mounted, but hidden, until downstream cleanup is complete. */}
                     <div className="hidden">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="space-y-2"><Label>Embalagem padrao ({formulaForm.presentationForm === "po" ? "g" : "mL"})</Label><Input value={formulaForm.presentations} onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })} placeholder="Ex: 1000" /></div>
-                      <div className="space-y-2">
-                        <Label>Unidade de faturamento</Label>
-                        <Select value={formulaForm.billingUnit} onValueChange={(value: NonNullable<Formula["billingUnit"]>) => setFormulaForm({ ...formulaForm, billingUnit: value })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ml">mL</SelectItem>
-                            <SelectItem value="g">g</SelectItem>
-                            <SelectItem value="unit">Unidade</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-2"><Label>Embalagem padrao ({formulaForm.presentationForm === "po" ? "g" : "mL"})</Label><Input value={formulaForm.presentations} onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })} placeholder="Ex: 1000" /></div>
+                        <div className="space-y-2">
+                          <Label>Unidade de faturamento</Label>
+                          <Select value={formulaForm.billingUnit} onValueChange={(value: NonNullable<Formula["billingUnit"]>) => setFormulaForm({ ...formulaForm, billingUnit: value })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ml">mL</SelectItem>
+                              <SelectItem value="g">g</SelectItem>
+                              <SelectItem value="unit">Unidade</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Complexidade</Label>
+                          <Select value={formulaForm.macronutrientComplexity || undefined} onValueChange={(value: NonNullable<Formula["macronutrientComplexity"]>) => setFormulaForm({ ...formulaForm, macronutrientComplexity: value })}>
+                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>{FORMULA_COMPLEXITY_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2"><Label>Tipo de fibra</Label><Input value={formulaForm.fiberType} onChange={(e) => setFormulaForm({ ...formulaForm, fiberType: e.target.value })} placeholder="Ex: soluvel, insolúvel, mista" /></div>
                       </div>
-                      <div className="space-y-2">
-                        <Label>Complexidade</Label>
-                        <Select value={formulaForm.macronutrientComplexity || undefined} onValueChange={(value: NonNullable<Formula["macronutrientComplexity"]>) => setFormulaForm({ ...formulaForm, macronutrientComplexity: value })}>
-                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                          <SelectContent>{FORMULA_COMPLEXITY_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2"><Label>Tipo de fibra</Label><Input value={formulaForm.fiberType} onChange={(e) => setFormulaForm({ ...formulaForm, fiberType: e.target.value })} placeholder="Ex: soluvel, insolúvel, mista" /></div>
-                    </div>
 
-                    <div className="space-y-2">
-                      <Label>Aplicacoes da formula</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {FORMULA_TAG_OPTIONS.map((tag) => (
-                          <Button key={tag.value} type="button" variant={formulaForm.formulaTypes.includes(tag.value) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTag(tag.value)}>
-                            {tag.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Rotas/uso permitidos</Label>
-                      <div className="flex flex-wrap gap-2">
-                        {FORMULA_ROUTE_OPTIONS.map((route) => (
-                          <Button
-                            key={route.value}
-                            type="button"
-                            variant={formulaForm.administrationRoutes.includes(route.value as NonNullable<Formula["administrationRoutes"]>[number]) ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setFormulaForm((current) => toggleFormulaRoute(current, route.value as NonNullable<Formula["administrationRoutes"]>[number]))}
-                          >
-                            {route.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2"><Label>Apresentacoes (ml ou g)</Label><Input value={formulaForm.presentations} onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })} placeholder="250, 500, 1000" /></div>
-                      <div className="space-y-2 md:col-span-2"><Label>Descricao de apresentacao</Label><Input value={formulaForm.presentationDescription} onChange={(e) => setFormulaForm({ ...formulaForm, presentationDescription: e.target.value })} placeholder="Ex: Tetra Square 1000 ml / lata 400 g" /></div>
-                    </div>
-                    <div className="space-y-2"><Label>Descricao operacional</Label><Textarea value={formulaForm.description} onChange={(e) => setFormulaForm({ ...formulaForm, description: e.target.value })} rows={3} /></div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="space-y-2">
-                        <Label>Unidade de faturamento</Label>
-                        <Select value={formulaForm.billingUnit} onValueChange={(value: NonNullable<Formula["billingUnit"]>) => setFormulaForm({ ...formulaForm, billingUnit: value })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ml">mL</SelectItem>
-                            <SelectItem value="g">g</SelectItem>
-                            <SelectItem value="unit">Unidade</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label>Aplicacoes da formula</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {FORMULA_TAG_OPTIONS.map((tag) => (
+                            <Button key={tag.value} type="button" variant={formulaForm.formulaTypes.includes(tag.value) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTag(tag.value)}>
+                              {tag.label}
+                            </Button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="space-y-2"><Label>Conversao por unidade</Label><Input type="number" step="0.01" value={formulaForm.conversionFactor} onChange={(e) => setFormulaForm({ ...formulaForm, conversionFactor: e.target.value })} disabled={formulaForm.billingUnit !== "unit"} /></div>
-                      <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.01" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} /></div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                      <div className="space-y-2"><Label>Kcal/100 ml</Label><Input type="number" step="0.1" value={formulaForm.caloriesPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, caloriesPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Densidade</Label><Input type="number" step="0.01" value={formulaForm.density} onChange={(e) => setFormulaForm({ ...formulaForm, density: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Proteina/100 ml</Label><Input type="number" step="0.1" value={formulaForm.proteinPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, proteinPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Carbo/100 ml</Label><Input type="number" step="0.1" value={formulaForm.carbPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, carbPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Lipidio/100 ml</Label><Input type="number" step="0.1" value={formulaForm.fatPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, fatPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Fibra/100 ml</Label><Input type="number" step="0.1" value={formulaForm.fiberPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, fiberPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>% proteinas</Label><Input type="number" step="0.1" value={formulaForm.proteinPct} onChange={(e) => setFormulaForm({ ...formulaForm, proteinPct: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>% carbo</Label><Input type="number" step="0.1" value={formulaForm.carbPct} onChange={(e) => setFormulaForm({ ...formulaForm, carbPct: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>% lipidios</Label><Input type="number" step="0.1" value={formulaForm.fatPct} onChange={(e) => setFormulaForm({ ...formulaForm, fatPct: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Agua livre (%)</Label><Input type="number" step="0.1" value={formulaForm.waterContent} onChange={(e) => setFormulaForm({ ...formulaForm, waterContent: e.target.value })} /></div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                      <div className="space-y-2"><Label>Sodio</Label><Input type="number" step="0.1" value={formulaForm.sodiumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, sodiumPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Potassio</Label><Input type="number" step="0.1" value={formulaForm.potassiumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, potassiumPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Calcio</Label><Input type="number" step="0.1" value={formulaForm.calciumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, calciumPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Fosforo</Label><Input type="number" step="0.1" value={formulaForm.phosphorusPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, phosphorusPerUnit: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Osmolalidade</Label><Input type="number" step="0.1" value={formulaForm.osmolality} onChange={(e) => setFormulaForm({ ...formulaForm, osmolality: e.target.value })} /></div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2"><Label>Fontes proteicas</Label><Textarea value={formulaForm.proteinSources} onChange={(e) => setFormulaForm({ ...formulaForm, proteinSources: e.target.value })} rows={2} /></div>
-                      <div className="space-y-2"><Label>Fontes de carboidrato</Label><Textarea value={formulaForm.carbSources} onChange={(e) => setFormulaForm({ ...formulaForm, carbSources: e.target.value })} rows={2} /></div>
-                      <div className="space-y-2"><Label>Fontes lipidicas</Label><Textarea value={formulaForm.fatSources} onChange={(e) => setFormulaForm({ ...formulaForm, fatSources: e.target.value })} rows={2} /></div>
-                      <div className="space-y-2"><Label>Fontes de fibra</Label><Textarea value={formulaForm.fiberSources} onChange={(e) => setFormulaForm({ ...formulaForm, fiberSources: e.target.value })} rows={2} /></div>
-                    </div>
-                    <div className="space-y-2"><Label>Outras caracteristicas / observacoes tecnicas</Label><Textarea value={formulaForm.specialCharacteristics} onChange={(e) => setFormulaForm({ ...formulaForm, specialCharacteristics: e.target.value })} rows={3} placeholder="Ex: sem lactose, com TCM, para uso pediatrico, formula infantil para mamadeira/copo..." /></div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="space-y-2"><Label>Residuo plastico (g)</Label><Input type="number" step="0.1" value={formulaForm.plasticG} onChange={(e) => setFormulaForm({ ...formulaForm, plasticG: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Residuo papel (g)</Label><Input type="number" step="0.1" value={formulaForm.paperG} onChange={(e) => setFormulaForm({ ...formulaForm, paperG: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Residuo metal (g)</Label><Input type="number" step="0.1" value={formulaForm.metalG} onChange={(e) => setFormulaForm({ ...formulaForm, metalG: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Residuo vidro (g)</Label><Input type="number" step="0.1" value={formulaForm.glassG} onChange={(e) => setFormulaForm({ ...formulaForm, glassG: e.target.value })} /></div>
-                    </div>
-                    <Button onClick={handleSaveFormula} className="w-full">{editingFormula ? "Salvar Alteracoes" : "Criar Formula"}</Button>
+                      <div className="space-y-2">
+                        <Label>Rotas/uso permitidos</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {FORMULA_ROUTE_OPTIONS.map((route) => (
+                            <Button
+                              key={route.value}
+                              type="button"
+                              variant={formulaForm.administrationRoutes.includes(route.value as NonNullable<Formula["administrationRoutes"]>[number]) ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setFormulaForm((current) => toggleFormulaRoute(current, route.value as NonNullable<Formula["administrationRoutes"]>[number]))}
+                            >
+                              {route.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2"><Label>Apresentacoes (ml ou g)</Label><Input value={formulaForm.presentations} onChange={(e) => setFormulaForm({ ...formulaForm, presentations: e.target.value })} placeholder="250, 500, 1000" /></div>
+                        <div className="space-y-2 md:col-span-2"><Label>Descricao de apresentacao</Label><Input value={formulaForm.presentationDescription} onChange={(e) => setFormulaForm({ ...formulaForm, presentationDescription: e.target.value })} placeholder="Ex: Tetra Square 1000 ml / lata 400 g" /></div>
+                      </div>
+                      <div className="space-y-2"><Label>Descricao operacional</Label><Textarea value={formulaForm.description} onChange={(e) => setFormulaForm({ ...formulaForm, description: e.target.value })} rows={3} /></div>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                          <Label>Unidade de faturamento</Label>
+                          <Select value={formulaForm.billingUnit} onValueChange={(value: NonNullable<Formula["billingUnit"]>) => setFormulaForm({ ...formulaForm, billingUnit: value })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ml">mL</SelectItem>
+                              <SelectItem value="g">g</SelectItem>
+                              <SelectItem value="unit">Unidade</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2"><Label>Conversao por unidade</Label><Input type="number" step="0.01" value={formulaForm.conversionFactor} onChange={(e) => setFormulaForm({ ...formulaForm, conversionFactor: e.target.value })} disabled={formulaForm.billingUnit !== "unit"} /></div>
+                        <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.01" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} /></div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="space-y-2"><Label>Kcal/100 ml</Label><Input type="number" step="0.1" value={formulaForm.caloriesPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, caloriesPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Densidade</Label><Input type="number" step="0.01" value={formulaForm.density} onChange={(e) => setFormulaForm({ ...formulaForm, density: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Proteina/100 ml</Label><Input type="number" step="0.1" value={formulaForm.proteinPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, proteinPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Carbo/100 ml</Label><Input type="number" step="0.1" value={formulaForm.carbPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, carbPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Lipidio/100 ml</Label><Input type="number" step="0.1" value={formulaForm.fatPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, fatPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Fibra/100 ml</Label><Input type="number" step="0.1" value={formulaForm.fiberPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, fiberPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>% proteinas</Label><Input type="number" step="0.1" value={formulaForm.proteinPct} onChange={(e) => setFormulaForm({ ...formulaForm, proteinPct: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>% carbo</Label><Input type="number" step="0.1" value={formulaForm.carbPct} onChange={(e) => setFormulaForm({ ...formulaForm, carbPct: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>% lipidios</Label><Input type="number" step="0.1" value={formulaForm.fatPct} onChange={(e) => setFormulaForm({ ...formulaForm, fatPct: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Agua livre (%)</Label><Input type="number" step="0.1" value={formulaForm.waterContent} onChange={(e) => setFormulaForm({ ...formulaForm, waterContent: e.target.value })} /></div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="space-y-2"><Label>Sodio</Label><Input type="number" step="0.1" value={formulaForm.sodiumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, sodiumPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Potassio</Label><Input type="number" step="0.1" value={formulaForm.potassiumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, potassiumPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Calcio</Label><Input type="number" step="0.1" value={formulaForm.calciumPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, calciumPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Fosforo</Label><Input type="number" step="0.1" value={formulaForm.phosphorusPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, phosphorusPerUnit: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Osmolalidade</Label><Input type="number" step="0.1" value={formulaForm.osmolality} onChange={(e) => setFormulaForm({ ...formulaForm, osmolality: e.target.value })} /></div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2"><Label>Fontes proteicas</Label><Textarea value={formulaForm.proteinSources} onChange={(e) => setFormulaForm({ ...formulaForm, proteinSources: e.target.value })} rows={2} /></div>
+                        <div className="space-y-2"><Label>Fontes de carboidrato</Label><Textarea value={formulaForm.carbSources} onChange={(e) => setFormulaForm({ ...formulaForm, carbSources: e.target.value })} rows={2} /></div>
+                        <div className="space-y-2"><Label>Fontes lipidicas</Label><Textarea value={formulaForm.fatSources} onChange={(e) => setFormulaForm({ ...formulaForm, fatSources: e.target.value })} rows={2} /></div>
+                        <div className="space-y-2"><Label>Fontes de fibra</Label><Textarea value={formulaForm.fiberSources} onChange={(e) => setFormulaForm({ ...formulaForm, fiberSources: e.target.value })} rows={2} /></div>
+                      </div>
+                      <div className="space-y-2"><Label>Outras caracteristicas / observacoes tecnicas</Label><Textarea value={formulaForm.specialCharacteristics} onChange={(e) => setFormulaForm({ ...formulaForm, specialCharacteristics: e.target.value })} rows={3} placeholder="Ex: sem lactose, com TCM, para uso pediatrico, formula infantil para mamadeira/copo..." /></div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="space-y-2"><Label>Residuo plastico (g)</Label><Input type="number" step="0.1" value={formulaForm.plasticG} onChange={(e) => setFormulaForm({ ...formulaForm, plasticG: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Residuo papel (g)</Label><Input type="number" step="0.1" value={formulaForm.paperG} onChange={(e) => setFormulaForm({ ...formulaForm, paperG: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Residuo metal (g)</Label><Input type="number" step="0.1" value={formulaForm.metalG} onChange={(e) => setFormulaForm({ ...formulaForm, metalG: e.target.value })} /></div>
+                        <div className="space-y-2"><Label>Residuo vidro (g)</Label><Input type="number" step="0.1" value={formulaForm.glassG} onChange={(e) => setFormulaForm({ ...formulaForm, glassG: e.target.value })} /></div>
+                      </div>
+                      <Button onClick={handleSaveFormula} className="w-full">{editingFormula ? "Salvar Alteracoes" : "Criar Formula"}</Button>
                     </div>
                   </div>
                 </DialogContent>
