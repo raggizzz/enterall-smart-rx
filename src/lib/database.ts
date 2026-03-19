@@ -1161,7 +1161,11 @@ export const formulasService = {
         if (local) return normalizeFormula(local);
         return normalizeFormula(await apiClient.get(`/formulas/${id}`));
     },
-    async getBySystem(systemType: string) { return (await this.getAll()).filter((f: any) => f.type === systemType); },
+    async getBySystem(systemType: string) {
+        return (await this.getAll()).filter((f: any) =>
+            f.systemType === systemType || f.systemType === 'both'
+        );
+    },
     async create(data: any) {
         const result = await queueCreate('formulas', '/formulas', mapFormulaPayload(data), normalizeFormula);
         return String(result.entityId ?? result.id);

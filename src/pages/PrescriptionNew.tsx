@@ -123,13 +123,18 @@ const normalizeFormulaType = (type?: string): CatalogFormula["type"] => {
 };
 
 const normalizeSystemType = (systemType?: string, formulaTypes?: string[]): CatalogFormula["systemType"] => {
+  if (systemType === "open" && (!formulaTypes || formulaTypes.length === 0)) {
+    return "both";
+  }
+
   if (systemType === "open" || systemType === "closed" || systemType === "both") {
     return systemType;
   }
 
   if (formulaTypes?.includes("closed") && formulaTypes?.includes("open")) return "both";
   if (formulaTypes?.includes("closed")) return "closed";
-  return "open";
+  if (formulaTypes?.includes("open")) return "open";
+  return "both";
 };
 
 const getPatientAgeYears = (patient?: Patient | null) => {

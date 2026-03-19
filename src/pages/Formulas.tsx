@@ -132,7 +132,7 @@ const createFormulaForm = (): FormulaFormState => ({
   manufacturer: "",
   catalogKind: "formula",
   type: "standard",
-  systemType: "open",
+  systemType: "both",
   formulaTypes: [],
   classification: "",
   macronutrientComplexity: "",
