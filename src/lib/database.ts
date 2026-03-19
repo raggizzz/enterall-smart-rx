@@ -572,6 +572,20 @@ const ensureArray = <T = string>(value: unknown): T[] => {
     return [];
 };
 
+const firstNonEmptyString = (value: unknown): string | undefined => {
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const normalized = firstNonEmptyString(item);
+            if (normalized) return normalized;
+        }
+        return undefined;
+    }
+
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
 const normalizePatient = (raw: any): Patient => {
     const weight = toNumber(raw.weight);
     const targetKcalPerKg =
@@ -910,6 +924,21 @@ const mapPatientPayload = (data: any) => ({
 const mapPrescriptionPayload = (data: any) => ({
     ...data,
     hospitalId: data.hospitalId ?? (typeof window !== 'undefined' ? localStorage.getItem('userHospitalId') || undefined : undefined),
+    patientId: firstNonEmptyString(data.patientId),
+    patientName: firstNonEmptyString(data.patientName),
+    patientRecord: firstNonEmptyString(data.patientRecord),
+    patientBed: firstNonEmptyString(data.patientBed),
+    patientWard: firstNonEmptyString(data.patientWard),
+    professionalId: firstNonEmptyString(data.professionalId),
+    professionalName: firstNonEmptyString(data.professionalName),
+    therapyType: firstNonEmptyString(data.therapyType),
+    systemType: firstNonEmptyString(data.systemType),
+    feedingRoute: firstNonEmptyString(data.feedingRoute),
+    infusionMode: firstNonEmptyString(data.infusionMode),
+    status: firstNonEmptyString(data.status) ?? "active",
+    statusReason: firstNonEmptyString(data.statusReason),
+    statusChangedBy: firstNonEmptyString(data.statusChangedBy),
+    notes: firstNonEmptyString(data.notes),
     startDate: toDateOnly(data.startDate),
     endDate: toDateOnly(data.endDate),
     enteralDetails: data.enteralDetails,
@@ -918,19 +947,29 @@ const mapPrescriptionPayload = (data: any) => ({
     hydrationSchedules: Array.isArray(data.hydrationSchedules) ? data.hydrationSchedules : undefined,
     formulas: Array.isArray(data.formulas)
         ? data.formulas
-            .filter((formula: any) => typeof formula?.formulaId === 'string' && formula.formulaId.trim() !== '' && !formula.formulaId.startsWith('local-'))
             .map((formula: any) => ({
                 ...formula,
+                formulaId: firstNonEmptyString(formula.formulaId),
                 schedules: Array.isArray(formula.schedules) ? formula.schedules : [],
             }))
+            .filter((formula: any) => typeof formula?.formulaId === 'string' && formula.formulaId.trim() !== '' && !formula.formulaId.startsWith('local-'))
         : [],
     modules: Array.isArray(data.modules)
         ? data.modules
-            .filter((module: any) => typeof module?.moduleId === 'string' && module.moduleId.trim() !== '' && !module.moduleId.startsWith('local-'))
             .map((module: any) => ({
                 ...module,
+                moduleId: firstNonEmptyString(module.moduleId),
                 schedules: Array.isArray(module.schedules) ? module.schedules : [],
             }))
+            .filter((module: any) => typeof module?.moduleId === 'string' && module.moduleId.trim() !== '' && !module.moduleId.startsWith('local-'))
+        : [],
+    supplies: Array.isArray(data.supplies)
+        ? data.supplies
+            .map((supply: any) => ({
+                ...supply,
+                supplyId: firstNonEmptyString(supply?.supplyId),
+            }))
+            .filter((supply: any) => typeof supply?.supplyId === 'string' && supply.supplyId.trim() !== '' && !supply.supplyId.startsWith('local-'))
         : [],
 });
 

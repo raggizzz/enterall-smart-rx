@@ -28,12 +28,34 @@ const toJsonString = (value: unknown) => {
 };
 
 const toNumber = (value: unknown) => {
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const parsed = toNumber(item);
+            if (parsed !== undefined) return parsed;
+        }
+        return undefined;
+    }
+
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     if (typeof value === 'string' && value.trim() !== '') {
         const parsed = Number(value);
         return Number.isFinite(parsed) ? parsed : undefined;
     }
     return undefined;
+};
+
+const toFirstString = (value: unknown) => {
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const normalized = toFirstString(item);
+            if (normalized) return normalized;
+        }
+        return undefined;
+    }
+
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
 };
 
 const mapPrescriptionToClient = (prescription: any) => ({
@@ -76,17 +98,17 @@ const mapPrescriptionToClient = (prescription: any) => ({
 
 const buildPrescriptionData = (payload: any, hospitalId: string) => ({
     hospitalId,
-    patientId: payload.patientId,
-    patientName: payload.patientName || undefined,
-    patientRecord: payload.patientRecord || undefined,
-    patientBed: payload.patientBed || undefined,
-    patientWard: payload.patientWard || undefined,
-    professionalId: payload.professionalId || undefined,
-    professionalName: payload.professionalName || undefined,
-    therapyType: payload.therapyType,
-    systemType: payload.systemType,
-    feedingRoute: payload.feedingRoute || undefined,
-    infusionMode: payload.infusionMode || undefined,
+    patientId: toFirstString(payload.patientId),
+    patientName: toFirstString(payload.patientName),
+    patientRecord: toFirstString(payload.patientRecord),
+    patientBed: toFirstString(payload.patientBed),
+    patientWard: toFirstString(payload.patientWard),
+    professionalId: toFirstString(payload.professionalId),
+    professionalName: toFirstString(payload.professionalName),
+    therapyType: toFirstString(payload.therapyType),
+    systemType: toFirstString(payload.systemType),
+    feedingRoute: toFirstString(payload.feedingRoute),
+    infusionMode: toFirstString(payload.infusionMode),
     infusionRateMlH: toNumber(payload.infusionRateMlH),
     infusionDropsMin: toNumber(payload.infusionDropsMin),
     infusionHoursPerDay: toNumber(payload.infusionHoursPerDay),
@@ -108,19 +130,23 @@ const buildPrescriptionData = (payload: any, hospitalId: string) => ({
     oralDetails: toJsonString(payload.oralDetails),
     parenteralDetails: toJsonString(payload.parenteralDetails),
     payloadSnapshot: JSON.stringify(payload),
-    status: payload.status || 'active',
-    statusReason: payload.statusReason || undefined,
+    status: toFirstString(payload.status) || 'active',
+    statusReason: toFirstString(payload.statusReason),
     statusChangedAt: toDate(payload.statusChangedAt),
-    statusChangedBy: payload.statusChangedBy || undefined,
+    statusChangedBy: toFirstString(payload.statusChangedBy),
     startDate: toDate(payload.startDate),
     endDate: toDate(payload.endDate),
-    notes: payload.notes || undefined,
+    notes: toFirstString(payload.notes),
 });
 
 const buildFormulaCreates = (formulas?: any[]) =>
     Array.isArray(formulas)
         ? formulas
-            .filter((formula) => typeof formula?.formulaId === 'string' && formula.formulaId.trim().length > 0)
+            .map((formula) => ({
+                ...formula,
+                formulaId: toFirstString(formula?.formulaId),
+            }))
+            .filter((formula) => typeof formula.formulaId === 'string' && formula.formulaId.trim().length > 0)
             .map((formula) => ({
             formulaId: formula.formulaId,
             volume: toNumber(formula.volume) ?? 0,
@@ -132,20 +158,28 @@ const buildFormulaCreates = (formulas?: any[]) =>
 const buildModuleCreates = (modules?: any[]) =>
     Array.isArray(modules)
         ? modules
-            .filter((module) => typeof module?.moduleId === 'string' && module.moduleId.trim().length > 0)
+            .map((module) => ({
+                ...module,
+                moduleId: toFirstString(module?.moduleId),
+            }))
+            .filter((module) => typeof module.moduleId === 'string' && module.moduleId.trim().length > 0)
             .map((module) => ({
             moduleId: module.moduleId,
             amount: toNumber(module.amount) ?? 0,
             timesPerDay: Math.round(toNumber(module.timesPerDay) ?? 0),
             schedules: JSON.stringify(Array.isArray(module.schedules) ? module.schedules : []),
-            unit: module.unit || undefined,
+            unit: toFirstString(module.unit),
         }))
         : [];
 
 const buildSupplyCreates = (supplies?: any[]) =>
     Array.isArray(supplies)
         ? supplies
-            .filter((supply) => typeof supply?.supplyId === 'string' && supply.supplyId.trim().length > 0)
+            .map((supply) => ({
+                ...supply,
+                supplyId: toFirstString(supply?.supplyId),
+            }))
+            .filter((supply) => typeof supply.supplyId === 'string' && supply.supplyId.trim().length > 0)
             .map((supply) => ({
                 supplyId: supply.supplyId,
                 quantity: Math.round(toNumber(supply.quantity) ?? 0),
@@ -161,14 +195,19 @@ const ensurePrescriptionReferences = async ({
     supplies,
 }: {
     hospitalId: string;
-    patientId: string;
+    patientId?: string;
     professionalId?: string;
     formulas?: any[];
     modules?: any[];
     supplies?: any[];
 }) => {
+    const normalizedPatientId = toFirstString(patientId);
+    if (!normalizedPatientId) {
+        return { ok: false as const, error: 'Patient not found' };
+    }
+
     const patient = await prisma.patient.findFirst({
-        where: { id: patientId, hospitalId, isActive: true },
+        where: { id: normalizedPatientId, hospitalId, isActive: true },
         select: { id: true, hospitalId: true },
     });
 
@@ -176,9 +215,11 @@ const ensurePrescriptionReferences = async ({
         return { ok: false as const, error: 'Patient not found' };
     }
 
-    if (professionalId) {
+    const normalizedProfessionalId = toFirstString(professionalId);
+
+    if (normalizedProfessionalId) {
         const professional = await prisma.professional.findFirst({
-            where: { id: professionalId, hospitalId, isActive: true },
+            where: { id: normalizedProfessionalId, hospitalId, isActive: true },
             select: { id: true, hospitalId: true },
         });
 
@@ -189,7 +230,7 @@ const ensurePrescriptionReferences = async ({
 
     const formulaIds = Array.isArray(formulas)
         ? formulas
-            .map((formula) => typeof formula?.formulaId === 'string' ? formula.formulaId.trim() : '')
+            .map((formula) => toFirstString(formula?.formulaId) || '')
             .filter(Boolean)
         : [];
     if (formulaIds.length > 0) {
@@ -203,7 +244,7 @@ const ensurePrescriptionReferences = async ({
 
     const moduleIds = Array.isArray(modules)
         ? modules
-            .map((module) => typeof module?.moduleId === 'string' ? module.moduleId.trim() : '')
+            .map((module) => toFirstString(module?.moduleId) || '')
             .filter(Boolean)
         : [];
     if (moduleIds.length > 0) {
@@ -217,7 +258,7 @@ const ensurePrescriptionReferences = async ({
 
     const supplyIds = Array.isArray(supplies)
         ? supplies
-            .map((supply) => typeof supply?.supplyId === 'string' ? supply.supplyId.trim() : '')
+            .map((supply) => toFirstString(supply?.supplyId) || '')
             .filter(Boolean)
         : [];
     if (supplyIds.length > 0) {
