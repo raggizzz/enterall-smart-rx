@@ -11,7 +11,7 @@ const resolveHealthUrl = () => {
   }
 
   if (import.meta.env.PROD) {
-    return `${window.location.origin}/health`;
+    return `${window.location.origin}/api/hospitals`;
   }
 
   const apiPort = (import.meta.env.VITE_API_PORT as string | undefined) || "3000";
