@@ -32,6 +32,7 @@ import {
     initializeDatabase,
     supabase
 } from '@/lib/database';
+import { hasActiveSession } from '@/lib/permissions';
 
 const AUTO_REFRESH_INTERVAL_MS = 10000;
 
@@ -665,7 +666,12 @@ export function useHospitals() {
     const fetchHospitals = useCallback(async () => {
         try {
             const data = await hospitalsService.getAll();
-            setHospitals(data);
+            if (typeof window !== 'undefined' && hasActiveSession()) {
+                const currentHospitalId = localStorage.getItem('userHospitalId');
+                setHospitals(currentHospitalId ? data.filter((hospital) => hospital.id === currentHospitalId) : data);
+            } else {
+                setHospitals(data);
+            }
         } catch (error) {
             console.error('Error fetching hospitals:', error);
         } finally {
