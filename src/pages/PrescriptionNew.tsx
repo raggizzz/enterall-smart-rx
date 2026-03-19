@@ -158,6 +158,21 @@ const getSuggestedAgeGroup = (patient?: Patient | null): ExtendedCatalogFormula[
   return "adult";
 };
 
+const allowsAdministrationRoute = (
+  formula: Pick<ExtendedCatalogFormula, "administrationRoutes">,
+  route: "enteral" | "oral" | "translactation",
+) => {
+  if (!formula.administrationRoutes || formula.administrationRoutes.length === 0) {
+    return true;
+  }
+
+  if (formula.administrationRoutes.includes(route)) {
+    return true;
+  }
+
+  return route === "translactation" && formula.administrationRoutes.includes("oral");
+};
+
 const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
   const density = formula.density || formula.caloriesPerUnit || 1;
   const proteinPer100 = typeof formula.proteinPerUnit === "number"
@@ -544,7 +559,7 @@ const PrescriptionNew = () => {
     return availableFormulas.filter((formula) =>
       (formula.systemType === "closed" || formula.systemType === "both")
       && formulaMatchesPatient(formula)
-      && (!formula.administrationRoutes || formula.administrationRoutes.includes("enteral")),
+      && allowsAdministrationRoute(formula, "enteral"),
     );
   }, [availableFormulas, formulaMatchesPatient]);
 
@@ -552,7 +567,7 @@ const PrescriptionNew = () => {
     return availableFormulas.filter((formula) =>
       (formula.systemType === "open" || formula.systemType === "both")
       && formulaMatchesPatient(formula)
-      && (!formula.administrationRoutes || formula.administrationRoutes.includes("enteral")),
+      && allowsAdministrationRoute(formula, "enteral"),
     );
   }, [availableFormulas, formulaMatchesPatient]);
 
@@ -571,11 +586,7 @@ const PrescriptionNew = () => {
         "infant-formula",
       ].includes(formula.type)
       && formulaMatchesPatient(formula)
-      && (
-        !formula.administrationRoutes
-        || formula.administrationRoutes.includes(oralAdministrationRoute)
-        || (oralAdministrationRoute === "translactation" && formula.administrationRoutes.includes("oral"))
-      ),
+      && allowsAdministrationRoute(formula, oralAdministrationRoute),
     );
   }, [availableFormulas, formulaMatchesPatient, oralAdministrationRoute]);
 
