@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import EnteralIcon from "@/components/icons/EnteralIcon";
+import SupplementIcon from "@/components/icons/SupplementIcon";
 import { getAllFormulas, getAllModules, Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
 import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
@@ -1698,7 +1700,7 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>2. Via de Alimentação</CardTitle><CardDescription>Selecione a(s) via(s) de alimentação. Enteral pode ser combinada com Oral e/ou Parenteral.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {[{ key: "oral", icon: Utensils, label: "Oral", color: "green" }, { key: "enteral", icon: Droplet, label: "Enteral", color: "purple" }, { key: "parenteral", icon: Syringe, label: "Parenteral", color: "orange" }].map(r => (
+                    {[{ key: "oral", icon: SupplementIcon, label: "Oral", colorClass: "text-sky-600" }, { key: "enteral", icon: EnteralIcon, label: "Enteral", colorClass: "text-violet-600" }, { key: "parenteral", icon: Syringe, label: "Parenteral", colorClass: "text-orange-600" }].map(r => (
                       <div key={r.key} className={`p-6 border-2 rounded-lg cursor-pointer ${feedingRoutes[r.key as keyof typeof feedingRoutes] ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => {
                         const key = r.key as keyof typeof feedingRoutes;
                         const newValue = !feedingRoutes[key];
@@ -1725,7 +1727,7 @@ const PrescriptionNew = () => {
                           }
                         }
                       }}>
-                        <div className="flex items-center gap-3"><Checkbox checked={feedingRoutes[r.key as keyof typeof feedingRoutes]} /><r.icon className={`h-8 w-8 text-${r.color}-600`} /><span className="font-semibold text-lg">{r.label}</span></div>
+                        <div className="flex items-center gap-3"><Checkbox checked={feedingRoutes[r.key as keyof typeof feedingRoutes]} /><r.icon className={`h-8 w-8 ${r.colorClass}`} /><span className="font-semibold text-lg">{r.label}</span></div>
                       </div>
                     ))}
                   </div>
