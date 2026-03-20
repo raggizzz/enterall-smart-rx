@@ -2,7 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import prisma from './lib/prisma';
-import { databaseHealth, getMetrics, getMetricsContentType, httpRequestDurationSeconds, httpRequestsTotal } from './lib/metrics';
+import {
+    databaseHealth,
+    getMetrics,
+    getMetricsContentType,
+    httpRequestBytesTotal,
+    httpRequestDurationSeconds,
+    httpRequestsTotal,
+    httpResponseBytesTotal,
+    refreshApplicationMetrics,
+} from './lib/metrics';
 
 dotenv.config();
 
@@ -34,18 +43,30 @@ app.use((req, res, next) => {
     }
 
     const startedAt = process.hrtime.bigint();
+    const requestBytes = Number(req.get('content-length') || 0);
     res.on('finish', () => {
         const route = req.route?.path
             ? `${req.baseUrl || ''}${req.route.path}`
             : req.path;
         const statusCode = String(res.statusCode);
         const durationSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+        const responseBytes = Number(res.getHeader('content-length') || 0);
 
         httpRequestsTotal.inc({
             method: req.method,
             route,
             status_code: statusCode,
         });
+        httpRequestBytesTotal.inc({
+            method: req.method,
+            route,
+            status_code: statusCode,
+        }, Number.isFinite(requestBytes) ? requestBytes : 0);
+        httpResponseBytesTotal.inc({
+            method: req.method,
+            route,
+            status_code: statusCode,
+        }, Number.isFinite(responseBytes) ? responseBytes : 0);
         httpRequestDurationSeconds.observe({
             method: req.method,
             route,
@@ -95,6 +116,7 @@ app.get('/metrics', async (req, res) => {
         try {
             await prisma.$queryRaw`SELECT 1`;
             databaseHealth.set(1);
+            await refreshApplicationMetrics(prisma);
         } catch {
             databaseHealth.set(0);
         }
