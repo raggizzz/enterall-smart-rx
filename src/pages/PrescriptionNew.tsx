@@ -485,6 +485,7 @@ const PrescriptionNew = () => {
   const [oralNeedsThickener, setOralNeedsThickener] = useState(false);
   const [oralSafeConsistency, setOralSafeConsistency] = useState('');
   const [oralThickenerProduct, setOralThickenerProduct] = useState('');
+  const [oralThickenerGrams, setOralThickenerGrams] = useState('');
   const [oralThickenerVolume, setOralThickenerVolume] = useState('');
   const [oralThickenerTimes, setOralThickenerTimes] = useState<string[]>([]);
   const [oralEstimatedVET, setOralEstimatedVET] = useState<number>(0);
@@ -590,10 +591,27 @@ const PrescriptionNew = () => {
     );
   }, [availableFormulas, formulaMatchesPatient, oralAdministrationRoute]);
 
-  const thickenerSupplies = useMemo(
-    () => supplies.filter((supply) => supply.category === "thickener" && supply.isActive !== false),
-    [supplies],
-  );
+  const thickenerFormulaOptions = useMemo(() => {
+    const explicitThickeners = availableFormulas.filter((formula) => {
+      const haystack = [
+        formula.name,
+        formula.classification,
+        formula.specialCharacteristics,
+        formula.description,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes("espess") || haystack.includes("thicken");
+    });
+
+    if (explicitThickeners.length > 0) {
+      return explicitThickeners;
+    }
+
+    return oralAvailableSupplements.filter((formula) => formula.type === "oral-supplement");
+  }, [availableFormulas, oralAvailableSupplements]);
 
   const shouldShowInfantFeedingControls = useMemo(() => {
     if (suggestedAgeGroup === "infant") return true;
@@ -701,6 +719,7 @@ const PrescriptionNew = () => {
   useEffect(() => {
     if (!oralNeedsThickener) {
       setOralThickenerProduct('');
+      setOralThickenerGrams('');
       setOralThickenerVolume('');
       setOralThickenerTimes([]);
     }
@@ -867,6 +886,7 @@ const PrescriptionNew = () => {
       setOralNeedsThickener(Boolean(oralDetails?.needsThickener));
       setOralSafeConsistency(oralDetails?.safeConsistency || "");
       setOralThickenerProduct(oralDetails?.thickenerProduct || "");
+      setOralThickenerGrams(oralDetails?.thickenerGrams ? String(oralDetails.thickenerGrams) : "");
       setOralThickenerVolume(oralDetails?.thickenerVolume ? String(oralDetails.thickenerVolume) : "");
       setOralThickenerTimes(oralDetails?.thickenerTimes || []);
       setOralEstimatedVET(oralDetails?.estimatedVET ?? prescription.totalCalories ?? 0);
@@ -970,6 +990,7 @@ const PrescriptionNew = () => {
       setOralNeedsThickener(Boolean(patient.safeConsistency));
       setEquipmentVolume("");
       setOralThickenerProduct("");
+      setOralThickenerGrams("");
       setOralThickenerVolume("");
       setOralThickenerTimes([]);
 
@@ -1394,6 +1415,7 @@ const PrescriptionNew = () => {
             needsThickener: oralNeedsThickener,
             safeConsistency: oralSafeConsistency || undefined,
             thickenerProduct: oralNeedsThickener ? oralThickenerProduct || undefined : undefined,
+            thickenerGrams: oralNeedsThickener ? parseFloat(oralThickenerGrams) || undefined : undefined,
             thickenerVolume: oralNeedsThickener ? parseFloat(oralThickenerVolume) || undefined : undefined,
             thickenerTimes: oralNeedsThickener && oralThickenerTimes.length > 0 ? oralThickenerTimes : undefined,
             estimatedVET: oralEstimatedVET || undefined,
@@ -1403,7 +1425,7 @@ const PrescriptionNew = () => {
             modules: oralTherapyModules,
             observations: oralObservations || undefined,
           },
-          notes: `Via oral: ${oralAdministrationRoute === "translactation" ? "Translactacao" : "Oral"}${shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""} | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Volume de agua: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
+          notes: `Via oral${shouldShowInfantFeedingControls ? ` | Administracao: ${oralAdministrationRoute === "translactation" ? "Translactacao" : "Oral"} | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""} | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
         });
         savedRoutes.push("Via oral");
       }
@@ -1619,6 +1641,7 @@ const PrescriptionNew = () => {
                             setOralNeedsThickener(Boolean(p.safeConsistency));
                             setOralSafeConsistency(p.safeConsistency || "");
                             setOralThickenerProduct("");
+                            setOralThickenerGrams("");
                             setOralThickenerVolume("");
                             setOralThickenerTimes([]);
                             setOralEstimatedVET(0);
@@ -1822,7 +1845,23 @@ const PrescriptionNew = () => {
                     </div>
                   )}
                   <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Bomba", d: "ml/h" }, { v: "gravity", l: "Gravitacional", d: "gotas/min" }, { v: "bolus", l: "Bolus", d: "Tudo de uma vez" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
-                  {(openInfusionMode === "pump" || openInfusionMode === "gravity") && <div className="space-y-2"><Label>Infundir cada etapa em:</Label><div className="flex items-center gap-2 max-w-xs"><Input type="number" value={openDurationPerStep} onChange={e => setOpenDurationPerStep(e.target.value)} /><span className="text-sm">horas</span></div></div>}
+                  {(openInfusionMode === "pump" || openInfusionMode === "gravity") && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Infundir cada etapa em</Label>
+                        <div className="flex items-center gap-2 max-w-xs">
+                          <Input type="number" value={openDurationPerStep} onChange={e => setOpenDurationPerStep(e.target.value)} />
+                          <span className="text-sm">horas</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Tempo previsto para correr cada etapa da dieta aberta. Ex.: cada oferta de 200 mL administrada ao longo de 2 horas.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Volume por equipo (mL)</Label>
+                        <Input type="number" value={equipmentVolume} onChange={e => setEquipmentVolume(e.target.value)} className="max-w-xs" placeholder="Ex: 20" />
+                        <p className="text-sm text-muted-foreground">Usado no faturamento da dieta aberta: quantidade de etapas/frascos x volume por equipo. Nao entra no calculo nutricional.</p>
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-4"><div className="flex justify-between items-center"><Label className="text-lg">Fórmulas</Label><Button variant="outline" size="sm" onClick={addOpenFormula}><Plus className="h-4 w-4 mr-1" />Adicionar</Button></div>
                     {openFormulas.map((f, i) => (
                       <div key={f.id} className="p-4 border rounded-lg space-y-4 bg-muted/30">
@@ -1832,6 +1871,7 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Quantidade por etapa (ml ou g)</Label><Input type="number" value={f.volume} onChange={e => updateOpenFormula(f.id, "volume", e.target.value)} /></div>
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
+                        <p className="text-sm text-muted-foreground">Se informar diluicao, o volume final da etapa considera a quantidade prescrita somada ao volume de agua necessario ate atingir o total desejado.</p>
                         <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
@@ -1872,13 +1912,6 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
-                  {systemType === "open" && (
-                    <div className="space-y-2">
-                      <Label>Volume para equipo por frasco (ml)</Label>
-                      <Input type="number" value={equipmentVolume} onChange={e => setEquipmentVolume(e.target.value)} className="max-w-xs" placeholder="Ex: 20" />
-                      <p className="text-sm text-muted-foreground">Esse volume entra só no faturamento da dieta enteral aberta. Não entra nos cálculos nutricionais.</p>
-                    </div>
-                  )}
                   <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
                   {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
@@ -1942,21 +1975,22 @@ const PrescriptionNew = () => {
                           <div className="flex items-center gap-2"><Checkbox checked={oralNeedsThickener} onCheckedChange={() => setOralNeedsThickener(true)} /><span className="text-sm">Sim</span></div>
                         </div>
                         {oralNeedsThickener && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-2">
-                              <Label>Produto espessante</Label>
-                              {thickenerSupplies.length > 0 ? (
+                              <Label>Formula espessante</Label>
+                              {thickenerFormulaOptions.length > 0 ? (
                                 <Select value={oralThickenerProduct} onValueChange={setOralThickenerProduct}>
-                                  <SelectTrigger><SelectValue placeholder="Selecione o espessante" /></SelectTrigger>
+                                  <SelectTrigger><SelectValue placeholder="Selecione a formula espessante" /></SelectTrigger>
                                   <SelectContent>
-                                    {thickenerSupplies.map((supply) => <SelectItem key={supply.id} value={supply.name}>{supply.name}</SelectItem>)}
+                                    {thickenerFormulaOptions.map((formula) => <SelectItem key={formula.id} value={formula.name}>{formula.name}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
                               ) : (
                                 <Input value={oralThickenerProduct} onChange={e => setOralThickenerProduct(e.target.value)} placeholder="Ex: Resource ThickenUp" />
                               )}
                             </div>
-                            <div className="space-y-2"><Label>Volume de agua por oferta (ml)</Label><Input type="number" value={oralThickenerVolume} onChange={e => setOralThickenerVolume(e.target.value)} placeholder="Ex: 150" /></div>
+                            <div className="space-y-2"><Label>Quantidade por oferta (g)</Label><Input type="number" value={oralThickenerGrams} onChange={e => setOralThickenerGrams(e.target.value)} placeholder="Ex: 4" /></div>
+                            <div className="space-y-2"><Label>Volume de agua para diluicao (ml)</Label><Input type="number" value={oralThickenerVolume} onChange={e => setOralThickenerVolume(e.target.value)} placeholder="Ex: 150" /></div>
                           </div>
                         )}
                         {oralNeedsThickener && (
@@ -2002,18 +2036,18 @@ const PrescriptionNew = () => {
                       <div className="space-y-6 pt-4">
                         <Card className="border-dashed">
                           <CardContent className="pt-4 space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label>Via de administracao</Label>
-                                <Select value={oralAdministrationRoute} onValueChange={(value: "oral" | "translactation") => setOralAdministrationRoute(value)}>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="oral">Via oral</SelectItem>
-                                    {shouldShowInfantFeedingControls && <SelectItem value="translactation">Translactacao</SelectItem>}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              {shouldShowInfantFeedingControls && (
+                            {shouldShowInfantFeedingControls && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Via de administracao</Label>
+                                  <Select value={oralAdministrationRoute} onValueChange={(value: "oral" | "translactation") => setOralAdministrationRoute(value)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="oral">Via oral</SelectItem>
+                                      <SelectItem value="translactation">Translactacao</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                                 <div className="space-y-2">
                                   <Label>Forma de oferta</Label>
                                   <Select value={oralDeliveryMethod} onValueChange={(value: "cup" | "baby-bottle" | "feeding-bottle") => setOralDeliveryMethod(value)}>
@@ -2026,8 +2060,8 @@ const PrescriptionNew = () => {
                                   </Select>
                                   <p className="text-xs text-muted-foreground">Copo e mamadeira nao sao cobrados automaticamente. Frasco para dieta entra no faturamento quando houver insumo faturavel cadastrado.</p>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
 

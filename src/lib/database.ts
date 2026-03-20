@@ -323,6 +323,7 @@ export interface Prescription {
         needsThickener?: boolean;
         safeConsistency?: string;
         thickenerProduct?: string;
+        thickenerGrams?: number;
         thickenerVolume?: number;
         thickenerTimes?: string[];
         estimatedVET?: number;

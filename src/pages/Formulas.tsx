@@ -55,11 +55,13 @@ const FORMULA_ROUTE_OPTIONS = [
 ];
 
 type FormulaCatalogKind = "formula" | "supplement";
+type FormulaRegistrationKind = "closed-system" | "open-system" | "oral-supplement" | "infant-formula";
 
 type FormulaFormState = {
   code: string;
   name: string;
   manufacturer: string;
+  registrationKind: FormulaRegistrationKind;
   catalogKind: FormulaCatalogKind;
   type: Formula["type"];
   systemType: Formula["systemType"];
@@ -130,6 +132,7 @@ const createFormulaForm = (): FormulaFormState => ({
   code: "",
   name: "",
   manufacturer: "",
+  registrationKind: "closed-system",
   catalogKind: "formula",
   type: "standard",
   systemType: "both",
@@ -211,6 +214,12 @@ const toPresentationArray = (value: string) =>
     .filter((item) => Number.isFinite(item) && item > 0);
 
 const renderMeta = (parts: Array<string | undefined>) => parts.filter(Boolean).join(" | ");
+const FORMULA_REGISTRATION_OPTIONS: Array<{ value: FormulaRegistrationKind; label: string }> = [
+  { value: "closed-system", label: "Sistema fechado" },
+  { value: "open-system", label: "Sistema aberto" },
+  { value: "oral-supplement", label: "Suplemento via oral" },
+  { value: "infant-formula", label: "Formula infantil" },
+];
 const toggleFormulaRoute = (
   current: FormulaFormState,
   value: NonNullable<Formula["administrationRoutes"]>[number],
@@ -222,6 +231,77 @@ const toggleFormulaRoute = (
 });
 const getFormulaCatalogKind = (formula?: Pick<Formula, "type" | "formulaTypes"> | null): FormulaCatalogKind =>
   formula?.type === "oral-supplement" || formula?.formulaTypes?.includes("supplement") ? "supplement" : "formula";
+const getFormulaRegistrationKind = (
+  formula?: Pick<Formula, "type" | "systemType" | "ageGroup" | "administrationRoutes"> | null,
+): FormulaRegistrationKind => {
+  if (!formula) return "closed-system";
+  if (
+    formula.type === "infant-formula"
+    || formula.ageGroup === "infant"
+    || formula.administrationRoutes?.includes("translactation")
+  ) {
+    return "infant-formula";
+  }
+  if (formula.type === "oral-supplement" || formula.administrationRoutes?.includes("oral")) {
+    return "oral-supplement";
+  }
+  return formula.systemType === "open" ? "open-system" : "closed-system";
+};
+const applyRegistrationKind = (
+  current: FormulaFormState,
+  registrationKind: FormulaRegistrationKind,
+): FormulaFormState => {
+  switch (registrationKind) {
+    case "closed-system":
+      return {
+        ...current,
+        registrationKind,
+        catalogKind: "formula",
+        type: "standard",
+        systemType: "closed",
+        formulaTypes: Array.from(
+          new Set([...current.formulaTypes.filter((item) => item !== "supplement" && item !== "open"), "closed"]),
+        ),
+        ageGroup: current.ageGroup === "infant" ? "" : current.ageGroup,
+        administrationRoutes: ["enteral"],
+      };
+    case "open-system":
+      return {
+        ...current,
+        registrationKind,
+        catalogKind: "formula",
+        type: "standard",
+        systemType: "open",
+        formulaTypes: Array.from(
+          new Set([...current.formulaTypes.filter((item) => item !== "supplement" && item !== "closed"), "open"]),
+        ),
+        ageGroup: current.ageGroup === "infant" ? "" : current.ageGroup,
+        administrationRoutes: ["enteral"],
+      };
+    case "oral-supplement":
+      return {
+        ...current,
+        registrationKind,
+        catalogKind: "supplement",
+        type: "oral-supplement",
+        systemType: "both",
+        formulaTypes: Array.from(new Set([...current.formulaTypes.filter((item) => item !== "open" && item !== "closed"), "supplement"])),
+        ageGroup: current.ageGroup === "infant" ? "" : current.ageGroup,
+        administrationRoutes: ["oral"],
+      };
+    case "infant-formula":
+      return {
+        ...current,
+        registrationKind,
+        catalogKind: "formula",
+        type: "infant-formula",
+        systemType: "both",
+        formulaTypes: current.formulaTypes.filter((item) => item !== "supplement"),
+        ageGroup: "infant",
+        administrationRoutes: ["oral", "translactation"],
+      };
+  }
+};
 
 const roundDerivedValue = (value?: number) => (typeof value === "number" ? Number(value.toFixed(2)) : undefined);
 
@@ -306,6 +386,7 @@ const Formulas = () => {
       code: formula.code || "",
       name: formula.name,
       manufacturer: formula.manufacturer || "",
+      registrationKind: getFormulaRegistrationKind(formula),
       catalogKind: getFormulaCatalogKind(formula),
       type: formula.type,
       systemType: formula.systemType,
@@ -384,59 +465,52 @@ const Formulas = () => {
     const fatPerUnit = roundDerivedValue(
       typeof fatPct === "number" ? (caloriesPerUnit * fatPct) / 900 : undefined,
     );
-    const formulaTypes = formulaForm.formulaTypes.filter((item) => item !== "supplement" && item !== "module");
-
-    if (formulaForm.catalogKind === "supplement") {
-      formulaTypes.push("supplement");
-    }
-
-    const formulaType =
-      formulaForm.catalogKind === "supplement"
-        ? "oral-supplement"
-        : formulaForm.type === "oral-supplement"
-          ? "standard"
-          : formulaForm.type;
+    const normalizedFormulaForm = applyRegistrationKind(formulaForm, formulaForm.registrationKind);
+    const formulaTypes = normalizedFormulaForm.formulaTypes.filter((item) => item !== "module");
+    const formulaType = normalizedFormulaForm.type;
 
     const payload: Omit<Formula, "id" | "createdAt" | "updatedAt"> = {
       hospitalId: editingFormula?.hospitalId || sessionHospitalId,
-      code: formulaForm.code.trim(),
-      name: formulaForm.name.trim(),
-      manufacturer: formulaForm.manufacturer.trim(),
+      code: normalizedFormulaForm.code.trim(),
+      name: normalizedFormulaForm.name.trim(),
+      manufacturer: normalizedFormulaForm.manufacturer.trim(),
       type: formulaType,
-      systemType: formulaForm.systemType,
+      systemType: normalizedFormulaForm.systemType,
       formulaTypes,
-      classification: formulaForm.classification.trim() || undefined,
-      macronutrientComplexity: formulaForm.macronutrientComplexity || undefined,
-      presentationForm: formulaForm.presentationForm,
+      administrationRoutes: normalizedFormulaForm.administrationRoutes,
+      ageGroup: normalizedFormulaForm.ageGroup || undefined,
+      classification: normalizedFormulaForm.classification.trim() || undefined,
+      macronutrientComplexity: normalizedFormulaForm.macronutrientComplexity || undefined,
+      presentationForm: normalizedFormulaForm.presentationForm,
       presentations,
-      billingUnit: formulaForm.billingUnit,
-      conversionFactor: formulaForm.billingUnit === "unit" ? toOptionalNumber(formulaForm.conversionFactor) : undefined,
-      billingPrice: toOptionalNumber(formulaForm.billingPrice),
+      billingUnit: normalizedFormulaForm.billingUnit,
+      conversionFactor: normalizedFormulaForm.billingUnit === "unit" ? toOptionalNumber(normalizedFormulaForm.conversionFactor) : undefined,
+      billingPrice: toOptionalNumber(normalizedFormulaForm.billingPrice),
       caloriesPerUnit,
       density,
       proteinPerUnit,
       carbPerUnit,
       fatPerUnit,
-      fiberPerUnit: toOptionalNumber(formulaForm.fiberPerUnit),
+      fiberPerUnit: toOptionalNumber(normalizedFormulaForm.fiberPerUnit),
       proteinPct,
       carbPct,
       fatPct,
-      sodiumPerUnit: toOptionalNumber(formulaForm.sodiumPerUnit),
-      potassiumPerUnit: toOptionalNumber(formulaForm.potassiumPerUnit),
-      calciumPerUnit: toOptionalNumber(formulaForm.calciumPerUnit),
-      phosphorusPerUnit: toOptionalNumber(formulaForm.phosphorusPerUnit),
-      waterContent: toOptionalNumber(formulaForm.waterContent),
-      osmolality: toOptionalNumber(formulaForm.osmolality),
-      proteinSources: formulaForm.proteinSources.trim() || undefined,
-      carbSources: formulaForm.carbSources.trim() || undefined,
-      fatSources: formulaForm.fatSources.trim() || undefined,
-      fiberSources: formulaForm.fiberSources.trim() || undefined,
-      fiberType: formulaForm.fiberType.trim() || undefined,
-      specialCharacteristics: formulaForm.specialCharacteristics.trim() || undefined,
-      plasticG: toOptionalNumber(formulaForm.plasticG),
-      paperG: toOptionalNumber(formulaForm.paperG),
-      metalG: toOptionalNumber(formulaForm.metalG),
-      glassG: toOptionalNumber(formulaForm.glassG),
+      sodiumPerUnit: toOptionalNumber(normalizedFormulaForm.sodiumPerUnit),
+      potassiumPerUnit: toOptionalNumber(normalizedFormulaForm.potassiumPerUnit),
+      calciumPerUnit: toOptionalNumber(normalizedFormulaForm.calciumPerUnit),
+      phosphorusPerUnit: toOptionalNumber(normalizedFormulaForm.phosphorusPerUnit),
+      waterContent: toOptionalNumber(normalizedFormulaForm.waterContent),
+      osmolality: toOptionalNumber(normalizedFormulaForm.osmolality),
+      proteinSources: normalizedFormulaForm.proteinSources.trim() || undefined,
+      carbSources: normalizedFormulaForm.carbSources.trim() || undefined,
+      fatSources: normalizedFormulaForm.fatSources.trim() || undefined,
+      fiberSources: normalizedFormulaForm.fiberSources.trim() || undefined,
+      fiberType: normalizedFormulaForm.fiberType.trim() || undefined,
+      specialCharacteristics: normalizedFormulaForm.specialCharacteristics.trim() || undefined,
+      plasticG: toOptionalNumber(normalizedFormulaForm.plasticG),
+      paperG: toOptionalNumber(normalizedFormulaForm.paperG),
+      metalG: toOptionalNumber(normalizedFormulaForm.metalG),
+      glassG: toOptionalNumber(normalizedFormulaForm.glassG),
       isActive: true,
     };
 
@@ -610,11 +684,12 @@ const Formulas = () => {
                       <div className="space-y-2"><Label>Fabricante</Label><Input value={formulaForm.manufacturer} onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })} placeholder="Ex: Nestle" /></div>
                       <div className="space-y-2">
                         <Label>Tipo</Label>
-                        <Select value={formulaForm.catalogKind} onValueChange={(value: FormulaCatalogKind) => setFormulaForm({ ...formulaForm, catalogKind: value })}>
+                        <Select value={formulaForm.registrationKind} onValueChange={(value: FormulaRegistrationKind) => setFormulaForm((current) => applyRegistrationKind(current, value))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="formula">Formula</SelectItem>
-                            <SelectItem value="supplement">Suplemento</SelectItem>
+                            {FORMULA_REGISTRATION_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>

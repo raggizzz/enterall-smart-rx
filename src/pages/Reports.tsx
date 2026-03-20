@@ -1053,16 +1053,7 @@ const Reports = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Custo medio por paciente</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatient)}</p>
-                      <p className="text-sm text-muted-foreground">Baseado no subtotal de formulas, modulos e insumos.</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Custo medio por paciente-dia</CardTitle>
+                      <CardTitle className="text-base">Custo medio por paciente/dia</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatientDay)}</p>
@@ -1071,11 +1062,20 @@ const Reports = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Media diaria de custo</CardTitle>
+                      <CardTitle className="text-base">Custo medio por paciente no periodo</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatient)}</p>
+                      <p className="text-sm text-muted-foreground">Baseado no subtotal de formulas, modulos e insumos no periodo filtrado.</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Media diaria do custo da ala</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerDay)}</p>
-                      <p className="text-sm text-muted-foreground">Media no intervalo selecionado.</p>
+                      <p className="text-sm text-muted-foreground">Media diaria do custo da ala selecionada no periodo.</p>
                     </CardContent>
                   </Card>
                 </div>
