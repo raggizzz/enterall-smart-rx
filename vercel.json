@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/health"
+      "destination": "https://williams-finder-brush-asp.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/health/:path*"
+      "destination": "https://williams-finder-brush-asp.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/api/:path*"
+      "destination": "https://williams-finder-brush-asp.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
