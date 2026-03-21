@@ -33,6 +33,7 @@ import {
 import { toast } from "sonner";
 import { Prescription, Patient, Formula, Module, AppSettings } from "@/lib/database";
 import { calculateStoredPrescriptionNutrition } from "@/lib/prescriptionCalculations";
+import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 
 interface PrescriptionDetailsProps {
     prescription: Prescription;
@@ -304,7 +305,7 @@ export const PrescriptionDetails = ({
             lines.push(`Fracionamento: ${prescription.oralDetails?.mealsPerDay || patient.mealCount || '-'} refeicoes/dia.`);
             lines.push(`Acompanhamento fonoaudiologico: ${prescription.oralDetails?.speechTherapy ? 'sim' : 'nao'}.`);
             if (prescription.oralDetails?.needsThickener) {
-                lines.push(`Agua espessada com ${prescription.oralDetails?.thickenerProduct || 'espessante nao informado'}, ${prescription.oralDetails?.thickenerVolume || '?'} ml por oferta, horarios: ${prescription.oralDetails?.thickenerTimes?.join(', ') || '-'}.`);
+                lines.push(`Agua espessada com ${prescription.oralDetails?.thickenerProduct || 'espessante nao informado'}, ${prescription.oralDetails?.thickenerGrams || '?'} g + ${prescription.oralDetails?.thickenerVolume || '?'} ml de agua por oferta, horarios: ${prescription.oralDetails?.thickenerTimes?.join(', ') || '-'}.`);
             }
         } else if (prescription.therapyType === 'parenteral') {
             lines.push(`Terapia parenteral prescrita por acesso ${prescription.parenteralDetails?.access || 'nao informado'}.`);
@@ -328,9 +329,7 @@ export const PrescriptionDetails = ({
                 const infusionMethod = prescription.infusionMode === 'pump'
                     ? 'em bomba'
                     : 'em modo gravitacional';
-                const rate = prescription.infusionMode === 'pump'
-                    ? `${prescription.infusionRateMlH || '?'} ml/h`
-                    : `${prescription.infusionDropsMin || '?'} gotas/min`;
+                const rate = getPrescriptionRateLabel(prescription, pf.volume) || '?';
 
                 lines.push(`Fórmula ${formula.name}, infundida ${infusionMethod}, velocidade de ${rate}, por ${prescription.infusionHoursPerDay || '?'} horas/dia, totalizando ${pf.volume * pf.timesPerDay} ml.`);
             });
@@ -348,9 +347,7 @@ export const PrescriptionDetails = ({
                     const infusionMethod = prescription.infusionMode === 'pump'
                         ? 'em bomba'
                         : 'em modo gravitacional';
-                    const rate = prescription.infusionMode === 'pump'
-                        ? `${prescription.infusionRateMlH || '?'} ml/h`
-                        : `${prescription.infusionDropsMin || '?'} gotas/min`;
+                    const rate = getPrescriptionRateLabel(prescription, pf.volume) || '?';
 
                     lines.push(`Fórmula ${formula.name}, infundida ${infusionMethod}, fracionada em ${pf.timesPerDay} etapas, ${pf.volume}ml por etapa, velocidade de ${rate}.`);
                 }

@@ -587,6 +587,64 @@ const Reports = () => {
         item.totalCost += totalQuantity * (module?.billingPrice || 0);
       });
 
+      if (prescription.therapyType === "oral" && prescription.oralDetails?.needsThickener) {
+        const thickenerFormula = (prescription.oralDetails.thickenerFormulaId
+          ? formulasById.get(prescription.oralDetails.thickenerFormulaId)
+          : undefined) || getFormulaByName(formulas, prescription.oralDetails.thickenerProduct);
+        const administrationsPerDay = getAdministrationCount(prescription.oralDetails.thickenerTimes);
+        const thickenerGrams = Number(prescription.oralDetails.thickenerGrams || 0);
+        const thickenerVolume = Number(prescription.oralDetails.thickenerVolume || 0);
+
+        if (administrationsPerDay > 0 && (thickenerGrams > 0 || thickenerVolume > 0)) {
+          const billingUnit = thickenerFormula?.billingUnit || (thickenerGrams > 0 ? "g" : "ml");
+          const referenceUnitAmount = thickenerFormula?.conversionFactor || thickenerFormula?.presentations?.[0] || 0;
+          const billingPrice = thickenerFormula?.billingPrice || 0;
+          const totalVolumeMl = thickenerVolume * administrationsPerDay * overlapDays;
+
+          let totalQuantity = (billingUnit === "ml" ? thickenerVolume : thickenerGrams) * administrationsPerDay * overlapDays;
+          let estimatedUnits = referenceUnitAmount > 0 ? totalQuantity / referenceUnitAmount : 0;
+          let totalCost = totalQuantity * billingPrice;
+
+          if (billingUnit === "unit") {
+            const baseAmountPerDay = (thickenerGrams > 0 ? thickenerGrams : thickenerVolume) * administrationsPerDay;
+            const dailyUnits = referenceUnitAmount > 0
+              ? Math.ceil(baseAmountPerDay / referenceUnitAmount)
+              : baseAmountPerDay;
+            totalQuantity = dailyUnits * overlapDays;
+            estimatedUnits = totalQuantity;
+            totalCost = totalQuantity * billingPrice;
+          } else if (billingUnit === "ml" && referenceUnitAmount > 0) {
+            estimatedUnits = Math.ceil((thickenerVolume * administrationsPerDay) / referenceUnitAmount) * overlapDays;
+          }
+
+          const item = getOrCreateAccumulator(
+            usageMap,
+            `formula:${thickenerFormula?.id || prescription.oralDetails.thickenerProduct || "espessante"}`,
+            {
+              productId: thickenerFormula?.id || prescription.oralDetails.thickenerProduct || "espessante",
+              productName: prescription.oralDetails.thickenerProduct || thickenerFormula?.name || "Espessante",
+              manufacturer: thickenerFormula?.manufacturer || "-",
+              category: "formula",
+              billingUnit,
+            },
+          );
+
+          item.therapyTypes.add("oral");
+          item.patientIds.add(patientId);
+          if (prescription.id) item.prescriptionIds.add(prescription.id);
+          item.totalQuantity += totalQuantity;
+          item.totalVolumeMl += totalVolumeMl;
+          item.estimatedUnits += estimatedUnits;
+          item.patientDays += overlapDays;
+          item.totalCost += totalCost;
+          addWasteByFactor(
+            item,
+            thickenerFormula || {},
+            billingUnit === "g" ? totalQuantity / 1000 : totalVolumeMl / 1000,
+          );
+        }
+      }
+
       if (prescription.therapyType === "enteral") {
         const administrationCount = prescription.formulas.reduce(
           (sum, entry) => sum + getAdministrationCount(entry.schedules, entry.timesPerDay),

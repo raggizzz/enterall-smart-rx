@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { Patient, Prescription } from "@/lib/database";
+import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 
 interface SectorMapPrintProps {
   hospitalName?: string;
@@ -98,17 +99,32 @@ const MetricRow = ({ label, value }: { label: string; value: string }) => (
   </p>
 );
 
-const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: SectorMapPrintProps) => {
-  return (
-    <div className="hidden print:block space-y-4 bg-white p-4 text-black">
-      <header className="border-b-2 border-black pb-3">
-        <h1 className="text-xl font-bold">Mapa do Nutricionista</h1>
-        <p className="text-sm">
-          Unidade: {hospitalName || "-"} | Setor: {wardName} | Emissao: {todayLabel}
-        </p>
-      </header>
+const chunkPatients = (patients: Patient[], size: number): Patient[][] => {
+  const pages: Patient[][] = [];
+  for (let index = 0; index < patients.length; index += size) {
+    pages.push(patients.slice(index, index + size));
+  }
+  return pages;
+};
 
-      {patients.map((patient) => {
+const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: SectorMapPrintProps) => {
+  const patientPages = chunkPatients(patients, 8);
+
+  return (
+    <div className="hidden print:block bg-white text-black">
+      {patientPages.map((pagePatients, pageIndex) => (
+        <section
+          key={`page-${pageIndex + 1}`}
+          className={`space-y-4 bg-white p-4 ${pageIndex < patientPages.length - 1 ? "break-after-page" : ""}`}
+        >
+          <header className="border-b-2 border-black pb-3">
+            <h1 className="text-xl font-bold">Mapa do Nutricionista</h1>
+            <p className="text-sm">
+              Unidade: {hospitalName || "-"} | Setor: {wardName} | Emissao: {todayLabel} | Pagina {pageIndex + 1}/{patientPages.length || 1}
+            </p>
+          </header>
+
+          {pagePatients.map((patient) => {
         const patientPrescriptions = getActivePrescriptionsForPatient(prescriptions, patient.id);
         const oralPrescription = patientPrescriptions.find((prescription) => prescription.therapyType === "oral");
         const enteralPrescription = patientPrescriptions.find((prescription) => prescription.therapyType === "enteral");
@@ -210,7 +226,7 @@ const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: Sec
                   ))}
                   {oralPrescription.oralDetails?.needsThickener && (
                     <p className="text-sm">
-                      <strong>Espessante:</strong> {oralPrescription.oralDetails.thickenerProduct || "-"} | {formatAmount(oralPrescription.oralDetails.thickenerVolume, "ml")} | {formatSchedules(oralPrescription.oralDetails.thickenerTimes)}
+                      <strong>Espessante:</strong> {oralPrescription.oralDetails.thickenerProduct || "-"} | {formatAmount(oralPrescription.oralDetails.thickenerGrams, "g")} + {formatAmount(oralPrescription.oralDetails.thickenerVolume, "ml")} | {formatSchedules(oralPrescription.oralDetails.thickenerTimes)}
                     </p>
                   )}
                   <p className="text-sm">
@@ -224,7 +240,10 @@ const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: Sec
                   <MetricRow label="Sistema" value={enteralPrescription.systemType === "closed" ? "Fechado" : "Aberto"} />
                   <MetricRow label="Acesso" value={enteralPrescription.feedingRoute || enteralPrescription.enteralDetails?.access || "-"} />
                   <MetricRow label="Infusao" value={enteralPrescription.infusionMode || enteralPrescription.enteralDetails?.infusionMode || "-"} />
-                  <MetricRow label="Velocidade" value={enteralPrescription.infusionRateMlH ? `${enteralPrescription.infusionRateMlH} ml/h` : "-"} />
+                  <MetricRow
+                    label="Velocidade"
+                    value={getPrescriptionRateLabel(enteralPrescription, enteralPrescription.formulas[0]?.volume) || "-"}
+                  />
                   <MetricRow label="Volume para equipo" value={formatAmount(enteralPrescription.equipmentVolume, "ml")} />
                   {enteralPrescription.formulas.map((formula) => (
                     <p key={`${enteralPrescription.id}-${formula.formulaId}`} className="text-sm">
@@ -297,6 +316,8 @@ const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: Sec
           </article>
         );
       })}
+        </section>
+      ))}
     </div>
   );
 };

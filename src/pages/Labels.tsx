@@ -11,6 +11,7 @@ import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import LabelPreview, { LabelData } from "@/components/LabelPreview";
 import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings } from "@/hooks/useDatabase";
+import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 
@@ -185,18 +186,8 @@ const Labels = () => {
             settings?.labelSettings?.closedConservation ||
             "Conservação: em temperatura ambiente.";
 
-        const getRate = (prescription: any): string | undefined => {
-            if (prescription.infusionRateMlH && prescription.infusionRateMlH > 0) {
-                return `${Math.round(prescription.infusionRateMlH)} ml/h`;
-            }
-            if (prescription.totalVolume && prescription.infusionHoursPerDay && prescription.infusionHoursPerDay > 0) {
-                return `${Math.round(prescription.totalVolume / prescription.infusionHoursPerDay)} ml/h`;
-            }
-            if (prescription.infusionMode === "gravity" && prescription.infusionDropsMin && prescription.infusionDropsMin > 0) {
-                return `${Math.round(prescription.infusionDropsMin)} gotas/min`;
-            }
-            return undefined;
-        };
+        const getRate = (prescription: any, stageVolume?: number): string | undefined =>
+            getPrescriptionRateLabel(prescription, stageVolume);
 
         const buildControl = (prescriptionId: string | undefined, time: string | undefined, suffix: string): string => {
             const yyyy = activeDate.getFullYear();
@@ -260,6 +251,7 @@ const Labels = () => {
             if (prescription.oralDetails?.needsThickener) {
                 const thickenerParts = [
                     prescription.oralDetails?.thickenerProduct || "espessante",
+                    prescription.oralDetails?.thickenerGrams ? `${Math.round(prescription.oralDetails.thickenerGrams)} g` : "",
                     prescription.oralDetails?.thickenerVolume ? `${Math.round(prescription.oralDetails.thickenerVolume)} ml de agua` : "",
                 ].filter(Boolean);
                 details.push(`Agua espessada: ${thickenerParts.join(" | ")}`);
@@ -283,7 +275,6 @@ const Labels = () => {
                         : prescription.feedingRoute || "SNE"
                 );
                 const prescriptionDateText = toDateOnlyFromIso(prescription.startDate) || activeDateText;
-                const infusionRate = getRate(prescription);
 
                 const formulaEntries = prescription.formulas || [];
                 const moduleEntries = prescription.modules || [];
@@ -366,7 +357,7 @@ const Labels = () => {
                                             record,
                                             dob,
                                             scheduleTime: time,
-                                            infusionRate,
+                                            infusionRate: getRate(prescription, formula.volume),
                                             route,
                                             formulaText: formula.formulaName,
                                             compositionText: describeFormula(formula),
@@ -395,7 +386,7 @@ const Labels = () => {
                                         record,
                                         dob,
                                         scheduleTime: time,
-                                        infusionRate,
+                                        infusionRate: getRate(prescription),
                                         route,
                                         formulaText: "Formula enteral",
                                         compositionText: undefined,
@@ -433,7 +424,7 @@ const Labels = () => {
                                             record,
                                             dob,
                                             scheduleTime: time,
-                                            infusionRate,
+                                            infusionRate: getRate(prescription, formula.volume),
                                             route,
                                             formulaText: formula.formulaName,
                                             compositionText: [
@@ -464,7 +455,7 @@ const Labels = () => {
                                         record,
                                         dob,
                                         scheduleTime: time,
-                                        infusionRate,
+                                        infusionRate: getRate(prescription),
                                         route,
                                         formulaText: "Formula enteral",
                                         compositionText: undefined,
@@ -494,7 +485,7 @@ const Labels = () => {
                                         record,
                                         dob,
                                         scheduleTime: time,
-                                        infusionRate,
+                                        infusionRate: getRate(prescription),
                                         route,
                                         formulaText: undefined,
                                         compositionText: [
@@ -600,6 +591,46 @@ const Labels = () => {
                                 );
                             });
                         });
+                    }
+
+                    if (prescription.oralDetails?.needsThickener && prescription.oralDetails?.thickenerTimes?.length) {
+                        prescription.oralDetails.thickenerTimes
+                            .map((time) => normalizeScheduleTime(time))
+                            .filter(Boolean)
+                            .forEach((time) => {
+                                pushLabel(
+                                    {
+                                        clinic: clinicName,
+                                        templateTitle: "AGUA ESPESSADA",
+                                        patientName,
+                                        bed,
+                                        record,
+                                        dob,
+                                        scheduleTime: time,
+                                        route,
+                                        formulaText: prescription.oralDetails?.thickenerProduct || "Espessante",
+                                        compositionText: [
+                                            prescription.oralDetails?.thickenerGrams
+                                                ? `${Math.round(prescription.oralDetails.thickenerGrams)} g de espessante`
+                                                : "",
+                                            prescription.oralDetails?.thickenerVolume
+                                                ? `${Math.round(prescription.oralDetails.thickenerVolume)} ml de agua`
+                                                : "",
+                                        ].filter(Boolean).join(" | ") || undefined,
+                                        volumeText: prescription.oralDetails?.thickenerVolume
+                                            ? `${Math.round(prescription.oralDetails.thickenerVolume)} ml`
+                                            : undefined,
+                                        manipulationDate: activeDateText,
+                                        manipulationTime: time,
+                                        validityText: "Validade: 4h apos manipulacao.",
+                                        controlText: buildControl(prescription.id, time, "ES"),
+                                        conservationText: conservationOpen,
+                                        rtName,
+                                        rtCrn,
+                                    },
+                                    "oral-thickener"
+                                );
+                            });
                     }
                 }
             });

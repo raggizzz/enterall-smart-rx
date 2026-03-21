@@ -27,6 +27,7 @@ import {
   createNutritionAccumulator,
   finalizeNutritionTotals,
 } from "@/lib/prescriptionCalculations";
+import { calculateOpenStageRate } from "@/lib/prescriptionInfusion";
 
 interface FormulaEntry {
   id: string;
@@ -486,6 +487,7 @@ const PrescriptionNew = () => {
   const [oralSpeechTherapy, setOralSpeechTherapy] = useState(false);
   const [oralNeedsThickener, setOralNeedsThickener] = useState(false);
   const [oralSafeConsistency, setOralSafeConsistency] = useState('');
+  const [oralThickenerFormulaId, setOralThickenerFormulaId] = useState('');
   const [oralThickenerProduct, setOralThickenerProduct] = useState('');
   const [oralThickenerGrams, setOralThickenerGrams] = useState('');
   const [oralThickenerVolume, setOralThickenerVolume] = useState('');
@@ -720,12 +722,21 @@ const PrescriptionNew = () => {
 
   useEffect(() => {
     if (!oralNeedsThickener) {
+      setOralThickenerFormulaId('');
       setOralThickenerProduct('');
       setOralThickenerGrams('');
       setOralThickenerVolume('');
       setOralThickenerTimes([]);
     }
   }, [oralNeedsThickener]);
+
+  useEffect(() => {
+    if (oralThickenerFormulaId || !oralThickenerProduct) return;
+    const matched = thickenerFormulaOptions.find((formula) => formula.name === oralThickenerProduct);
+    if (matched?.id) {
+      setOralThickenerFormulaId(matched.id);
+    }
+  }, [oralThickenerFormulaId, oralThickenerProduct, thickenerFormulaOptions]);
 
   useEffect(() => {
     if (!shouldShowInfantFeedingControls && oralAdministrationRoute === "translactation") {
@@ -887,6 +898,7 @@ const PrescriptionNew = () => {
       setOralSpeechTherapy(Boolean(oralDetails?.speechTherapy));
       setOralNeedsThickener(Boolean(oralDetails?.needsThickener));
       setOralSafeConsistency(oralDetails?.safeConsistency || "");
+      setOralThickenerFormulaId(oralDetails?.thickenerFormulaId || "");
       setOralThickenerProduct(oralDetails?.thickenerProduct || "");
       setOralThickenerGrams(oralDetails?.thickenerGrams ? String(oralDetails.thickenerGrams) : "");
       setOralThickenerVolume(oralDetails?.thickenerVolume ? String(oralDetails.thickenerVolume) : "");
@@ -991,6 +1003,7 @@ const PrescriptionNew = () => {
       setOralSpeechTherapy(Boolean(patient.safeConsistency));
       setOralNeedsThickener(Boolean(patient.safeConsistency));
       setEquipmentVolume("");
+      setOralThickenerFormulaId("");
       setOralThickenerProduct("");
       setOralThickenerGrams("");
       setOralThickenerVolume("");
@@ -1271,6 +1284,23 @@ const PrescriptionNew = () => {
         }))
         : [];
 
+      const openStageVolumes = openFormulas
+        .filter((formula) => isPersistedDbId(formula.formulaId))
+        .map((formula) => parseFloat(formula.volume) || 0)
+        .filter((volume) => volume > 0);
+
+      const uniqueOpenStageVolumes = Array.from(new Set(openStageVolumes.map((volume) => volume.toFixed(2))));
+      const openRateBaseVolume = uniqueOpenStageVolumes.length === 1 ? Number(uniqueOpenStageVolumes[0]) : undefined;
+      const openDerivedRate = calculateOpenStageRate(
+        openRateBaseVolume,
+        openInfusionMode,
+        parseFloat(openDurationPerStep) || undefined,
+      );
+      const enteralTotalVolume = enteralFormulas.reduce(
+        (sum, formula) => sum + ((formula.volume || 0) * (formula.timesPerDay || 0)),
+        0,
+      );
+
       const mealLabelByKey = Object.fromEntries(ORAL_MEAL_SCHEDULES.map((entry) => [entry.key, entry.label]));
       const oralFormulas = feedingRoutes.oral
         ? oralSupplements
@@ -1343,7 +1373,18 @@ const PrescriptionNew = () => {
           systemType: systemType || 'open',
           feedingRoute: enteralAccess || undefined,
           infusionMode: (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) || undefined,
-          infusionRateMlH: systemType === 'closed' ? parseFloat(closedFormula.rate) || undefined : undefined,
+          infusionRateMlH: systemType === 'closed'
+            ? parseFloat(closedFormula.rate) || undefined
+            : openInfusionMode === "pump"
+              ? openDerivedRate.mlPerHour
+              : undefined,
+          infusionDropsMin: systemType === 'closed'
+            ? closedFormula.infusionMode === "gravity"
+              ? parseFloat(closedFormula.rate) || undefined
+              : undefined
+            : openInfusionMode === "gravity"
+              ? openDerivedRate.dropsPerMin
+              : undefined,
           infusionHoursPerDay: systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : parseFloat(openDurationPerStep) || undefined,
           equipmentVolume: systemType === 'open' ? parseFloat(equipmentVolume) || undefined : undefined,
           formulas: enteralFormulas,
@@ -1355,6 +1396,7 @@ const PrescriptionNew = () => {
           totalCarbs: nutritionSummary.carbs,
           totalFat: nutritionSummary.fat,
           totalFiber: nutritionSummary.fiber,
+          totalVolume: enteralTotalVolume || undefined,
           totalFreeWater: nutritionSummary.freeWater,
           enteralDetails: {
             access: enteralAccess || undefined,
@@ -1416,6 +1458,7 @@ const PrescriptionNew = () => {
             speechTherapy: oralSpeechTherapy,
             needsThickener: oralNeedsThickener,
             safeConsistency: oralSafeConsistency || undefined,
+            thickenerFormulaId: oralNeedsThickener ? oralThickenerFormulaId || undefined : undefined,
             thickenerProduct: oralNeedsThickener ? oralThickenerProduct || undefined : undefined,
             thickenerGrams: oralNeedsThickener ? parseFloat(oralThickenerGrams) || undefined : undefined,
             thickenerVolume: oralNeedsThickener ? parseFloat(oralThickenerVolume) || undefined : undefined,
@@ -1642,6 +1685,7 @@ const PrescriptionNew = () => {
                             setOralSpeechTherapy(Boolean(p.safeConsistency));
                             setOralNeedsThickener(Boolean(p.safeConsistency));
                             setOralSafeConsistency(p.safeConsistency || "");
+                            setOralThickenerFormulaId("");
                             setOralThickenerProduct("");
                             setOralThickenerGrams("");
                             setOralThickenerVolume("");
@@ -1981,14 +2025,28 @@ const PrescriptionNew = () => {
                             <div className="space-y-2">
                               <Label>Formula espessante</Label>
                               {thickenerFormulaOptions.length > 0 ? (
-                                <Select value={oralThickenerProduct} onValueChange={setOralThickenerProduct}>
+                                <Select
+                                  value={oralThickenerFormulaId}
+                                  onValueChange={(value) => {
+                                    const selectedFormula = thickenerFormulaOptions.find((formula) => formula.id === value);
+                                    setOralThickenerFormulaId(value);
+                                    setOralThickenerProduct(selectedFormula?.name || "");
+                                  }}
+                                >
                                   <SelectTrigger><SelectValue placeholder="Selecione a formula espessante" /></SelectTrigger>
                                   <SelectContent>
-                                    {thickenerFormulaOptions.map((formula) => <SelectItem key={formula.id} value={formula.name}>{formula.name}</SelectItem>)}
+                                    {thickenerFormulaOptions.map((formula) => <SelectItem key={formula.id} value={formula.id!}>{formula.name}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
                               ) : (
-                                <Input value={oralThickenerProduct} onChange={e => setOralThickenerProduct(e.target.value)} placeholder="Ex: Resource ThickenUp" />
+                                <Input
+                                  value={oralThickenerProduct}
+                                  onChange={e => {
+                                    setOralThickenerFormulaId("");
+                                    setOralThickenerProduct(e.target.value);
+                                  }}
+                                  placeholder="Ex: Resource ThickenUp"
+                                />
                               )}
                             </div>
                             <div className="space-y-2"><Label>Quantidade por oferta (g)</Label><Input type="number" value={oralThickenerGrams} onChange={e => setOralThickenerGrams(e.target.value)} placeholder="Ex: 4" /></div>

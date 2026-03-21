@@ -1,5 +1,6 @@
 import { Prescription, Formula, Module, Supply, Patient } from '@/lib/database';
 import { RequisitionData, DietMapItem, ConsolidatedItem } from '@/types/requisition';
+import { getPrescriptionRateLabel } from '@/lib/prescriptionInfusion';
 
 // Native Date helpers to replace date-fns
 const startOfDay = (date: Date): Date => {
@@ -110,6 +111,15 @@ export const generateRequisitionData = ({
     // Helper: Find pricing
     const getFormulaPrice = (id: string) => formulas.find(f => f.id === id)?.billingPrice || 0;
     const getModulePrice = (id: string) => modules.find(m => m.id === id)?.billingPrice || 0;
+    const getFormulaByIdOrName = (id?: string, name?: string) => {
+        if (id) {
+            const matchById = formulas.find((formula) => formula.id === id);
+            if (matchById) return matchById;
+        }
+        const normalizedName = name?.trim().toLowerCase();
+        if (!normalizedName) return undefined;
+        return formulas.find((formula) => formula.name.trim().toLowerCase() === normalizedName);
+    };
 
     const findSupplyByCategory = (category: Supply['category']) =>
         supplies.find((s) => s.category === category && s.isActive && s.isBillable !== false);
@@ -160,7 +170,7 @@ export const generateRequisitionData = ({
                     unit: 'ml',
                     stageVolume: f.volume,
                     stageVolumeUnit: 'ml',
-                    rate: p.infusionRateMlH ? `${p.infusionRateMlH} ml/h` : undefined,
+                    rate: getPrescriptionRateLabel(p, f.volume),
                     times: matchingTimes,
                     productCode: f.formulaId,
                     observation: p.systemType === 'closed'
@@ -254,6 +264,54 @@ export const generateRequisitionData = ({
                 addToConsolidated(m.moduleId, m.moduleName, totalAmount, m.unit || 'g', price, 'module');
             }
         });
+
+        if (p.therapyType === 'oral' && p.oralDetails?.needsThickener) {
+            const thickenerTimes = (p.oralDetails.thickenerTimes || [])
+                .map((time) => normalizeScheduleTime(time))
+                .filter((time) => selectedTimeSet.has(time));
+            const thickenerGrams = Number(p.oralDetails.thickenerGrams || 0);
+            const thickenerVolume = Number(p.oralDetails.thickenerVolume || 0);
+            const thickenerFormula = getFormulaByIdOrName(
+                p.oralDetails.thickenerFormulaId,
+                p.oralDetails.thickenerProduct,
+            );
+
+            if (thickenerTimes.length > 0) {
+                dietMap.push({
+                    ...patientInfo,
+                    type: 'supplement',
+                    productName: p.oralDetails.thickenerProduct || thickenerFormula?.name || 'Espessante',
+                    volumeOrAmount: thickenerGrams || thickenerVolume,
+                    unit: thickenerGrams > 0 ? 'g' : (thickenerFormula?.billingUnit || 'ml'),
+                    stageVolume: thickenerVolume || undefined,
+                    stageVolumeUnit: thickenerVolume > 0 ? 'ml' : undefined,
+                    times: thickenerTimes,
+                    productCode: thickenerFormula?.id,
+                    observation: 'Agua espessada',
+                });
+
+                const dailyGrams = thickenerGrams * thickenerTimes.length;
+                const dailyVolume = thickenerVolume * thickenerTimes.length;
+                const billableUnit = thickenerFormula?.billingUnit || (thickenerGrams > 0 ? 'g' : 'ml');
+                const conversionFactor = thickenerFormula?.conversionFactor || thickenerFormula?.presentations?.[0] || 0;
+
+                let totalQuantity = billableUnit === 'ml' ? dailyVolume * dayDiff : dailyGrams * dayDiff;
+                let unitPrice = thickenerFormula?.billingPrice || 0;
+
+                if (billableUnit === 'unit' && conversionFactor > 0) {
+                    totalQuantity = Math.ceil((dailyGrams * dayDiff) / conversionFactor);
+                }
+
+                addToConsolidated(
+                    thickenerFormula?.id || 'THICKENER',
+                    p.oralDetails.thickenerProduct || thickenerFormula?.name || 'Espessante',
+                    totalQuantity,
+                    billableUnit,
+                    unitPrice,
+                    'formula',
+                );
+            }
+        }
 
         // --- Process Hydration ---
         if (p.hydrationVolume && p.hydrationSchedules) {

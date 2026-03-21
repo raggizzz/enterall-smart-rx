@@ -322,6 +322,7 @@ export interface Prescription {
         speechTherapy?: boolean;
         needsThickener?: boolean;
         safeConsistency?: string;
+        thickenerFormulaId?: string;
         thickenerProduct?: string;
         thickenerGrams?: number;
         thickenerVolume?: number;
