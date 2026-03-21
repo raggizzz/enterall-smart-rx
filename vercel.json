@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://displays-climbing-chips-caps.trycloudflare.com/health"
+      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://displays-climbing-chips-caps.trycloudflare.com/health/:path*"
+      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://displays-climbing-chips-caps.trycloudflare.com/api/:path*"
+      "destination": "https://properties-proceedings-suspected-argument.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
