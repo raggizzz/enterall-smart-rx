@@ -220,6 +220,12 @@ const FORMULA_REGISTRATION_OPTIONS: Array<{ value: FormulaRegistrationKind; labe
   { value: "oral-supplement", label: "Suplemento via oral" },
   { value: "infant-formula", label: "Formula infantil" },
 ];
+const FORMULA_PROFILE_OPTIONS: Array<{ value: FormulaRegistrationKind; label: string }> = [
+  { value: "closed-system", label: "Sistema fechado" },
+  { value: "open-system", label: "Sistema aberto" },
+  { value: "oral-supplement", label: "Suplemento via oral" },
+  { value: "infant-formula", label: "Formula infantil" },
+];
 const toggleFormulaRoute = (
   current: FormulaFormState,
   value: NonNullable<Formula["administrationRoutes"]>[number],
@@ -301,6 +307,114 @@ const applyRegistrationKind = (
         administrationRoutes: ["oral", "translactation"],
       };
   }
+};
+
+const hasFormulaProfile = (current: FormulaFormState, profile: FormulaRegistrationKind) => {
+  switch (profile) {
+    case "closed-system":
+      return current.formulaTypes.includes("closed");
+    case "open-system":
+      return current.formulaTypes.includes("open");
+    case "oral-supplement":
+      return current.formulaTypes.includes("supplement");
+    case "infant-formula":
+      return current.ageGroup === "infant" || current.administrationRoutes.includes("translactation");
+  }
+};
+
+const toggleFormulaProfile = (
+  current: FormulaFormState,
+  profile: FormulaRegistrationKind,
+): FormulaFormState => {
+  const hasProfile = hasFormulaProfile(current, profile);
+  const nextFormulaTypes = new Set(current.formulaTypes.filter((item) => item !== "module"));
+  const nextRoutes = new Set(current.administrationRoutes);
+  let nextAgeGroup = current.ageGroup;
+  let nextCatalogKind = current.catalogKind;
+
+  switch (profile) {
+    case "closed-system":
+      if (hasProfile) {
+        nextFormulaTypes.delete("closed");
+      } else {
+        nextFormulaTypes.add("closed");
+        nextRoutes.add("enteral");
+      }
+      break;
+    case "open-system":
+      if (hasProfile) {
+        nextFormulaTypes.delete("open");
+      } else {
+        nextFormulaTypes.add("open");
+        nextRoutes.add("enteral");
+      }
+      break;
+    case "oral-supplement":
+      if (hasProfile) {
+        nextFormulaTypes.delete("supplement");
+      } else {
+        nextFormulaTypes.add("supplement");
+        nextRoutes.add("oral");
+        nextCatalogKind = "supplement";
+      }
+      break;
+    case "infant-formula":
+      if (hasProfile) {
+        nextAgeGroup = "";
+        nextRoutes.delete("translactation");
+      } else {
+        nextAgeGroup = "infant";
+        nextRoutes.add("oral");
+        nextRoutes.add("translactation");
+      }
+      break;
+  }
+
+  const hasSupplement = nextFormulaTypes.has("supplement");
+  const hasEnteralProfile = nextFormulaTypes.has("open") || nextFormulaTypes.has("closed");
+
+  return {
+    ...current,
+    registrationKind: profile,
+    catalogKind: hasSupplement && !hasEnteralProfile ? "supplement" : nextCatalogKind,
+    formulaTypes: Array.from(nextFormulaTypes),
+    administrationRoutes: Array.from(nextRoutes),
+    ageGroup: nextAgeGroup,
+  };
+};
+
+const normalizeFormulaUsage = (current: FormulaFormState): FormulaFormState => {
+  const formulaTypes = Array.from(new Set(current.formulaTypes.filter((item) => item !== "module")));
+  const administrationRoutes = Array.from(new Set(current.administrationRoutes));
+  const hasOpen = formulaTypes.includes("open");
+  const hasClosed = formulaTypes.includes("closed");
+  const hasSupplement = formulaTypes.includes("supplement");
+  const isInfant = current.ageGroup === "infant" || administrationRoutes.includes("translactation");
+
+  let systemType: Formula["systemType"] = "both";
+  if (hasOpen && hasClosed) systemType = "both";
+  else if (hasOpen) systemType = "open";
+  else if (hasClosed) systemType = "closed";
+  else if (administrationRoutes.includes("enteral")) systemType = "both";
+
+  let type = current.type;
+  if (isInfant) {
+    type = "infant-formula";
+  } else if (hasSupplement && !hasOpen && !hasClosed && !administrationRoutes.includes("enteral")) {
+    type = "oral-supplement";
+  } else if (type === "oral-supplement" || type === "infant-formula") {
+    type = "standard";
+  }
+
+  return {
+    ...current,
+    type,
+    systemType,
+    formulaTypes,
+    administrationRoutes,
+    ageGroup: isInfant ? "infant" : current.ageGroup,
+    catalogKind: hasSupplement && !hasOpen && !hasClosed ? "supplement" : "formula",
+  };
 };
 
 const roundDerivedValue = (value?: number) => (typeof value === "number" ? Number(value.toFixed(2)) : undefined);
@@ -465,9 +579,14 @@ const Formulas = () => {
     const fatPerUnit = roundDerivedValue(
       typeof fatPct === "number" ? (caloriesPerUnit * fatPct) / 900 : undefined,
     );
-    const normalizedFormulaForm = applyRegistrationKind(formulaForm, formulaForm.registrationKind);
+    const normalizedFormulaForm = normalizeFormulaUsage(formulaForm);
     const formulaTypes = normalizedFormulaForm.formulaTypes.filter((item) => item !== "module");
     const formulaType = normalizedFormulaForm.type;
+
+    if (normalizedFormulaForm.administrationRoutes.length === 0) {
+      toast.error("Selecione pelo menos um uso permitido para a formula");
+      return;
+    }
 
     const payload: Omit<Formula, "id" | "createdAt" | "updatedAt"> = {
       hospitalId: editingFormula?.hospitalId || sessionHospitalId,
@@ -683,7 +802,7 @@ const Formulas = () => {
                       <div className="space-y-2"><Label>Codigo *</Label><Input value={formulaForm.code} onChange={(e) => setFormulaForm({ ...formulaForm, code: e.target.value })} placeholder="Ex: FTNEA07" /></div>
                       <div className="space-y-2"><Label>Fabricante</Label><Input value={formulaForm.manufacturer} onChange={(e) => setFormulaForm({ ...formulaForm, manufacturer: e.target.value })} placeholder="Ex: Nestle" /></div>
                       <div className="space-y-2">
-                        <Label>Tipo</Label>
+                        <Label>Perfil inicial</Label>
                         <Select value={formulaForm.registrationKind} onValueChange={(value: FormulaRegistrationKind) => setFormulaForm((current) => applyRegistrationKind(current, value))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -706,6 +825,43 @@ const Formulas = () => {
                             <SelectItem value="liquido">Liquido</SelectItem>
                           </SelectContent>
                         </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Pode ser cadastrada como</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {FORMULA_PROFILE_OPTIONS.map((option) => (
+                          <Button
+                            key={option.value}
+                            type="button"
+                            variant={hasFormulaProfile(formulaForm, option.value) ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setFormulaForm((current) => toggleFormulaProfile(current, option.value))}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Voce pode combinar usos. Exemplo: uma mesma formula pode ser via oral e enteral em sistema aberto.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Rotas/uso permitidos</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {FORMULA_ROUTE_OPTIONS.map((route) => (
+                          <Button
+                            key={route.value}
+                            type="button"
+                            variant={formulaForm.administrationRoutes.includes(route.value as NonNullable<Formula["administrationRoutes"]>[number]) ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setFormulaForm((current) => toggleFormulaRoute(current, route.value as NonNullable<Formula["administrationRoutes"]>[number]))}
+                          >
+                            {route.label}
+                          </Button>
+                        ))}
                       </div>
                     </div>
 
