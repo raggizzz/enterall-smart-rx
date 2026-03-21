@@ -47,6 +47,16 @@
                 }
               },
               "type": "value"
+            },
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "red",
+                  "text": "Sem dados"
+                }
+              },
+              "type": "special"
             }
           ],
           "thresholds": {
@@ -91,9 +101,10 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max(enmeta_database_up)",
+          "expr": "max(pg_up)",
+          "instant": true,
           "legendFormat": "Banco",
-          "range": true,
+          "range": false,
           "refId": "A"
         }
       ],
@@ -125,6 +136,16 @@
                 }
               },
               "type": "value"
+            },
+            {
+              "options": {
+                "match": "null",
+                "result": {
+                  "color": "red",
+                  "text": "Sem dados"
+                }
+              },
+              "type": "special"
             }
           ],
           "thresholds": {
@@ -168,8 +189,9 @@
         {
           "editorMode": "code",
           "expr": "max(up{job=\"enmeta-backend\"})",
+          "instant": true,
           "legendFormat": "Backend",
-          "range": true,
+          "range": false,
           "refId": "A"
         }
       ],
