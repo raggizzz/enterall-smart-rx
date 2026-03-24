@@ -481,13 +481,11 @@ const PrescriptionNew = () => {
   // --- Oral Inline State (Step 8) ---
   const [oralDietConsistency, setOralDietConsistency] = useState('');
   const [oralDietCharacteristics, setOralDietCharacteristics] = useState('');
-  const [oralAdministrationRoute, setOralAdministrationRoute] = useState<'oral' | 'translactation'>('oral');
-  const [oralDeliveryMethod, setOralDeliveryMethod] = useState<'cup' | 'baby-bottle' | 'feeding-bottle'>('cup');
   const [oralMealsPerDay, setOralMealsPerDay] = useState<number>(6);
   const [oralSpeechTherapy, setOralSpeechTherapy] = useState(false);
   const [oralNeedsThickener, setOralNeedsThickener] = useState(false);
   const [oralSafeConsistency, setOralSafeConsistency] = useState('');
-  const [oralThickenerFormulaId, setOralThickenerFormulaId] = useState('');
+  const [oralThickenerModuleId, setOralThickenerModuleId] = useState('');
   const [oralThickenerProduct, setOralThickenerProduct] = useState('');
   const [oralThickenerGrams, setOralThickenerGrams] = useState('');
   const [oralThickenerVolume, setOralThickenerVolume] = useState('');
@@ -591,17 +589,15 @@ const PrescriptionNew = () => {
         "infant-formula",
       ].includes(formula.type)
       && formulaMatchesPatient(formula)
-      && allowsAdministrationRoute(formula, oralAdministrationRoute),
+      && allowsAdministrationRoute(formula, "oral"),
     );
-  }, [availableFormulas, formulaMatchesPatient, oralAdministrationRoute]);
+  }, [availableFormulas, formulaMatchesPatient]);
 
-  const thickenerFormulaOptions = useMemo(() => {
-    const explicitThickeners = availableFormulas.filter((formula) => {
+  const thickenerModuleOptions = useMemo(() => {
+    const explicitThickeners = availableModules.filter((moduleItem) => {
       const haystack = [
-        formula.name,
-        formula.classification,
-        formula.specialCharacteristics,
-        formula.description,
+        moduleItem.name,
+        moduleItem.description,
       ]
         .filter(Boolean)
         .join(" ")
@@ -614,16 +610,8 @@ const PrescriptionNew = () => {
       return explicitThickeners;
     }
 
-    return oralAvailableSupplements.filter((formula) => formula.type === "oral-supplement");
-  }, [availableFormulas, oralAvailableSupplements]);
-
-  const shouldShowInfantFeedingControls = useMemo(() => {
-    if (suggestedAgeGroup === "infant") return true;
-    return oralSupplements.some((supplement) => {
-      const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
-      return formula?.type === "infant-formula" || formula?.ageGroup === "infant";
-    });
-  }, [availableFormulas, oralSupplements, suggestedAgeGroup]);
+    return availableModules;
+  }, [availableModules]);
 
   const buildOralNutritionAccumulator = useCallback(() => {
     const totals = createNutritionAccumulator();
@@ -722,7 +710,7 @@ const PrescriptionNew = () => {
 
   useEffect(() => {
     if (!oralNeedsThickener) {
-      setOralThickenerFormulaId('');
+      setOralThickenerModuleId('');
       setOralThickenerProduct('');
       setOralThickenerGrams('');
       setOralThickenerVolume('');
@@ -731,21 +719,12 @@ const PrescriptionNew = () => {
   }, [oralNeedsThickener]);
 
   useEffect(() => {
-    if (oralThickenerFormulaId || !oralThickenerProduct) return;
-    const matched = thickenerFormulaOptions.find((formula) => formula.name === oralThickenerProduct);
+    if (oralThickenerModuleId || !oralThickenerProduct) return;
+    const matched = thickenerModuleOptions.find((moduleItem) => moduleItem.name === oralThickenerProduct);
     if (matched?.id) {
-      setOralThickenerFormulaId(matched.id);
+      setOralThickenerModuleId(matched.id);
     }
-  }, [oralThickenerFormulaId, oralThickenerProduct, thickenerFormulaOptions]);
-
-  useEffect(() => {
-    if (!shouldShowInfantFeedingControls && oralAdministrationRoute === "translactation") {
-      setOralAdministrationRoute("oral");
-    }
-    if (!shouldShowInfantFeedingControls) {
-      setOralDeliveryMethod("cup");
-    }
-  }, [oralAdministrationRoute, shouldShowInfantFeedingControls]);
+  }, [oralThickenerModuleId, oralThickenerProduct, thickenerModuleOptions]);
 
   // --- DYNAMIC STEP DEFINITIONS ---
   const STEP_DEFS: { id: number; title: string; condition: () => boolean }[] = useMemo(() => [
@@ -890,15 +869,13 @@ const PrescriptionNew = () => {
 
     if (prescription.therapyType === "oral") {
       const oralDetails = prescription.oralDetails;
-      setOralAdministrationRoute(oralDetails?.administrationRoute || "oral");
-      setOralDeliveryMethod(oralDetails?.deliveryMethod || "cup");
       setOralDietConsistency(oralDetails?.dietConsistency || "");
       setOralDietCharacteristics(oralDetails?.dietCharacteristics || "");
       setOralMealsPerDay(oralDetails?.mealsPerDay || 6);
       setOralSpeechTherapy(Boolean(oralDetails?.speechTherapy));
       setOralNeedsThickener(Boolean(oralDetails?.needsThickener));
       setOralSafeConsistency(oralDetails?.safeConsistency || "");
-      setOralThickenerFormulaId(oralDetails?.thickenerFormulaId || "");
+      setOralThickenerModuleId(oralDetails?.thickenerModuleId || oralDetails?.thickenerFormulaId || "");
       setOralThickenerProduct(oralDetails?.thickenerProduct || "");
       setOralThickenerGrams(oralDetails?.thickenerGrams ? String(oralDetails.thickenerGrams) : "");
       setOralThickenerVolume(oralDetails?.thickenerVolume ? String(oralDetails.thickenerVolume) : "");
@@ -993,8 +970,6 @@ const PrescriptionNew = () => {
     if (!patient) return;
 
     setSelectedPatient(patient);
-    setOralAdministrationRoute("oral");
-    setOralDeliveryMethod("cup");
     setOralDietConsistency(patient.consistency || "");
     setOralSafeConsistency(patient.safeConsistency || "");
     setOralMealsPerDay(Number(patient.mealCount) || 6);
@@ -1003,7 +978,7 @@ const PrescriptionNew = () => {
       setOralSpeechTherapy(Boolean(patient.safeConsistency));
       setOralNeedsThickener(Boolean(patient.safeConsistency));
       setEquipmentVolume("");
-      setOralThickenerFormulaId("");
+      setOralThickenerModuleId("");
       setOralThickenerProduct("");
       setOralThickenerGrams("");
       setOralThickenerVolume("");
@@ -1450,15 +1425,14 @@ const PrescriptionNew = () => {
           totalFiber: oralTotals.fiber,
           totalFreeWater: oralTotals.freeWater,
           oralDetails: {
-            administrationRoute: oralAdministrationRoute,
-            deliveryMethod: shouldShowInfantFeedingControls ? oralDeliveryMethod : undefined,
             dietConsistency: oralDietConsistency || undefined,
             dietCharacteristics: oralDietCharacteristics || undefined,
             mealsPerDay: oralMealsPerDay,
             speechTherapy: oralSpeechTherapy,
             needsThickener: oralNeedsThickener,
             safeConsistency: oralSafeConsistency || undefined,
-            thickenerFormulaId: oralNeedsThickener ? oralThickenerFormulaId || undefined : undefined,
+            thickenerModuleId: oralNeedsThickener ? oralThickenerModuleId || undefined : undefined,
+            thickenerFormulaId: undefined,
             thickenerProduct: oralNeedsThickener ? oralThickenerProduct || undefined : undefined,
             thickenerGrams: oralNeedsThickener ? parseFloat(oralThickenerGrams) || undefined : undefined,
             thickenerVolume: oralNeedsThickener ? parseFloat(oralThickenerVolume) || undefined : undefined,
@@ -1470,7 +1444,7 @@ const PrescriptionNew = () => {
             modules: oralTherapyModules,
             observations: oralObservations || undefined,
           },
-          notes: `Via oral${shouldShowInfantFeedingControls ? ` | Administracao: ${oralAdministrationRoute === "translactation" ? "Translactacao" : "Oral"} | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""} | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
+          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
         });
         savedRoutes.push("Via oral");
       }
@@ -1677,15 +1651,13 @@ const PrescriptionNew = () => {
                           setModules([]);
                           setHydration({ volume: "", times: [] });
                           setEquipmentVolume("");
-                          setOralAdministrationRoute("oral");
-                          setOralDeliveryMethod("cup");
                           setOralDietConsistency(p.consistency || "");
                             setOralDietCharacteristics(p.observation || "");
                             setOralMealsPerDay(Number(p.mealCount) || 6);
                             setOralSpeechTherapy(Boolean(p.safeConsistency));
                             setOralNeedsThickener(Boolean(p.safeConsistency));
                             setOralSafeConsistency(p.safeConsistency || "");
-                            setOralThickenerFormulaId("");
+                            setOralThickenerModuleId("");
                             setOralThickenerProduct("");
                             setOralThickenerGrams("");
                             setOralThickenerVolume("");
@@ -2023,29 +1995,29 @@ const PrescriptionNew = () => {
                         {oralNeedsThickener && (
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="space-y-2">
-                              <Label>Formula espessante</Label>
-                              {thickenerFormulaOptions.length > 0 ? (
+                              <Label>Modulo espessante</Label>
+                              {thickenerModuleOptions.length > 0 ? (
                                 <Select
-                                  value={oralThickenerFormulaId}
+                                  value={thickenerModuleOptions.some((moduleItem) => moduleItem.id === oralThickenerModuleId) ? oralThickenerModuleId : ""}
                                   onValueChange={(value) => {
-                                    const selectedFormula = thickenerFormulaOptions.find((formula) => formula.id === value);
-                                    setOralThickenerFormulaId(value);
-                                    setOralThickenerProduct(selectedFormula?.name || "");
+                                    const selectedModule = thickenerModuleOptions.find((moduleItem) => moduleItem.id === value);
+                                    setOralThickenerModuleId(value);
+                                    setOralThickenerProduct(selectedModule?.name || "");
                                   }}
                                 >
-                                  <SelectTrigger><SelectValue placeholder="Selecione a formula espessante" /></SelectTrigger>
+                                  <SelectTrigger><SelectValue placeholder={oralThickenerProduct || "Selecione o modulo espessante"} /></SelectTrigger>
                                   <SelectContent>
-                                    {thickenerFormulaOptions.map((formula) => <SelectItem key={formula.id} value={formula.id!}>{formula.name}</SelectItem>)}
+                                    {thickenerModuleOptions.map((moduleItem) => <SelectItem key={moduleItem.id} value={moduleItem.id!}>{moduleItem.name}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
                               ) : (
                                 <Input
                                   value={oralThickenerProduct}
                                   onChange={e => {
-                                    setOralThickenerFormulaId("");
+                                    setOralThickenerModuleId("");
                                     setOralThickenerProduct(e.target.value);
                                   }}
-                                  placeholder="Ex: Resource ThickenUp"
+                                  placeholder="Ex: Espessante"
                                 />
                               )}
                             </div>
@@ -2094,37 +2066,6 @@ const PrescriptionNew = () => {
 
                     {oralHasTherapy && (
                       <div className="space-y-6 pt-4">
-                        <Card className="border-dashed">
-                          <CardContent className="pt-4 space-y-4">
-                            {shouldShowInfantFeedingControls && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Via de administracao</Label>
-                                  <Select value={oralAdministrationRoute} onValueChange={(value: "oral" | "translactation") => setOralAdministrationRoute(value)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="oral">Via oral</SelectItem>
-                                      <SelectItem value="translactation">Translactacao</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Forma de oferta</Label>
-                                  <Select value={oralDeliveryMethod} onValueChange={(value: "cup" | "baby-bottle" | "feeding-bottle") => setOralDeliveryMethod(value)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="cup">Copo</SelectItem>
-                                      <SelectItem value="baby-bottle">Mamadeira</SelectItem>
-                                      <SelectItem value="feeding-bottle">Frasco para dieta</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <p className="text-xs text-muted-foreground">Copo e mamadeira nao sao cobrados automaticamente. Frasco para dieta entra no faturamento quando houver insumo faturavel cadastrado.</p>
-                                </div>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-
                         {/* Suplementos */}
                         <div className="space-y-4">
                           <div className="flex items-center justify-between">
@@ -2427,7 +2368,7 @@ const PrescriptionNew = () => {
                       {feedingRoutes.oral && (
                         <>
                           <Separator />
-                          <p><strong>Oral:</strong> {oralAdministrationRoute === "translactation" ? "Translactação" : "Via oral"} | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia{shouldShowInfantFeedingControls ? ` | Oferta: ${oralDeliveryMethod === "feeding-bottle" ? "Frasco" : oralDeliveryMethod === "baby-bottle" ? "Mamadeira" : "Copo"}` : ""}</p>
+                          <p><strong>Oral:</strong> Via oral | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia</p>
                         </>
                       )}
 

@@ -105,23 +105,26 @@ type FormulaFormState = {
 };
 
 type ModuleFormState = {
+  code: string;
+  manufacturer: string;
   name: string;
   description: string;
+  presentationForm: "liquido" | "po";
+  presentations: string;
   density: string;
-  referenceAmount: string;
-  referenceTimesPerDay: string;
-  calories: string;
-  protein: string;
-  carbs: string;
-  fat: string;
-  sodium: string;
-  potassium: string;
-  calcium: string;
-  phosphorus: string;
-  fiber: string;
-  freeWater: string;
   billingUnit: NonNullable<Module["billingUnit"]>;
+  conversionFactor: string;
   billingPrice: string;
+  caloriesPerUnit: string;
+  proteinPerUnit: string;
+  carbPerUnit: string;
+  fatPerUnit: string;
+  fiberPerUnit: string;
+  sodiumPerUnit: string;
+  potassiumPerUnit: string;
+  calciumPerUnit: string;
+  phosphorusPerUnit: string;
+  waterContent: string;
   proteinSources: string;
   carbSources: string;
   fatSources: string;
@@ -176,23 +179,26 @@ const createFormulaForm = (): FormulaFormState => ({
 });
 
 const createModuleForm = (): ModuleFormState => ({
+  code: "",
+  manufacturer: "",
   name: "",
   description: "",
+  presentationForm: "po",
+  presentations: "400",
   density: "",
-  referenceAmount: "1",
-  referenceTimesPerDay: "1",
-  calories: "",
-  protein: "",
-  carbs: "",
-  fat: "",
-  sodium: "",
-  potassium: "",
-  calcium: "",
-  phosphorus: "",
-  fiber: "",
-  freeWater: "",
   billingUnit: "g",
+  conversionFactor: "",
   billingPrice: "",
+  caloriesPerUnit: "",
+  proteinPerUnit: "",
+  carbPerUnit: "",
+  fatPerUnit: "",
+  fiberPerUnit: "",
+  sodiumPerUnit: "",
+  potassiumPerUnit: "",
+  calciumPerUnit: "",
+  phosphorusPerUnit: "",
+  waterContent: "",
   proteinSources: "",
   carbSources: "",
   fatSources: "",
@@ -434,6 +440,8 @@ const Formulas = () => {
   const canManageFormulas = can(role, "manage_formulas");
   const nutrientReferenceLabel = formulaForm.presentationForm === "po" ? "100 g" : "100 mL";
   const densityUnitLabel = formulaForm.presentationForm === "po" ? "kcal/g" : "kcal/mL";
+  const moduleReferenceLabel = moduleForm.presentationForm === "po" ? "100 g" : "100 mL";
+  const moduleDensityUnitLabel = moduleForm.presentationForm === "po" ? "kcal/g" : "kcal/mL";
 
   const filteredFormulas = useMemo(() => {
     const query = searchQuery.toLowerCase();
@@ -458,12 +466,10 @@ const Formulas = () => {
     const query = searchQuery.toLowerCase();
     return modules.filter((moduleItem) =>
       [
+        moduleItem.code,
         moduleItem.name,
+        moduleItem.manufacturer,
         moduleItem.description,
-        moduleItem.proteinSources,
-        moduleItem.carbSources,
-        moduleItem.fatSources,
-        moduleItem.fiberSources,
       ]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
@@ -672,23 +678,26 @@ const Formulas = () => {
 
     setEditingModule(moduleItem);
     setModuleForm({
+      code: moduleItem.code || "",
+      manufacturer: moduleItem.manufacturer || "",
       name: moduleItem.name,
       description: moduleItem.description || "",
+      presentationForm: moduleItem.presentationForm || "po",
+      presentations: (moduleItem.presentations || []).join(", ") || "400",
       density: moduleItem.density?.toString() || "",
-      referenceAmount: moduleItem.referenceAmount?.toString() || "1",
-      referenceTimesPerDay: moduleItem.referenceTimesPerDay?.toString() || "1",
-      calories: moduleItem.calories?.toString() || "",
-      protein: moduleItem.protein?.toString() || "",
-      carbs: moduleItem.carbs?.toString() || "",
-      fat: moduleItem.fat?.toString() || "",
-      sodium: moduleItem.sodium?.toString() || "",
-      potassium: moduleItem.potassium?.toString() || "",
-      calcium: moduleItem.calcium?.toString() || "",
-      phosphorus: moduleItem.phosphorus?.toString() || "",
-      fiber: moduleItem.fiber?.toString() || "",
-      freeWater: moduleItem.freeWater?.toString() || "",
       billingUnit: moduleItem.billingUnit || "g",
+      conversionFactor: moduleItem.conversionFactor?.toString() || "",
       billingPrice: moduleItem.billingPrice?.toString() || "",
+      caloriesPerUnit: moduleItem.calories?.toString() || "",
+      proteinPerUnit: moduleItem.protein?.toString() || "",
+      carbPerUnit: moduleItem.carbs?.toString() || "",
+      fatPerUnit: moduleItem.fat?.toString() || "",
+      fiberPerUnit: moduleItem.fiber?.toString() || "",
+      sodiumPerUnit: moduleItem.sodium?.toString() || "",
+      potassiumPerUnit: moduleItem.potassium?.toString() || "",
+      calciumPerUnit: moduleItem.calcium?.toString() || "",
+      phosphorusPerUnit: moduleItem.phosphorus?.toString() || "",
+      waterContent: moduleItem.freeWater?.toString() || "",
       proteinSources: moduleItem.proteinSources || "",
       carbSources: moduleItem.carbSources || "",
       fatSources: moduleItem.fatSources || "",
@@ -703,8 +712,8 @@ const Formulas = () => {
       return;
     }
 
-    if (!moduleForm.name.trim()) {
-      toast.error("Preencha o nome do modulo");
+    if (!moduleForm.code.trim() || !moduleForm.name.trim()) {
+      toast.error("Preencha codigo e nome do modulo");
       return;
     }
 
@@ -713,21 +722,26 @@ const Formulas = () => {
 
     const payload: Omit<Module, "id" | "createdAt" | "updatedAt"> = {
       hospitalId: editingModule?.hospitalId || sessionHospitalId,
+      code: moduleForm.code.trim() || undefined,
       name: moduleForm.name.trim(),
+      manufacturer: moduleForm.manufacturer.trim() || undefined,
       description: moduleForm.description.trim() || undefined,
+      presentationForm: moduleForm.presentationForm,
+      presentations: toPresentationArray(moduleForm.presentations),
+      conversionFactor: moduleForm.billingUnit === "unit" ? toOptionalNumber(moduleForm.conversionFactor) : undefined,
       density: toRequiredNumber(moduleForm.density),
-      referenceAmount: toRequiredNumber(moduleForm.referenceAmount) || 1,
-      referenceTimesPerDay: Math.round(toRequiredNumber(moduleForm.referenceTimesPerDay) || 1),
-      calories: toRequiredNumber(moduleForm.calories),
-      protein: toRequiredNumber(moduleForm.protein),
-      carbs: toOptionalNumber(moduleForm.carbs),
-      fat: toOptionalNumber(moduleForm.fat),
-      sodium: toRequiredNumber(moduleForm.sodium),
-      potassium: toRequiredNumber(moduleForm.potassium),
-      calcium: toOptionalNumber(moduleForm.calcium),
-      phosphorus: toOptionalNumber(moduleForm.phosphorus),
-      fiber: toRequiredNumber(moduleForm.fiber),
-      freeWater: toRequiredNumber(moduleForm.freeWater),
+      referenceAmount: 100,
+      referenceTimesPerDay: 1,
+      calories: toRequiredNumber(moduleForm.caloriesPerUnit) || (toRequiredNumber(moduleForm.density) * 100),
+      protein: toRequiredNumber(moduleForm.proteinPerUnit),
+      carbs: toOptionalNumber(moduleForm.carbPerUnit),
+      fat: toOptionalNumber(moduleForm.fatPerUnit),
+      sodium: toRequiredNumber(moduleForm.sodiumPerUnit),
+      potassium: toRequiredNumber(moduleForm.potassiumPerUnit),
+      calcium: toOptionalNumber(moduleForm.calciumPerUnit),
+      phosphorus: toOptionalNumber(moduleForm.phosphorusPerUnit),
+      fiber: toRequiredNumber(moduleForm.fiberPerUnit),
+      freeWater: toRequiredNumber(moduleForm.waterContent),
       billingUnit: moduleForm.billingUnit,
       billingPrice: toOptionalNumber(moduleForm.billingPrice),
       proteinSources: moduleForm.proteinSources.trim() || undefined,
@@ -1059,18 +1073,33 @@ const Formulas = () => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{editingModule ? "Editar" : "Cadastrar Novo"} Modulo</DialogTitle>
-                    <DialogDescription>Cadastre quantidade de referencia, composicao e fontes para facilitar prescricao e relatorios.</DialogDescription>
+                    <DialogTitle>{editingModule ? "Editar modulo de nutricao enteral" : "Modulo de nutricao enteral"}</DialogTitle>
+                    <DialogDescription>Use os campos abaixo para refletir melhor o cadastro das planilhas e etiquetas.</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-6 py-2">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2 md:col-span-2"><Label>Nome *</Label><Input value={moduleForm.name} onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })} placeholder="Ex: Modulo proteico" /></div>
-                      <div className="space-y-2"><Label>Densidade</Label><Input type="number" step="0.01" value={moduleForm.density} onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Codigo *</Label><Input value={moduleForm.code} onChange={(e) => setModuleForm({ ...moduleForm, code: e.target.value })} placeholder="Ex: MN37" /></div>
+                      <div className="space-y-2"><Label>Fabricante</Label><Input value={moduleForm.manufacturer} onChange={(e) => setModuleForm({ ...moduleForm, manufacturer: e.target.value })} placeholder="Ex: Dynamic Lab" /></div>
+                      <div className="space-y-2">
+                        <Label>Apresentacao</Label>
+                        <Select value={moduleForm.presentationForm} onValueChange={(value: "liquido" | "po") => setModuleForm({ ...moduleForm, presentationForm: value })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="liquido">Liquido</SelectItem>
+                            <SelectItem value="po">Po</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="space-y-2"><Label>Descricao</Label><Textarea value={moduleForm.description} onChange={(e) => setModuleForm({ ...moduleForm, description: e.target.value })} rows={2} placeholder="Ex: modulo proteico em po, uso oral/enteral" /></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2 md:col-span-2"><Label>Nome comercial *</Label><Input value={moduleForm.name} onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })} placeholder="Ex: IsoWhey DCN" /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2"><Label>Densidade calorica ({moduleDensityUnitLabel})</Label><Input type="number" step="0.01" value={moduleForm.density} onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })} placeholder="Ex: 3,6" /></div>
+                      <div className="space-y-2"><Label>Descricao</Label><Input value={moduleForm.description} onChange={(e) => setModuleForm({ ...moduleForm, description: e.target.value })} placeholder="Ex: modulo de proteinas" /></div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div className="space-y-2"><Label>Referencia por dose</Label><Input type="number" step="0.1" value={moduleForm.referenceAmount} onChange={(e) => setModuleForm({ ...moduleForm, referenceAmount: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Vezes ao dia</Label><Input type="number" step="1" value={moduleForm.referenceTimesPerDay} onChange={(e) => setModuleForm({ ...moduleForm, referenceTimesPerDay: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Embalagem padrao ({moduleForm.presentationForm === "po" ? "g" : "mL"})</Label><Input value={moduleForm.presentations} onChange={(e) => setModuleForm({ ...moduleForm, presentations: e.target.value })} placeholder="Ex: 400" /></div>
                       <div className="space-y-2">
                         <Label>Unidade de faturamento</Label>
                         <Select value={moduleForm.billingUnit} onValueChange={(value: NonNullable<Module["billingUnit"]>) => setModuleForm({ ...moduleForm, billingUnit: value })}>
@@ -1082,25 +1111,28 @@ const Formulas = () => {
                           </SelectContent>
                         </Select>
                       </div>
+                      {moduleForm.billingUnit === "unit" && (
+                        <div className="space-y-2"><Label>Conversao por unidade ({moduleForm.presentationForm === "po" ? "g" : "mL"})</Label><Input type="number" step="0.01" value={moduleForm.conversionFactor} onChange={(e) => setModuleForm({ ...moduleForm, conversionFactor: e.target.value })} placeholder="Ex: 200" /></div>
+                      )}
                       <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.01" value={moduleForm.billingPrice} onChange={(e) => setModuleForm({ ...moduleForm, billingPrice: e.target.value })} /></div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="space-y-2"><Label>Kcal/dose</Label><Input type="number" step="0.1" value={moduleForm.calories} onChange={(e) => setModuleForm({ ...moduleForm, calories: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Proteina/dose</Label><Input type="number" step="0.1" value={moduleForm.protein} onChange={(e) => setModuleForm({ ...moduleForm, protein: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Carbo/dose</Label><Input type="number" step="0.1" value={moduleForm.carbs} onChange={(e) => setModuleForm({ ...moduleForm, carbs: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Lipidio/dose</Label><Input type="number" step="0.1" value={moduleForm.fat} onChange={(e) => setModuleForm({ ...moduleForm, fat: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Fibra/dose</Label><Input type="number" step="0.1" value={moduleForm.fiber} onChange={(e) => setModuleForm({ ...moduleForm, fiber: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Agua livre</Label><Input type="number" step="0.1" value={moduleForm.freeWater} onChange={(e) => setModuleForm({ ...moduleForm, freeWater: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Sodio</Label><Input type="number" step="0.1" value={moduleForm.sodium} onChange={(e) => setModuleForm({ ...moduleForm, sodium: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Potassio</Label><Input type="number" step="0.1" value={moduleForm.potassium} onChange={(e) => setModuleForm({ ...moduleForm, potassium: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Calcio</Label><Input type="number" step="0.1" value={moduleForm.calcium} onChange={(e) => setModuleForm({ ...moduleForm, calcium: e.target.value })} /></div>
-                      <div className="space-y-2"><Label>Fosforo</Label><Input type="number" step="0.1" value={moduleForm.phosphorus} onChange={(e) => setModuleForm({ ...moduleForm, phosphorus: e.target.value })} /></div>
-                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2"><Label>Fontes proteicas</Label><Textarea value={moduleForm.proteinSources} onChange={(e) => setModuleForm({ ...moduleForm, proteinSources: e.target.value })} rows={2} /></div>
+                      <div className="space-y-2"><Label>Kcal/{moduleReferenceLabel}</Label><Input type="number" step="0.01" value={moduleForm.caloriesPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, caloriesPerUnit: e.target.value })} placeholder="Ex: 360" /></div>
+                      <div className="space-y-2"><Label>Fontes de proteina</Label><Textarea value={moduleForm.proteinSources} onChange={(e) => setModuleForm({ ...moduleForm, proteinSources: e.target.value })} rows={2} /></div>
+                      <div className="space-y-2"><Label>Proteinas (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.proteinPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, proteinPerUnit: e.target.value })} placeholder="Ex: 80" /></div>
                       <div className="space-y-2"><Label>Fontes de carboidrato</Label><Textarea value={moduleForm.carbSources} onChange={(e) => setModuleForm({ ...moduleForm, carbSources: e.target.value })} rows={2} /></div>
-                      <div className="space-y-2"><Label>Fontes lipidicas</Label><Textarea value={moduleForm.fatSources} onChange={(e) => setModuleForm({ ...moduleForm, fatSources: e.target.value })} rows={2} /></div>
+                      <div className="space-y-2"><Label>Carboidratos (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.carbPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, carbPerUnit: e.target.value })} placeholder="Ex: 10" /></div>
+                      <div className="space-y-2"><Label>Fontes de lipidio</Label><Textarea value={moduleForm.fatSources} onChange={(e) => setModuleForm({ ...moduleForm, fatSources: e.target.value })} rows={2} /></div>
+                      <div className="space-y-2"><Label>Lipidios (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.fatPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, fatPerUnit: e.target.value })} placeholder="Ex: 5" /></div>
                       <div className="space-y-2"><Label>Fontes de fibra</Label><Textarea value={moduleForm.fiberSources} onChange={(e) => setModuleForm({ ...moduleForm, fiberSources: e.target.value })} rows={2} /></div>
+                      <div className="space-y-2"><Label>Fibras (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.fiberPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, fiberPerUnit: e.target.value })} placeholder="Ex: 2" /></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="space-y-2"><Label>Potassio (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.potassiumPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, potassiumPerUnit: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Fosforo (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.phosphorusPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, phosphorusPerUnit: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Sodio (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.sodiumPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, sodiumPerUnit: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Calcio (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.calciumPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, calciumPerUnit: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Agua livre ({moduleReferenceLabel === "100 g" ? "mL/100 g" : "mL/100 mL"})</Label><Input type="number" step="0.01" value={moduleForm.waterContent} onChange={(e) => setModuleForm({ ...moduleForm, waterContent: e.target.value })} /></div>
                     </div>
                     <Button onClick={handleSaveModule} className="w-full">{editingModule ? "Salvar Alteracoes" : "Criar Modulo"}</Button>
                   </div>
@@ -1207,17 +1239,20 @@ const Formulas = () => {
                         ) : (
                           filteredModules.map((moduleItem) => (
                             <TableRow key={moduleItem.id} className="align-top">
-                              <TableCell className="min-w-[240px]">
+                              <TableCell className="min-w-[260px]">
                                 <div className="font-medium">{moduleItem.name}</div>
-                                <div className="text-xs text-muted-foreground">{renderMeta([moduleItem.referenceAmount ? `Dose ref. ${moduleItem.referenceAmount}` : undefined, moduleItem.referenceTimesPerDay ? `${moduleItem.referenceTimesPerDay}x/dia` : undefined, moduleItem.density ? `${moduleItem.density.toFixed(2)} kcal/un` : undefined])}</div>
-                                {moduleItem.description ? <div className="text-xs text-muted-foreground mt-1">{moduleItem.description}</div> : null}
+                                <div className="text-xs text-muted-foreground">{renderMeta([moduleItem.code, moduleItem.manufacturer, moduleItem.description])}</div>
+                                <div className="text-xs text-muted-foreground">{renderMeta([moduleItem.presentationForm, moduleItem.presentations?.length ? `${moduleItem.presentations.join(", ")} ml/g` : undefined])}</div>
                               </TableCell>
                               <TableCell className="min-w-[260px]">
-                                <div className="text-sm">{renderMeta([moduleItem.calories ? `${moduleItem.calories} kcal` : undefined, moduleItem.protein ? `${moduleItem.protein} g PTN` : undefined, moduleItem.carbs ? `${moduleItem.carbs} g CHO` : undefined, moduleItem.fat ? `${moduleItem.fat} g LIP` : undefined])}</div>
-                                <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.fiber ? `${moduleItem.fiber} g fibra` : undefined, moduleItem.freeWater ? `${moduleItem.freeWater} ml agua` : undefined, moduleItem.sodium ? `${moduleItem.sodium} sodio` : undefined, moduleItem.potassium ? `${moduleItem.potassium} potassio` : undefined, moduleItem.calcium ? `${moduleItem.calcium} calcio` : undefined, moduleItem.phosphorus ? `${moduleItem.phosphorus} fosforo` : undefined])}</div>
+                                <div className="text-sm">{renderMeta([moduleItem.density ? `${moduleItem.density.toFixed(2)} kcal/${moduleItem.presentationForm === "po" ? "g" : "mL"}` : undefined, moduleItem.protein ? `${moduleItem.protein} g PTN/${moduleItem.referenceAmount || 100}` : undefined, moduleItem.fiber ? `${moduleItem.fiber} g fibra/${moduleItem.referenceAmount || 100}` : undefined, moduleItem.freeWater ? `${moduleItem.freeWater} ml agua livre` : undefined])}</div>
+                                <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.carbs ? `${moduleItem.carbs} g CHO` : undefined, moduleItem.fat ? `${moduleItem.fat} g LIP` : undefined, moduleItem.sodium ? `${moduleItem.sodium} sodio` : undefined, moduleItem.potassium ? `${moduleItem.potassium} potassio` : undefined, moduleItem.calcium ? `${moduleItem.calcium} calcio` : undefined, moduleItem.phosphorus ? `${moduleItem.phosphorus} fosforo` : undefined])}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.proteinSources, moduleItem.carbSources, moduleItem.fatSources, moduleItem.fiberSources])}</div>
                               </TableCell>
-                              <TableCell className="min-w-[150px]"><div className="text-sm font-medium">{moduleItem.billingUnit || "-"} {moduleItem.billingPrice ? `| R$ ${moduleItem.billingPrice.toFixed(2)}` : ""}</div></TableCell>
+                              <TableCell className="min-w-[170px]">
+                                <div className="text-sm font-medium">{moduleItem.billingUnit || "-"} {moduleItem.billingPrice ? `| R$ ${moduleItem.billingPrice.toFixed(2)}` : ""}</div>
+                                <div className="text-xs text-muted-foreground">{moduleItem.conversionFactor ? `${moduleItem.conversionFactor} por unidade` : "-"}</div>
+                              </TableCell>
                               <TableCell className="text-right">
                                 {canManageFormulas && (
                                   <div className="flex justify-end gap-1">

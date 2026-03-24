@@ -178,8 +178,13 @@ model Module {
   id                   String   @id @default(uuid())
   hospitalId           String?
   hospital             Hospital? @relation(fields: [hospitalId], references: [id])
+  code                 String?
   name                 String
+  manufacturer         String?
   description          String?
+  presentationForm     String?
+  presentations        String?
+  conversionFactor     Float?
   density              Float
   referenceAmount      Float
   referenceTimesPerDay Int

@@ -153,8 +153,13 @@ export interface Module {
     hospitalId?: string;
     version?: number;
     syncStatus?: 'synced' | 'pending' | 'failed';
+    code?: string;
     name: string;
+    manufacturer?: string;
     description?: string;
+    presentationForm?: 'liquido' | 'po';
+    presentations?: number[];
+    conversionFactor?: number;
     density: number;
     referenceAmount: number;
     referenceTimesPerDay: number;
@@ -322,6 +327,7 @@ export interface Prescription {
         speechTherapy?: boolean;
         needsThickener?: boolean;
         safeConsistency?: string;
+        thickenerModuleId?: string;
         thickenerFormulaId?: string;
         thickenerProduct?: string;
         thickenerGrams?: number;
@@ -693,8 +699,13 @@ const normalizeModule = (raw: any): Module => ({
     hospitalId: raw.hospitalId,
     version: toNumber(raw.version),
     syncStatus: raw.syncStatus ?? 'synced',
+    code: raw.code || "",
     name: raw.name || "",
+    manufacturer: raw.manufacturer || "",
     description: raw.description,
+    presentationForm: raw.presentationForm,
+    presentations: ensureArray<number>(raw.presentations),
+    conversionFactor: toNumber(raw.conversionFactor),
     density: toNumber(raw.density) ?? 0,
     referenceAmount: toNumber(raw.referenceAmount) ?? 0,
     referenceTimesPerDay: toNumber(raw.referenceTimesPerDay) ?? 0,
@@ -991,6 +1002,7 @@ const mapFormulaPayload = (data: any) => ({
 const mapModulePayload = (data: any) => ({
     ...data,
     hospitalId: data.hospitalId ?? (typeof window !== 'undefined' ? localStorage.getItem('userHospitalId') || undefined : undefined),
+    presentations: Array.isArray(data.presentations) ? data.presentations : undefined,
 });
 
 const nowIso = () => new Date().toISOString();

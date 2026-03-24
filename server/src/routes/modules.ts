@@ -5,6 +5,12 @@ import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, wi
 
 const router = Router();
 
+const toJsonString = (value: unknown) => {
+  if (Array.isArray(value)) return JSON.stringify(value);
+  if (typeof value === 'string') return value;
+  return undefined;
+};
+
 const toNumber = (value: unknown) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -14,10 +20,20 @@ const toNumber = (value: unknown) => {
   return undefined;
 };
 
+const mapModuleToClient = (moduleItem: any) => ({
+  ...moduleItem,
+  presentations: moduleItem.presentations ? JSON.parse(moduleItem.presentations) : [],
+});
+
 const buildModulePayload = (payload: any, hospitalId: string) => ({
   hospitalId,
+  code: payload.code || undefined,
   name: payload.name,
+  manufacturer: payload.manufacturer || undefined,
   description: payload.description || undefined,
+  presentationForm: payload.presentationForm || undefined,
+  presentations: toJsonString(payload.presentations),
+  conversionFactor: toNumber(payload.conversionFactor),
   density: toNumber(payload.density) ?? 0,
   referenceAmount: toNumber(payload.referenceAmount) ?? 1,
   referenceTimesPerDay: Math.round(toNumber(payload.referenceTimesPerDay) ?? 1),
@@ -49,7 +65,7 @@ router.get('/', async (req, res) => {
       where: { isActive: true, hospitalId },
       orderBy: { name: 'asc' },
     });
-    res.json(modules);
+    res.json(modules.map(mapModuleToClient));
   } catch {
     res.status(500).json({ error: 'Failed to fetch modules' });
   }
@@ -64,7 +80,7 @@ router.post('/', async (req, res) => {
       const created = await prisma.module.create({
         data: buildModulePayload(req.body, hospitalId),
       });
-      return { statusCode: 201, body: created };
+      return { statusCode: 201, body: mapModuleToClient(created) };
     });
   } catch {
     res.status(500).json({ error: 'Failed to create module' });
@@ -96,7 +112,7 @@ router.put('/:id', async (req, res) => {
         },
       });
 
-      return { body: updated };
+      return { body: mapModuleToClient(updated) };
     });
   } catch (error) {
     if (error instanceof VersionConflictError) {

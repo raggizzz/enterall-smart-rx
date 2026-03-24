@@ -66,7 +66,13 @@ export interface Formula {
 
 export interface Module {
   id: string;
+  code?: string;
   name: string;
+  manufacturer?: string;
+  description?: string;
+  presentationForm?: 'liquido' | 'po';
+  presentations?: number[];
+  conversionFactor?: number;
   density: number; // DC (kcal/g or kcal/ml)
   referenceAmount: number; // g or ml
   referenceTimesPerDay: number;
@@ -435,13 +441,13 @@ const formulas: Formula[] = [
 ];
 
 const modules: Module[] = [
-  { id: "m1", name: "Fresubin protein", density: 0.90, referenceAmount: 7, referenceTimesPerDay: 7, calories: 171, protein: 43, sodium: 270, potassium: 588, fiber: 0, freeWater: 0 },
-  { id: "m2", name: "TCM com AGE", density: 9.00, referenceAmount: 1, referenceTimesPerDay: 1, calories: 9, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m3", name: "carbofor", density: 3.72, referenceAmount: 1, referenceTimesPerDay: 1, calories: 4, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m4", name: "neofiber", density: 0, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m5", name: "Solufiber", density: 0, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m6", name: "Glutamina", density: 4.00, referenceAmount: 1, referenceTimesPerDay: 1, calories: 4, protein: 1, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m7", name: "Agua de coco", density: 0.20, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m1", code: "M1", name: "Fresubin protein", manufacturer: "Fresenius", presentationForm: "po", presentations: [300], density: 0.90, referenceAmount: 7, referenceTimesPerDay: 7, calories: 171, protein: 43, sodium: 270, potassium: 588, fiber: 0, freeWater: 0 },
+  { id: "m2", code: "M2", name: "TCM com AGE", manufacturer: "Genérico", presentationForm: "po", presentations: [250], density: 9.00, referenceAmount: 1, referenceTimesPerDay: 1, calories: 9, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m3", code: "M3", name: "carbofor", manufacturer: "Genérico", presentationForm: "po", presentations: [400], density: 3.72, referenceAmount: 1, referenceTimesPerDay: 1, calories: 4, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m4", code: "M4", name: "neofiber", manufacturer: "Genérico", presentationForm: "po", presentations: [260], density: 0, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m5", code: "M5", name: "Solufiber", manufacturer: "Genérico", presentationForm: "po", presentations: [260], density: 0, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m6", code: "M6", name: "Glutamina", manufacturer: "Genérico", presentationForm: "po", presentations: [300], density: 4.00, referenceAmount: 1, referenceTimesPerDay: 1, calories: 4, protein: 1, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m7", code: "M7", name: "Agua de coco", manufacturer: "Genérico", presentationForm: "liquido", presentations: [200], density: 0.20, referenceAmount: 0, referenceTimesPerDay: 0, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
 ];
 
 export const getAllFormulas = () => formulas;

@@ -220,6 +220,12 @@ const getFormulaByName = (formulas: Formula[], formulaName?: string) => {
   return formulas.find((formula) => formula.name.trim().toLowerCase() === normalized);
 };
 
+const getModuleByName = (modules: Module[], moduleName?: string) => {
+  if (!moduleName) return undefined;
+  const normalized = moduleName.trim().toLowerCase();
+  return modules.find((module) => module.name.trim().toLowerCase() === normalized);
+};
+
 const getPumpSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bomba"))
   || supplies.find((supply) => supply.isActive && supply.type === "set");
@@ -588,17 +594,28 @@ const Reports = () => {
       });
 
       if (prescription.therapyType === "oral" && prescription.oralDetails?.needsThickener) {
-        const thickenerFormula = (prescription.oralDetails.thickenerFormulaId
+        const thickenerModule = (prescription.oralDetails.thickenerModuleId
+          ? modulesById.get(prescription.oralDetails.thickenerModuleId)
+          : undefined)
+          || (prescription.oralDetails.thickenerFormulaId
+            ? modulesById.get(prescription.oralDetails.thickenerFormulaId)
+            : undefined)
+          || getModuleByName(modules, prescription.oralDetails.thickenerProduct);
+        const legacyThickenerFormula = (prescription.oralDetails.thickenerFormulaId
           ? formulasById.get(prescription.oralDetails.thickenerFormulaId)
           : undefined) || getFormulaByName(formulas, prescription.oralDetails.thickenerProduct);
+        const thickenerSource = thickenerModule || legacyThickenerFormula;
         const administrationsPerDay = getAdministrationCount(prescription.oralDetails.thickenerTimes);
         const thickenerGrams = Number(prescription.oralDetails.thickenerGrams || 0);
         const thickenerVolume = Number(prescription.oralDetails.thickenerVolume || 0);
 
         if (administrationsPerDay > 0 && (thickenerGrams > 0 || thickenerVolume > 0)) {
-          const billingUnit = thickenerFormula?.billingUnit || (thickenerGrams > 0 ? "g" : "ml");
-          const referenceUnitAmount = thickenerFormula?.conversionFactor || thickenerFormula?.presentations?.[0] || 0;
-          const billingPrice = thickenerFormula?.billingPrice || 0;
+          const billingUnit = thickenerSource?.billingUnit || (thickenerGrams > 0 ? "g" : "ml");
+          const referenceUnitAmount = thickenerModule?.referenceAmount
+            || legacyThickenerFormula?.conversionFactor
+            || legacyThickenerFormula?.presentations?.[0]
+            || 0;
+          const billingPrice = thickenerSource?.billingPrice || 0;
           const totalVolumeMl = thickenerVolume * administrationsPerDay * overlapDays;
 
           let totalQuantity = (billingUnit === "ml" ? thickenerVolume : thickenerGrams) * administrationsPerDay * overlapDays;
@@ -619,12 +636,12 @@ const Reports = () => {
 
           const item = getOrCreateAccumulator(
             usageMap,
-            `formula:${thickenerFormula?.id || prescription.oralDetails.thickenerProduct || "espessante"}`,
+            `${thickenerModule ? "module" : "formula"}:${thickenerSource?.id || prescription.oralDetails.thickenerProduct || "espessante"}`,
             {
-              productId: thickenerFormula?.id || prescription.oralDetails.thickenerProduct || "espessante",
-              productName: prescription.oralDetails.thickenerProduct || thickenerFormula?.name || "Espessante",
-              manufacturer: thickenerFormula?.manufacturer || "-",
-              category: "formula",
+              productId: thickenerSource?.id || prescription.oralDetails.thickenerProduct || "espessante",
+              productName: prescription.oralDetails.thickenerProduct || thickenerSource?.name || "Espessante",
+              manufacturer: thickenerModule ? "-" : legacyThickenerFormula?.manufacturer || "-",
+              category: thickenerModule ? "module" : "formula",
               billingUnit,
             },
           );
@@ -639,7 +656,7 @@ const Reports = () => {
           item.totalCost += totalCost;
           addWasteByFactor(
             item,
-            thickenerFormula || {},
+            legacyThickenerFormula || {},
             billingUnit === "g" ? totalQuantity / 1000 : totalVolumeMl / 1000,
           );
         }
@@ -744,7 +761,7 @@ const Reports = () => {
         if (right.totalCost !== left.totalCost) return right.totalCost - left.totalCost;
         return right.totalQuantity - left.totalQuantity;
       });
-  }, [filteredPrescriptions, startDate, endDate, formulasById, formulas, modulesById, supplies]);
+  }, [filteredPrescriptions, startDate, endDate, formulasById, formulas, modulesById, modules, supplies]);
 
   useEffect(() => {
     if (productUsage.length === 0) return;
