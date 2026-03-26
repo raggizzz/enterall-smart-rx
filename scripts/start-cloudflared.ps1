@@ -1,0 +1,21 @@
+$ErrorActionPreference = "Stop"
+
+$projectRoot = "C:\Users\igorp\Documents\enterall-smart-rx"
+$logPath = Join-Path $projectRoot ".codex-cloudflared-current.log"
+$cloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+
+if (Test-Path $logPath) {
+    Remove-Item $logPath -Force
+}
+
+$existing = Get-Process cloudflared -ErrorAction SilentlyContinue
+if ($existing) {
+    $existing | Stop-Process -Force
+    Start-Sleep -Seconds 1
+}
+
+Start-Process -FilePath $cloudflaredPath `
+    -ArgumentList "tunnel", "--url", "http://localhost:3000", "--logfile", $logPath, "--protocol", "quic" `
+    -WindowStyle Hidden
+
+Write-Output $logPath
