@@ -21,19 +21,32 @@ const getTypeBadge = (item: DietMapItem) => {
 export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }) => {
     if (!data) return null;
 
+    const isCancellation = data.documentType === 'cancellation';
+    const isExtraRequest = data.documentType === 'extra';
+    const isManualAction = isCancellation || isExtraRequest;
     const patientRowCount = data.dietMap.reduce<Record<string, number>>((acc, item) => {
         acc[item.patientId] = (acc[item.patientId] || 0) + 1;
         return acc;
     }, {});
 
     const consolidatedTotal = data.consolidated.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+    const documentTitle = isCancellation
+        ? 'Requisicao de cancelamento'
+        : isExtraRequest
+            ? 'Requisicao extra de insumos'
+            : 'Requisicao de insumos para faturamento';
+    const mapTitle = isCancellation
+        ? 'Mapa do cancelamento por paciente'
+        : isExtraRequest
+            ? 'Mapa da requisicao extra por paciente'
+            : 'Mapa da dieta por paciente';
 
     return (
         <div className="hidden print:block bg-white p-4 text-[10px] text-black">
             <div className="mb-4 border-b border-black pb-3">
                 <div className="text-center">
                     <p className="text-lg font-bold uppercase">{data.unitName}</p>
-                    <p className="text-sm font-semibold uppercase">Requisicao de insumos para faturamento</p>
+                    <p className="text-sm font-semibold uppercase">{documentTitle}</p>
                 </div>
 
                 <div className="mt-3 grid grid-cols-3 gap-3 text-[11px]">
@@ -43,36 +56,52 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                     </div>
                     <div>
                         <p><span className="font-semibold">Data da requisicao:</span> {data.printDate}</p>
-                        <p><span className="font-semibold">Periodo:</span> {data.startDate} a {data.endDate}</p>
+                        <p>
+                            <span className="font-semibold">{isManualAction ? 'Data efetiva:' : 'Periodo:'}</span>{' '}
+                            {isManualAction ? (data.effectiveDate || data.startDate) : `${data.startDate} a ${data.endDate}`}
+                        </p>
                     </div>
                     <div>
-                        <p><span className="font-semibold">Horarios:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
+                        {!isManualAction && (
+                            <p><span className="font-semibold">Horarios:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
+                        )}
                         <p><span className="font-semibold">Pacientes no mapa:</span> {new Set(data.dietMap.map((item) => item.patientId)).size}</p>
                     </div>
                 </div>
             </div>
 
             <div className="mb-6">
-                <h2 className="mb-2 text-xs font-bold uppercase">Mapa da dieta por paciente</h2>
+                <h2 className="mb-2 text-xs font-bold uppercase">{mapTitle}</h2>
                 <table className="w-full border-collapse border border-black">
                     <thead>
-                        <tr>
-                            <th className="border border-black p-1 text-left">Leito</th>
-                            <th className="border border-black p-1 text-left">Data Nasc</th>
-                            <th className="border border-black p-1 text-left">Paciente</th>
-                            <th className="border border-black p-1 text-left">Via</th>
-                            <th className="border border-black p-1 text-left">Produto</th>
-                            <th className="border border-black p-1 text-center">Vol/gr</th>
-                            <th className="border border-black p-1 text-center">Volume total/etapa</th>
-                            <th className="border border-black p-1 text-center">Vel Inf</th>
-                            <th className="border border-black p-1 text-center">Horarios</th>
-                            <th className="border border-black p-1 text-left">Observacoes</th>
-                        </tr>
+                        {isManualAction ? (
+                            <tr>
+                                <th className="border border-black p-1 text-left">Data</th>
+                                <th className="border border-black p-1 text-left">Ala</th>
+                                <th className="border border-black p-1 text-left">Leito</th>
+                                <th className="border border-black p-1 text-left">Paciente</th>
+                                <th className="border border-black p-1 text-left">Produto / modulo</th>
+                                <th className="border border-black p-1 text-right">Valor</th>
+                            </tr>
+                        ) : (
+                            <tr>
+                                <th className="border border-black p-1 text-left">Leito</th>
+                                <th className="border border-black p-1 text-left">Data Nasc</th>
+                                <th className="border border-black p-1 text-left">Paciente</th>
+                                <th className="border border-black p-1 text-left">Via</th>
+                                <th className="border border-black p-1 text-left">Produto</th>
+                                <th className="border border-black p-1 text-center">Vol/gr</th>
+                                <th className="border border-black p-1 text-center">Volume total/etapa</th>
+                                <th className="border border-black p-1 text-center">Vel Inf</th>
+                                <th className="border border-black p-1 text-center">Horarios</th>
+                                <th className="border border-black p-1 text-left">Observacoes</th>
+                            </tr>
+                        )}
                     </thead>
                     <tbody>
                         {data.dietMap.length === 0 ? (
                             <tr>
-                                <td colSpan={10} className="border border-black p-3 text-center italic">
+                                <td colSpan={isManualAction ? 6 : 10} className="border border-black p-3 text-center italic">
                                     Nenhum item encontrado para os filtros selecionados.
                                 </td>
                             </tr>
@@ -83,40 +112,69 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
 
                                 return (
                                     <tr key={`${item.patientId}-${item.productName}-${index}`}>
-                                        {isFirstPatientRow && (
+                                        {isManualAction ? (
                                             <>
-                                                <td rowSpan={rowSpan} className="border border-black p-1 align-top font-semibold">
-                                                    {item.bed || '-'}
+                                                <td className="border border-black p-1 align-top">
+                                                    {data.effectiveDate || data.startDate}
                                                 </td>
-                                                <td rowSpan={rowSpan} className="border border-black p-1 align-top">
-                                                    {item.dob ? new Intl.DateTimeFormat('pt-BR').format(new Date(item.dob)) : '-'}
-                                                </td>
-                                                <td rowSpan={rowSpan} className="border border-black p-1 align-top">
+                                                <td className="border border-black p-1 align-top">{item.ward || '-'}</td>
+                                                <td className="border border-black p-1 align-top font-semibold">{item.bed || '-'}</td>
+                                                <td className="border border-black p-1 align-top">
                                                     <div className="font-semibold">{item.patientName}</div>
                                                     {item.patientRecord && (
                                                         <div className="text-[9px] text-slate-600">Prontuario: {item.patientRecord}</div>
                                                     )}
                                                 </td>
+                                                <td className="border border-black p-1 align-top">
+                                                    <div className="font-semibold">{item.productName}</div>
+                                                    <div className="text-[9px] uppercase text-slate-600">
+                                                        {getTypeBadge(item)} {item.productCode ? `| Cod. ${item.productCode}` : ''}
+                                                    </div>
+                                                </td>
+                                                <td className="border border-black p-1 text-right align-top">
+                                                    {item.subtotal
+                                                        ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                                                        : '-'}
+                                                </td>
+                                            </>
+                                        ) : (
+                                            <>
+                                                {isFirstPatientRow && (
+                                                    <>
+                                                        <td rowSpan={rowSpan} className="border border-black p-1 align-top font-semibold">
+                                                            {item.bed || '-'}
+                                                        </td>
+                                                        <td rowSpan={rowSpan} className="border border-black p-1 align-top">
+                                                            {item.dob ? new Intl.DateTimeFormat('pt-BR').format(new Date(item.dob)) : '-'}
+                                                        </td>
+                                                        <td rowSpan={rowSpan} className="border border-black p-1 align-top">
+                                                            <div className="font-semibold">{item.patientName}</div>
+                                                            {item.patientRecord && (
+                                                                <div className="text-[9px] text-slate-600">Prontuario: {item.patientRecord}</div>
+                                                            )}
+                                                        </td>
+                                                    </>
+                                                )}
+                                                <td className="border border-black p-1 align-top uppercase">{item.route}</td>
+                                                <td className="border border-black p-1 align-top">
+                                                    <div className="font-semibold">{item.productName}</div>
+                                                    <div className="text-[9px] uppercase text-slate-600">
+                                                        {getTypeBadge(item)} {item.productCode ? `| Cod. ${item.productCode}` : ''}
+                                                    </div>
+                                                </td>
+                                                <td className="border border-black p-1 text-center align-top">
+                                                    {formatQuantity(item.volumeOrAmount, item.unit)}
+                                                </td>
+                                                <td className="border border-black p-1 text-center align-top">
+                                                    {formatQuantity(item.stageVolume, item.stageVolumeUnit)}
+                                                </td>
+                                                <td className="border border-black p-1 text-center align-top">{item.rate || '-'}</td>
+                                                <td className="border border-black p-1 text-center align-top">
+                                                    {item.times.length > 0 ? item.times.join('  ') : '-'}
+                                                </td>
+                                                <td className="border border-black p-1 align-top">{item.observation || '-'}</td>
                                             </>
                                         )}
-                                        <td className="border border-black p-1 align-top uppercase">{item.route}</td>
-                                        <td className="border border-black p-1 align-top">
-                                            <div className="font-semibold">{item.productName}</div>
-                                            <div className="text-[9px] uppercase text-slate-600">
-                                                {getTypeBadge(item)} {item.productCode ? `| Cod. ${item.productCode}` : ''}
-                                            </div>
-                                        </td>
-                                        <td className="border border-black p-1 text-center align-top">
-                                            {formatQuantity(item.volumeOrAmount, item.unit)}
-                                        </td>
-                                        <td className="border border-black p-1 text-center align-top">
-                                            {formatQuantity(item.stageVolume, item.stageVolumeUnit)}
-                                        </td>
-                                        <td className="border border-black p-1 text-center align-top">{item.rate || '-'}</td>
-                                        <td className="border border-black p-1 text-center align-top">
-                                            {item.times.length > 0 ? item.times.join('  ') : '-'}
-                                        </td>
-                                        <td className="border border-black p-1 align-top">{item.observation || '-'}</td>
                                     </tr>
                                 );
                             })
@@ -125,55 +183,59 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                 </table>
             </div>
 
-            <div className="mb-6 break-inside-avoid">
-                <h2 className="mb-2 text-xs font-bold uppercase">Requisicao consolidada de produtos</h2>
-                <table className="w-full border-collapse border border-black">
-                    <thead>
-                        <tr>
-                            <th className="border border-black p-1 text-left">Item</th>
-                            <th className="border border-black p-1 text-left">Codigo</th>
-                            <th className="border border-black p-1 text-center">Quantidade total</th>
-                            <th className="border border-black p-1 text-center">Unidade</th>
-                            <th className="border border-black p-1 text-right">Preco unitario</th>
-                            <th className="border border-black p-1 text-right">Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.consolidated.length === 0 ? (
+            {!isManualAction && (
+                <div className="mb-6 break-inside-avoid">
+                    <h2 className="mb-2 text-xs font-bold uppercase">
+                        Requisicao consolidada de produtos
+                    </h2>
+                    <table className="w-full border-collapse border border-black">
+                        <thead>
                             <tr>
-                                <td colSpan={6} className="border border-black p-3 text-center italic">
-                                    Nenhum item para faturamento.
-                                </td>
+                                <th className="border border-black p-1 text-left">Item</th>
+                                <th className="border border-black p-1 text-left">Codigo</th>
+                                <th className="border border-black p-1 text-center">Quantidade total</th>
+                                <th className="border border-black p-1 text-center">Unidade</th>
+                                <th className="border border-black p-1 text-right">Preco unitario</th>
+                                <th className="border border-black p-1 text-right">Subtotal</th>
                             </tr>
-                        ) : (
-                            <>
-                                {data.consolidated.map((item, index) => (
-                                    <tr key={`${item.code}-${index}`}>
-                                        <td className="border border-black p-1">{item.name}</td>
-                                        <td className="border border-black p-1">{item.code || '-'}</td>
-                                        <td className="border border-black p-1 text-center">
-                                            {item.totalQuantity.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-                                        </td>
-                                        <td className="border border-black p-1 text-center uppercase">{item.billingUnit}</td>
-                                        <td className="border border-black p-1 text-right">
-                                            {item.unitPrice ? item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                                        </td>
-                                        <td className="border border-black p-1 text-right">
-                                            {item.subtotal ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                                        </td>
-                                    </tr>
-                                ))}
+                        </thead>
+                        <tbody>
+                            {data.consolidated.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="border border-black p-1 text-right font-bold uppercase">Total</td>
-                                    <td className="border border-black p-1 text-right font-bold">
-                                        {consolidatedTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    <td colSpan={6} className="border border-black p-3 text-center italic">
+                                        Nenhum item para faturamento.
                                     </td>
                                 </tr>
-                            </>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                            ) : (
+                                <>
+                                    {data.consolidated.map((item, index) => (
+                                        <tr key={`${item.code}-${index}`}>
+                                            <td className="border border-black p-1">{item.name}</td>
+                                            <td className="border border-black p-1">{item.code || '-'}</td>
+                                            <td className="border border-black p-1 text-center">
+                                                {item.totalQuantity.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="border border-black p-1 text-center uppercase">{item.billingUnit}</td>
+                                            <td className="border border-black p-1 text-right">
+                                                {item.unitPrice ? item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                                            </td>
+                                            <td className="border border-black p-1 text-right">
+                                                {item.subtotal ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    <tr>
+                                        <td colSpan={5} className="border border-black p-1 text-right font-bold uppercase">Total</td>
+                                        <td className="border border-black p-1 text-right font-bold">
+                                            {consolidatedTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        </td>
+                                    </tr>
+                                </>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            )}
 
             <div className="mt-10 grid grid-cols-3 gap-8 text-[10px]">
                 <div>

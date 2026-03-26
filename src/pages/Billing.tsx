@@ -9,7 +9,6 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { Calendar as CalendarIcon, Clock, DollarSign, FileText, Printer, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
@@ -20,7 +19,7 @@ import { RequisitionData } from "@/types/requisition";
 import { generateRequisitionData } from "@/utils/requisitionGenerator";
 import { toast } from "sonner";
 
-const SCHEDULE_TIMES = ["06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00"];
+const SCHEDULE_TIMES = ["09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00", "06:00"];
 const THERAPY_OPTIONS = [
     { value: "all", label: "Todas as vias" },
     { value: "enteral", label: "Enteral" },
@@ -39,6 +38,13 @@ const formatDate = (date: Date | string | undefined | null) => {
     return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
 
+const sortScheduleTimes = (times: string[]) =>
+    [...times].sort((left, right) => SCHEDULE_TIMES.indexOf(left) - SCHEDULE_TIMES.indexOf(right));
+
+const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+type ManualRequestMode = "cancellation" | "extra";
+
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading, refetch: refetchPrescriptions } = usePrescriptions();
@@ -55,9 +61,13 @@ const Billing = () => {
     const [requisitionData, setRequisitionData] = useState<RequisitionData | null>(null);
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [cancelTarget, setCancelTarget] = useState<Prescription | null>(null);
-    const [cancelReason, setCancelReason] = useState("");
     const [cancelEffectiveDate, setCancelEffectiveDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [manualCancelOpen, setManualCancelOpen] = useState(false);
+    const [manualRequestMode, setManualRequestMode] = useState<ManualRequestMode>("cancellation");
+    const [manualCancelPatientId, setManualCancelPatientId] = useState("");
+    const [manualCancelDate, setManualCancelDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [manualCancelSelectedItems, setManualCancelSelectedItems] = useState<string[]>([]);
 
     const signatureConfig = {
         signature1: "Nutricionista prescritor",
@@ -168,42 +178,126 @@ const Billing = () => {
         return previewRequisitionData.consolidated.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     }, [previewRequisitionData]);
 
+    const manualCancelCandidates = useMemo(() => {
+        if (!previewRequisitionData || !manualCancelPatientId) return [];
+        return previewRequisitionData.dietMap
+            .filter((item) => item.patientId === manualCancelPatientId)
+            .map((item, index) => ({
+                key: `${item.patientId}-${item.productCode || item.productName}-${index}`,
+                item,
+            }));
+    }, [manualCancelPatientId, previewRequisitionData]);
+
+    const manualCancelTotal = useMemo(
+        () => manualCancelCandidates
+            .filter(({ key }) => manualCancelSelectedItems.includes(key))
+            .reduce((sum, { item }) => sum + (item.subtotal || 0), 0),
+        [manualCancelCandidates, manualCancelSelectedItems],
+    );
+
+    const openManualRequestDialog = (mode: ManualRequestMode) => {
+        setManualRequestMode(mode);
+        setManualCancelPatientId("");
+        setManualCancelSelectedItems([]);
+        setManualCancelDate(new Date().toISOString().split("T")[0]);
+        setManualCancelOpen(true);
+    };
+
     const handleGenerateRequisition = () => {
         if (!previewRequisitionData) return;
 
-        setRequisitionData(previewRequisitionData);
+        setRequisitionData({ ...previewRequisitionData, documentType: "billing" });
         setTimeout(() => window.print(), 100);
+    };
+
+    const handleGenerateManualCancellation = () => {
+        if (!previewRequisitionData || !manualCancelPatientId || manualCancelSelectedItems.length === 0) {
+            toast.error("Selecione o paciente e ao menos um item.");
+            return;
+        }
+
+        const selectedDietMap = manualCancelCandidates
+            .filter(({ key }) => manualCancelSelectedItems.includes(key))
+            .map(({ item }) => item);
+
+        const selectedPatient = patients.find((patient) => patient.id === manualCancelPatientId);
+        const documentType: RequisitionData["documentType"] = manualRequestMode === "cancellation" ? "cancellation" : "extra";
+
+        setRequisitionData({
+            ...previewRequisitionData,
+            unitName: unit === "all" ? "Todas as unidades" : unit,
+            selectedTimes: [],
+            documentType,
+            effectiveDate: manualCancelDate,
+            dietMap: selectedDietMap,
+            consolidated: [],
+            signatures: previewRequisitionData.signatures,
+            patientCount: selectedPatient ? 1 : new Set(selectedDietMap.map((item) => item.patientId)).size,
+        });
+
+        setManualCancelOpen(false);
+        setTimeout(() => window.print(), 120);
+    };
+
+    const buildCancellationRequisition = (prescription: Prescription): RequisitionData => {
+        const effectiveDate = new Date(`${cancelEffectiveDate}T00:00:00`);
+        const generated = generateRequisitionData({
+            prescriptions: [prescription],
+            patients,
+            formulas,
+            modules,
+            supplies,
+            unitName: prescription.patientWard || unit,
+            therapyLabel:
+                prescription.therapyType === "enteral"
+                    ? "Enteral"
+                    : prescription.therapyType === "oral"
+                        ? "Via oral"
+                        : "Parenteral",
+            startDate: effectiveDate,
+            endDate: effectiveDate,
+            selectedTimes: [...SCHEDULE_TIMES],
+            signatures: {
+                prescriber: signatureConfig.signature1,
+                technician: signatureConfig.signature2,
+                manager: signatureConfig.signature3,
+            },
+        });
+
+        return {
+            ...generated,
+            documentType: "cancellation",
+            effectiveDate: formatDate(effectiveDate),
+        };
     };
 
     const openTechnicalCancelDialog = (prescription: Prescription) => {
         setCancelTarget(prescription);
-        setCancelReason("");
         setCancelEffectiveDate(new Date().toISOString().split("T")[0]);
         setCancelDialogOpen(true);
     };
 
     const handleTechnicalCancel = async () => {
         if (!cancelTarget?.id) return;
-        if (!cancelReason.trim()) {
-            toast.error("Informe o motivo do cancelamento técnico.");
-            return;
-        }
 
         const changedBy = typeof window !== "undefined" ? localStorage.getItem("userName") || "Usuario do sistema" : "Usuario do sistema";
+        const cancellationDocument = buildCancellationRequisition(cancelTarget);
 
         try {
             setIsCancelling(true);
             await prescriptionsService.updateStatus(cancelTarget.id, {
                 status: "suspended",
-                reason: cancelReason.trim(),
                 changedBy,
                 effectiveDate: cancelEffectiveDate,
             });
             await refetchPrescriptions();
-            toast.success("Prescricao suspensa com cancelamento tecnico registrado.");
+            setRequisitionData(cancellationDocument);
             setCancelDialogOpen(false);
-            setCancelTarget(null);
-            setCancelReason("");
+            toast.success("Prescricao suspensa e requisicao de cancelamento gerada.");
+            setTimeout(() => {
+                window.print();
+                setCancelTarget(null);
+            }, 350);
         } catch (error) {
             console.error("Failed to cancel prescription technically", error);
             toast.error("Nao foi possivel registrar o cancelamento tecnico.");
@@ -214,7 +308,9 @@ const Billing = () => {
 
     const toggleTime = (time: string) => {
         setSelectedTimes((current) =>
-            current.includes(time) ? current.filter((item) => item !== time) : [...current, time],
+            current.includes(time)
+                ? sortScheduleTimes(current.filter((item) => item !== time))
+                : sortScheduleTimes([...current, time]),
         );
     };
 
@@ -235,6 +331,17 @@ const Billing = () => {
 
     const selectAllTimes = () => setSelectedTimes([...SCHEDULE_TIMES]);
     const clearAllTimes = () => setSelectedTimes([]);
+
+    const toggleManualCancelItem = (key: string) => {
+        setManualCancelSelectedItems((current) =>
+            current.includes(key)
+                ? current.filter((item) => item !== key)
+                : [...current, key],
+        );
+    };
+
+    const manualActionLabel = manualRequestMode === "cancellation" ? "cancelamento manual" : "requisicao extra";
+    const manualActionButtonLabel = manualRequestMode === "cancellation" ? "Gerar cancelamento" : "Gerar requisicao extra";
 
     return (
         <div className="min-h-screen bg-background pb-20">
@@ -525,9 +632,39 @@ const Billing = () => {
 
                         <Card>
                             <CardHeader>
+                                <CardTitle>Acoes manuais de faturamento</CardTitle>
+                                <CardDescription>
+                                    Gere cancelamentos ou requisicoes extras escolhendo paciente, itens e valores, sem justificativa obrigatoria.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="grid gap-2">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => openManualRequestDialog("cancellation")}
+                                        disabled={!previewRequisitionData || previewRequisitionData.dietMap.length === 0}
+                                    >
+                                        Cancelamento manual
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => openManualRequestDialog("extra")}
+                                        disabled={!previewRequisitionData || previewRequisitionData.dietMap.length === 0}
+                                    >
+                                        Requisicao extra
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    As acoes manuais usam os itens reais do mapa filtrado e imprimem o documento com os valores por linha.
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
                                 <CardTitle>Controle operacional das prescricoes ativas</CardTitle>
                                 <CardDescription>
-                                    Suspensoes tecnicas registram motivo, data efetiva e responsavel para auditoria.
+                                    Se precisar suspender a prescricao ativa, o cancelamento tecnico continua disponivel abaixo.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -580,11 +717,11 @@ const Billing = () => {
             <RequisitionDocument data={requisitionData} />
 
             <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-                <DialogContent>
+                <DialogContent className="print:hidden">
                     <DialogHeader>
                         <DialogTitle>Cancelamento tecnico da prescricao</DialogTitle>
                         <DialogDescription>
-                            Isso suspende a prescricao ativa e registra motivo, data efetiva e responsavel.
+                            Isso suspende a prescricao ativa e gera uma requisicao de cancelamento nos mesmos moldes da dieta, sem horarios.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -600,7 +737,6 @@ const Billing = () => {
                                 | Inicio {cancelTarget?.startDate ? formatDate(cancelTarget.startDate) : "-"}
                             </p>
                         </div>
-
                         <div className="space-y-2">
                             <Label htmlFor="cancel-effective-date">Data efetiva</Label>
                             <Input
@@ -608,17 +744,6 @@ const Billing = () => {
                                 type="date"
                                 value={cancelEffectiveDate}
                                 onChange={(event) => setCancelEffectiveDate(event.target.value)}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="cancel-reason">Motivo do cancelamento tecnico</Label>
-                            <Textarea
-                                id="cancel-reason"
-                                value={cancelReason}
-                                onChange={(event) => setCancelReason(event.target.value)}
-                                placeholder="Ex: suspensa por procedimento, troca de conduta, impossibilidade temporaria de administracao..."
-                                rows={4}
                             />
                         </div>
                     </div>
@@ -632,7 +757,112 @@ const Billing = () => {
                             Fechar
                         </Button>
                         <Button onClick={handleTechnicalCancel} disabled={isCancelling}>
-                            {isCancelling ? "Salvando..." : "Confirmar cancelamento"}
+                            {isCancelling ? "Salvando..." : "Confirmar e imprimir"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={manualCancelOpen} onOpenChange={setManualCancelOpen}>
+                <DialogContent className="max-w-3xl print:hidden">
+                    <DialogHeader>
+                        <DialogTitle>{manualRequestMode === "cancellation" ? "Cancelamento manual" : "Requisicao extra manual"}</DialogTitle>
+                        <DialogDescription>
+                            Selecione o paciente, marque os itens desejados e gere a {manualActionLabel} com os valores exibidos abaixo.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Paciente</Label>
+                                <Select
+                                    value={manualCancelPatientId}
+                                    onValueChange={(value) => {
+                                        setManualCancelPatientId(value);
+                                        setManualCancelSelectedItems([]);
+                                    }}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione o paciente" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {filteredPatients.map((patient) => (
+                                            <SelectItem key={patient.id} value={patient.id || ""}>
+                                                {[patient.name, patient.bed && `Leito ${patient.bed}`, patient.ward].filter(Boolean).join(" | ")}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Data efetiva</Label>
+                                <Input
+                                    type="date"
+                                    value={manualCancelDate}
+                                    onChange={(event) => setManualCancelDate(event.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="rounded-md border p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="font-medium">Itens selecionaveis do paciente</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        O documento vai sair sem horarios e com o valor individual de cada linha.
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-xs text-muted-foreground">Total selecionado</p>
+                                    <p className="text-lg font-semibold text-primary">{formatCurrency(manualCancelTotal)}</p>
+                                </div>
+                            </div>
+
+                            {!manualCancelPatientId ? (
+                                <p className="text-sm text-muted-foreground">Escolha um paciente para listar os itens disponiveis.</p>
+                            ) : manualCancelCandidates.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Nenhum item disponivel para o paciente com os filtros atuais.</p>
+                            ) : (
+                                <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
+                                    {manualCancelCandidates.map(({ key, item }) => (
+                                        <label
+                                            key={key}
+                                            className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:border-primary/50"
+                                        >
+                                            <Checkbox
+                                                checked={manualCancelSelectedItems.includes(key)}
+                                                onCheckedChange={() => toggleManualCancelItem(key)}
+                                            />
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="font-medium">{item.productName}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {[item.ward, item.bed && `Leito ${item.bed}`, item.route].filter(Boolean).join(" | ")}
+                                                        </p>
+                                                    </div>
+                                                    <p className="font-semibold">{formatCurrency(item.subtotal || 0)}</p>
+                                                </div>
+                                                <p className="text-sm text-muted-foreground">
+                                                    {item.volumeOrAmount} {item.unit}
+                                                    {item.stageVolume ? ` | Volume/etapa ${item.stageVolume} ${item.stageVolumeUnit || "ml"}` : ""}
+                                                    {item.observation ? ` | ${item.observation}` : ""}
+                                                </p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setManualCancelOpen(false)}>
+                            Fechar
+                        </Button>
+                        <Button onClick={handleGenerateManualCancellation}>
+                            {manualActionButtonLabel}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -646,3 +876,4 @@ const Billing = () => {
 };
 
 export default Billing;
+

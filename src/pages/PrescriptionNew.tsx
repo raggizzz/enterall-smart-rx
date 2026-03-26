@@ -492,6 +492,8 @@ const PrescriptionNew = () => {
   const [oralThickenerTimes, setOralThickenerTimes] = useState<string[]>([]);
   const [oralEstimatedVET, setOralEstimatedVET] = useState<number>(0);
   const [oralEstimatedProtein, setOralEstimatedProtein] = useState<number>(0);
+  const [oralEstimatedCarbs, setOralEstimatedCarbs] = useState<number>(0);
+  const [oralEstimatedLipids, setOralEstimatedLipids] = useState<number>(0);
   const [oralHasTherapy, setOralHasTherapy] = useState(false);
   const [oralSupplements, setOralSupplements] = useState<OralSupplementSchedule[]>([]);
   const [oralTherapyModules, setOralTherapyModules] = useState<OralModuleSchedule[]>([]);
@@ -618,6 +620,8 @@ const PrescriptionNew = () => {
 
     totals.calories += oralEstimatedVET;
     totals.protein += oralEstimatedProtein;
+    totals.carbs += oralEstimatedCarbs;
+    totals.fat += oralEstimatedLipids;
 
     oralSupplements.forEach((supplement) => {
       const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
@@ -644,6 +648,8 @@ const PrescriptionNew = () => {
   }, [
     oralEstimatedVET,
     oralEstimatedProtein,
+    oralEstimatedCarbs,
+    oralEstimatedLipids,
     oralSupplements,
     oralTherapyModules,
     availableFormulas,
@@ -882,6 +888,8 @@ const PrescriptionNew = () => {
       setOralThickenerTimes(oralDetails?.thickenerTimes || []);
       setOralEstimatedVET(oralDetails?.estimatedVET ?? prescription.totalCalories ?? 0);
       setOralEstimatedProtein(oralDetails?.estimatedProtein ?? prescription.totalProtein ?? 0);
+      setOralEstimatedCarbs(oralDetails?.estimatedCarbs ?? prescription.totalCarbs ?? 0);
+      setOralEstimatedLipids(oralDetails?.estimatedLipids ?? prescription.totalFat ?? 0);
       setOralHasTherapy(Boolean(oralDetails?.hasOralTherapy));
       setOralObservations(oralDetails?.observations || "");
       setOralSupplements(
@@ -1439,12 +1447,14 @@ const PrescriptionNew = () => {
             thickenerTimes: oralNeedsThickener && oralThickenerTimes.length > 0 ? oralThickenerTimes : undefined,
             estimatedVET: oralEstimatedVET || undefined,
             estimatedProtein: oralEstimatedProtein || undefined,
+            estimatedCarbs: oralEstimatedCarbs || undefined,
+            estimatedLipids: oralEstimatedLipids || undefined,
             hasOralTherapy: oralHasTherapy,
             supplements: oralSupplements,
             modules: oralTherapyModules,
             observations: oralObservations || undefined,
           },
-          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
+          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Carboidratos manuais: ${oralEstimatedCarbs || 0} g/dia | Lipidios manuais: ${oralEstimatedLipids || 0} g/dia | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
         });
         savedRoutes.push("Via oral");
       }
@@ -1663,11 +1673,13 @@ const PrescriptionNew = () => {
                             setOralThickenerVolume("");
                             setOralThickenerTimes([]);
                             setOralEstimatedVET(0);
-                          setOralEstimatedProtein(0);
-                          setOralHasTherapy(false);
-                          setOralSupplements([]);
-                          setOralTherapyModules([]);
-                          setOralObservations(p.observation || "");
+                            setOralEstimatedProtein(0);
+                            setOralEstimatedCarbs(0);
+                            setOralEstimatedLipids(0);
+                            setOralHasTherapy(false);
+                            setOralSupplements([]);
+                            setOralTherapyModules([]);
+                            setOralObservations(p.observation || "");
                           setParenteralAccess("central");
                           setParenteralInfusionTime(24);
                           setParenteralAminoacids(0);
@@ -2047,14 +2059,14 @@ const PrescriptionNew = () => {
                 <Card>
                   <CardHeader><CardTitle>Estimativas da Dieta</CardTitle><CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription></CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2"><Label>Valor energético total estimado (kcal)</Label><Input type="number" value={oralEstimatedVET || ''} onChange={e => setOralEstimatedVET(parseInt(e.target.value) || 0)} placeholder="Ex: 1500" /></div>
-                      <div className="space-y-2"><Label>Quantidade de proteínas (g/dia)</Label><Input type="number" value={oralEstimatedProtein || ''} onChange={e => setOralEstimatedProtein(parseInt(e.target.value) || 0)} placeholder="Ex: 60" /></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                      <div className="space-y-2"><Label>Valor energetico total estimado (kcal)</Label><Input type="number" value={oralEstimatedVET || ''} onChange={e => setOralEstimatedVET(parseInt(e.target.value) || 0)} placeholder="Ex: 1500" /></div>
+                      <div className="space-y-2"><Label>Quantidade de proteinas (g/dia)</Label><Input type="number" value={oralEstimatedProtein || ''} onChange={e => setOralEstimatedProtein(parseInt(e.target.value) || 0)} placeholder="Ex: 60" /></div>
+                      <div className="space-y-2"><Label>Carboidratos (g/dia)</Label><Input type="number" value={oralEstimatedCarbs || ''} onChange={e => setOralEstimatedCarbs(parseInt(e.target.value) || 0)} placeholder="Ex: 180" /></div>
+                      <div className="space-y-2"><Label>Lipidios (g/dia)</Label><Input type="number" value={oralEstimatedLipids || ''} onChange={e => setOralEstimatedLipids(parseInt(e.target.value) || 0)} placeholder="Ex: 45" /></div>
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* Terapia Nutricional Via Oral */}
                 <Card>
                   <CardHeader><CardTitle>Terapia Nutricional Via Oral</CardTitle></CardHeader>
                   <CardContent className="space-y-4">

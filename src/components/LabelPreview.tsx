@@ -47,9 +47,6 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                         Via: {data.route}
                     </div>
                 </div>
-                <div className="text-[10px] text-gray-800 mt-0.5 truncate">
-                    Pront: <span className="font-bold text-black">{data.record}</span>
-                </div>
                 {data.controlText && (
                     <div className="text-[9px] text-gray-800 mt-0.5 truncate">
                         Lote/Controle: <span className="font-bold text-black">{data.controlText}</span>
@@ -68,13 +65,13 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                     </div>
                 )}
                 {data.compositionText && (
-                    <div className="text-[9px] leading-tight line-clamp-3 text-gray-800">
-                        <span className="font-semibold text-black">Composicao:</span> {data.compositionText}
+                    <div className="text-[9px] leading-tight text-gray-800 whitespace-pre-line">
+                        {data.compositionText}
                     </div>
                 )}
                 {data.volumeText && (
-                    <div className="font-bold text-sm mt-1">
-                        Volume: {data.volumeText}
+                    <div className="font-extrabold text-base mt-1 tracking-wide">
+                        {data.volumeText}
                     </div>
                 )}
             </div>

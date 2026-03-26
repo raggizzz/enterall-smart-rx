@@ -476,10 +476,15 @@ export const flushPendingOperations = async () => {
       processed += 1;
     } catch (error) {
       failed += 1;
-      const status = error instanceof ApiError && error.status === 409 ? "failed" : "pending";
+      const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500;
+      const errorBody =
+        error instanceof ApiError && error.body && typeof error.body === "object"
+          ? (error.body as Record<string, unknown>)
+          : undefined;
+      const status = isClientError ? "failed" : "pending";
       const message =
         error instanceof ApiError
-          ? `${error.message}${error.status === 409 ? " (conflito de versao)" : ""}`
+          ? `${error.message}${error.status === 409 ? " (conflito de versao)" : ""}${typeof errorBody?.error === "string" ? ` - ${errorBody.error}` : ""}`
           : error instanceof Error
             ? error.message
             : "Falha desconhecida";

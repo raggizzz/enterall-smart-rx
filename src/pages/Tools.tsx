@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Search, Clock, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
-import { getAllFormulas } from "@/lib/formulasDatabase";
+import { useFormulas, useModules } from "@/hooks/useDatabase";
 
 // --- Types for Predictive Equations ---
 type EquationType = "weight" | "height";
@@ -104,7 +104,8 @@ const GIDS_THREAT_OPTIONS: Array<{ key: GidsThreateningKey; label: string }> = [
 
 const Tools = () => {
   const { tools } = useAppTools();
-  const catalogFormulas = getAllFormulas();
+  const { formulas } = useFormulas();
+  const { modules } = useModules();
   const [catalogSearch, setCatalogSearch] = useState("");
 
   // --- PREDICTIVE EQUATIONS STATE ---
@@ -642,7 +643,7 @@ const Tools = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Catálogo de Produtos</CardTitle>
-                <CardDescription>Tabela consultiva de fórmulas enterais disponíveis. Sem integração automática com prescrição.</CardDescription>
+                <CardDescription>Tabela consultiva com os produtos cadastrados para a unidade. Consulta somente, sem edicao ou exclusao nesta tela.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="mb-4 max-w-md">
@@ -660,35 +661,67 @@ const Tools = () => {
                   <table className="w-full text-sm text-left">
                     <thead className="bg-muted text-muted-foreground sticky top-0">
                       <tr>
-                        <th className="p-3 font-medium">Nome</th>
+                        <th className="p-3 font-medium">Produto</th>
                         <th className="p-3 font-medium">Tipo</th>
                         <th className="p-3 font-medium">Sistema</th>
-                        <th className="p-3 font-medium text-right">Volume (ml)</th>
-                        <th className="p-3 font-medium text-right">Calorias (kcal/100ml)</th>
-                        <th className="p-3 font-medium text-right">Proteína (g/100ml)</th>
-                        <th className="p-3 font-medium">Observações</th>
+                        <th className="p-3 font-medium text-right">Apresentacao</th>
+                        <th className="p-3 font-medium">Composicao</th>
+                        <th className="p-3 font-medium">Faturamento</th>
+                        <th className="p-3 font-medium">Residuos</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {catalogFormulas
-                        .filter(f => !catalogSearch || f.name.toLowerCase().includes(catalogSearch.toLowerCase()) || f.manufacturer.toLowerCase().includes(catalogSearch.toLowerCase()))
-                        .map(f => (
-                          <tr key={f.id} className="border-t hover:bg-muted/20">
-                            <td className="p-3 font-medium">{f.name}</td>
+                      {[...formulas, ...modules]
+                        .filter((product) =>
+                          !catalogSearch
+                          || product.name.toLowerCase().includes(catalogSearch.toLowerCase())
+                          || (product.manufacturer || "").toLowerCase().includes(catalogSearch.toLowerCase())
+                          || (product.code || "").toLowerCase().includes(catalogSearch.toLowerCase())
+                        )
+                        .map((product) => {
+                          const isFormula = "type" in product;
+                          const unitLabel = product.presentationForm === "po" ? "g" : "mL";
+                          const composition = isFormula
+                            ? `${product.density ? `${product.density.toFixed(2)} kcal/${unitLabel.toLowerCase()}` : "-"} | ${product.proteinPerUnit ? `${product.proteinPerUnit} g PTN/${product.presentationForm === "po" ? "100 g" : "100 mL"}` : "PTN n/i"}`
+                            : `${product.density ? `${product.density.toFixed(2)} kcal/${unitLabel.toLowerCase()}` : "-"} | ${product.protein ? `${product.protein} g PTN/${product.referenceAmount || 100}${product.presentationForm === "po" ? " g" : " mL"}` : "PTN n/i"}`;
+
+                          const billing = `${product.billingUnit || "-"}${("billingPrice" in product && product.billingPrice) ? ` | R$ ${product.billingPrice.toFixed(2)}` : ""}`;
+                          const waste = isFormula
+                            ? [product.plasticG ? `Plástico ${product.plasticG}g` : "", product.paperG ? `Papel ${product.paperG}g` : "", product.metalG ? `Metal ${product.metalG}g` : "", product.glassG ? `Vidro ${product.glassG}g` : ""].filter(Boolean).join(" | ") || "-"
+                            : "-";
+
+                          return (
+                          <tr key={product.id} className="border-t hover:bg-muted/20">
                             <td className="p-3">
-                              <Badge variant="outline" className="text-xs capitalize">{f.type.replace('-', ' ')}</Badge>
+                              <div className="font-semibold">{product.code ? `${product.code} - ${product.name}` : product.name}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {[product.manufacturer, product.description].filter(Boolean).join(" | ") || "-"}
+                              </div>
                             </td>
-                            <td className="p-3 text-xs">{f.systemType === 'open' ? 'Aberto' : f.systemType === 'closed' ? 'Fechado' : 'Ambos'}</td>
-                            <td className="p-3 text-right">{f.presentations.join(', ')}</td>
-                            <td className="p-3 text-right font-mono">{f.composition.calories}</td>
-                            <td className="p-3 text-right font-mono">{f.composition.protein}</td>
-                            <td className="p-3 text-xs text-muted-foreground max-w-[200px] truncate" title={f.descriptionForEvolution || f.description || '-'}>{f.descriptionForEvolution || f.description || '-'}</td>
+                            <td className="p-3">
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {isFormula ? "Fórmula" : "Módulo"}
+                              </Badge>
+                            </td>
+                            <td className="p-3 text-xs">
+                              {isFormula
+                                ? product.systemType === "open"
+                                  ? "Sistema aberto"
+                                  : product.systemType === "closed"
+                                    ? "Sistema fechado"
+                                    : "Sistema aberto e fechado"
+                                : "Qualquer sistema"}
+                            </td>
+                            <td className="p-3 text-right">{product.presentations?.join(", ") || "-"}</td>
+                            <td className="p-3 text-xs">{composition}</td>
+                            <td className="p-3 text-xs">{billing}</td>
+                            <td className="p-3 text-xs text-muted-foreground max-w-[220px]">{waste}</td>
                           </tr>
-                        ))}
+                        )})}
                     </tbody>
                   </table>
                 </div>
-                <p className="text-xs text-muted-foreground mt-3">{catalogFormulas.length} produtos cadastrados</p>
+                <p className="text-xs text-muted-foreground mt-3">{[...formulas, ...modules].length} produtos cadastrados para a unidade</p>
               </CardContent>
             </Card>
           </TabsContent>

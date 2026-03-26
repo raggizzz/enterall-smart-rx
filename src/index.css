@@ -244,6 +244,16 @@ All colors MUST be HSL.
   header {
     display: none !important;
   }
+
+  [data-sonner-toaster],
+  [data-radix-toast-viewport],
+  [data-radix-popper-content-wrapper],
+  .toaster,
+  [role="status"],
+  [role="alert"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
 }
 
 @media (max-width: 640px) {

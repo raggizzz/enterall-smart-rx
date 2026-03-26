@@ -89,6 +89,8 @@ export default function OralTherapyPage() {
     // Estimativas
     const [estimatedVET, setEstimatedVET] = useState<number>(0);
     const [estimatedProtein, setEstimatedProtein] = useState<number>(0);
+    const [estimatedCarbs, setEstimatedCarbs] = useState<number>(0);
+    const [estimatedLipids, setEstimatedLipids] = useState<number>(0);
 
     // Terapia nutricional oral
     const [hasOralTherapy, setHasOralTherapy] = useState(false);
@@ -121,6 +123,8 @@ export default function OralTherapyPage() {
     const oralTotals = useMemo(() => {
         let kcal = estimatedVET;
         let protein = estimatedProtein;
+        let carbs = estimatedCarbs;
+        let lipids = estimatedLipids;
 
         supplements.forEach(sup => {
             const formula = formulas.find(f => f.id === sup.supplementId);
@@ -133,6 +137,8 @@ export default function OralTherapyPage() {
 
             kcal += (formula.caloriesPerUnit || 0) * factor;
             protein += (formula.proteinPerUnit || 0) * factor;
+            carbs += (formula.carbPerUnit || 0) * factor;
+            lipids += (formula.fatPerUnit || 0) * factor;
         });
 
         oralModules.forEach(om => {
@@ -145,15 +151,19 @@ export default function OralTherapyPage() {
 
             kcal += (module.calories || 0) * timesPerDay * factor;
             protein += (module.protein || 0) * timesPerDay * factor;
+            carbs += (module.carbs || 0) * timesPerDay * factor;
+            lipids += (module.fat || 0) * timesPerDay * factor;
         });
 
         return {
             kcal,
             protein,
+            carbs,
+            lipids,
             kcalPerKg: selectedPatient?.weight ? kcal / selectedPatient.weight : 0,
             proteinPerKg: selectedPatient?.weight ? protein / selectedPatient.weight : 0,
         };
-    }, [estimatedVET, estimatedProtein, supplements, oralModules, formulas, modules, selectedPatient]);
+    }, [estimatedVET, estimatedProtein, estimatedCarbs, estimatedLipids, supplements, oralModules, formulas, modules, selectedPatient]);
 
     // Add supplement
     const addSupplement = () => {
@@ -343,6 +353,8 @@ export default function OralTherapyPage() {
             speechTherapy ? "Acompanhamento fonoaudiológico: sim" : "Acompanhamento fonoaudiológico: nao",
             speechTherapy && needsThickener ? `Água com espessante: sim (${safeConsistency || "consistência não informada"})` : "",
             speechTherapy && !needsThickener ? "Agua com espessante: nao" : "",
+            `Carboidratos manuais: ${estimatedCarbs} g/dia`,
+            `Lipídios manuais: ${estimatedLipids} g/dia`,
             observations ? `Observações: ${observations}` : "",
         ].filter(Boolean);
 
@@ -361,6 +373,24 @@ export default function OralTherapyPage() {
             modules: oralModuleItems,
             totalCalories: Math.round(oralTotals.kcal),
             totalProtein: Math.round(oralTotals.protein * 10) / 10,
+            totalCarbs: Math.round(oralTotals.carbs * 10) / 10,
+            totalFat: Math.round(oralTotals.lipids * 10) / 10,
+            oralDetails: {
+                dietConsistency: dietConsistency || undefined,
+                dietCharacteristics: dietCharacteristics || undefined,
+                mealsPerDay: mealsPerDay || undefined,
+                speechTherapy,
+                needsThickener,
+                safeConsistency: speechTherapy && needsThickener ? safeConsistency || undefined : undefined,
+                estimatedVET: estimatedVET || undefined,
+                estimatedProtein: estimatedProtein || undefined,
+                estimatedCarbs: estimatedCarbs || undefined,
+                estimatedLipids: estimatedLipids || undefined,
+                hasOralTherapy,
+                supplements,
+                modules: oralModules,
+                observations: observations || undefined,
+            },
             status: "active" as const,
             startDate: new Date().toISOString().split("T")[0],
             notes: notesParts.join(" | "),
@@ -584,7 +614,7 @@ export default function OralTherapyPage() {
                         <CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                             <div className="space-y-2">
                                 <Label>Valor energetico total estimado (kcal)</Label>
                                 <Input
@@ -601,6 +631,24 @@ export default function OralTherapyPage() {
                                     value={estimatedProtein || ''}
                                     onChange={(e) => setEstimatedProtein(parseInt(e.target.value) || 0)}
                                     placeholder="Ex: 60"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Carboidratos (g/dia)</Label>
+                                <Input
+                                    type="number"
+                                    value={estimatedCarbs || ''}
+                                    onChange={(e) => setEstimatedCarbs(parseInt(e.target.value) || 0)}
+                                    placeholder="Ex: 180"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Lipidios (g/dia)</Label>
+                                <Input
+                                    type="number"
+                                    value={estimatedLipids || ''}
+                                    onChange={(e) => setEstimatedLipids(parseInt(e.target.value) || 0)}
+                                    placeholder="Ex: 45"
                                 />
                             </div>
                         </div>
@@ -874,5 +922,3 @@ export default function OralTherapyPage() {
         </div>
     );
 }
-
-

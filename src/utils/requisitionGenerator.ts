@@ -76,10 +76,14 @@ export const generateRequisitionData = ({
     selectedTimes,
     signatures
 }: GenerateOptions): RequisitionData => {
+    const orderedSelectedTimes = [...selectedTimes]
+        .map((time) => normalizeScheduleTime(time))
+        .filter(Boolean);
+    const scheduleOrder = new Map(orderedSelectedTimes.map((time, index) => [time, index]));
     const dietMap: DietMapItem[] = [];
     const consolidatedMap = new Map<string, ConsolidatedItem>();
     const patientsById = new Map(patients.map((patient) => [patient.id, patient]));
-    const selectedTimeSet = new Set(selectedTimes.map((time) => normalizeScheduleTime(time)).filter(Boolean));
+    const selectedTimeSet = new Set(orderedSelectedTimes);
 
     // Helper to add to consolidated list
     const addToConsolidated = (
@@ -170,6 +174,7 @@ export const generateRequisitionData = ({
             const matchingTimes = (f.schedules || [])
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
+            matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -194,6 +199,8 @@ export const generateRequisitionData = ({
                 const equipmentVolumePerAdministration = p.systemType === 'open' && p.therapyType === 'enteral'
                     ? (p.equipmentVolume || 0)
                     : 0;
+                let rowUnitPrice = price;
+                let rowSubtotal = 0;
 
                 // Formulas often billed by mL or Unit (bag).
                 const formulaObj = formulas.find(item => item.id === f.formulaId);
@@ -226,6 +233,8 @@ export const generateRequisitionData = ({
                     // If we bill by bags, we should probably display Bags count, and price per BAG.
                     // Price per bag = Price/ml * bagSize
                     const pricePerBag = price * bagSize;
+                    rowUnitPrice = pricePerBag;
+                    rowSubtotal = totalBags * pricePerBag;
 
                     addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
                 } else if (billingUnit === 'unit') {
@@ -237,11 +246,21 @@ export const generateRequisitionData = ({
                     const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
                     const dailyBags = Math.ceil(dailyVolume / bagSize);
                     const totalBags = dailyBags * dayDiff;
+                    rowUnitPrice = price;
+                    rowSubtotal = totalBags * price;
 
                     addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', price, 'formula');
                 } else {
+                    rowUnitPrice = price;
+                    rowSubtotal = totalBillableAmount * price;
                     // Fallback: Bill by total volume (ml) or original unit
                     addToConsolidated(f.formulaId, f.formulaName, totalBillableAmount, billingUnit, price, 'formula');
+                }
+
+                const formulaRow = dietMap[dietMap.length - 1];
+                if (formulaRow?.productCode === f.formulaId && formulaRow.productName === f.formulaName) {
+                    formulaRow.unitPrice = rowUnitPrice || 0;
+                    formulaRow.subtotal = rowSubtotal || 0;
                 }
 
                 // Heuristic for Bottles: If Open System, 1 bottle per administration?
@@ -256,6 +275,7 @@ export const generateRequisitionData = ({
             const matchingTimes = (m.schedules || [])
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
+            matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -271,6 +291,12 @@ export const generateRequisitionData = ({
                 const totalAmount = m.amount * matchingTimes.length * dayDiff;
                 const price = getModulePrice(m.moduleId);
                 addToConsolidated(m.moduleId, m.moduleName, totalAmount, m.unit || 'g', price, 'module');
+
+                const moduleRow = dietMap[dietMap.length - 1];
+                if (moduleRow?.productCode === m.moduleId && moduleRow.productName === m.moduleName) {
+                    moduleRow.unitPrice = price || 0;
+                    moduleRow.subtotal = totalAmount * (price || 0);
+                }
             }
         });
 
@@ -278,6 +304,7 @@ export const generateRequisitionData = ({
             const thickenerTimes = (p.oralDetails.thickenerTimes || [])
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
+            thickenerTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             const thickenerGrams = Number(p.oralDetails.thickenerGrams || 0);
             const thickenerVolume = Number(p.oralDetails.thickenerVolume || 0);
             const thickenerModule = getModuleByIdOrName(
@@ -319,6 +346,8 @@ export const generateRequisitionData = ({
                     totalQuantity = Math.ceil((dailyGrams * dayDiff) / conversionFactor);
                 }
 
+                const rowSubtotal = totalQuantity * unitPrice;
+
                 addToConsolidated(
                     thickenerSource?.id || 'THICKENER',
                     p.oralDetails.thickenerProduct || thickenerSource?.name || 'Espessante',
@@ -327,6 +356,12 @@ export const generateRequisitionData = ({
                     unitPrice,
                     thickenerModule ? 'module' : 'formula',
                 );
+
+                const thickenerRow = dietMap[dietMap.length - 1];
+                if (thickenerRow) {
+                    thickenerRow.unitPrice = unitPrice || 0;
+                    thickenerRow.subtotal = rowSubtotal || 0;
+                }
             }
         }
 
@@ -335,6 +370,7 @@ export const generateRequisitionData = ({
             const matchingTimes = p.hydrationSchedules
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
+            matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             if (matchingTimes.length > 0) {
                 dietMap.push({
                     ...patientInfo,
@@ -421,7 +457,7 @@ export const generateRequisitionData = ({
         startDate: formatDate(startDate),
         endDate: formatDate(endDate),
         printDate: formatDateTime(new Date()),
-        selectedTimes: Array.from(selectedTimeSet).sort(),
+        selectedTimes: orderedSelectedTimes,
         dietMap,
         consolidated,
         signatures

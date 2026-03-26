@@ -335,6 +335,8 @@ export interface Prescription {
         thickenerTimes?: string[];
         estimatedVET?: number;
         estimatedProtein?: number;
+        estimatedCarbs?: number;
+        estimatedLipids?: number;
         hasOralTherapy?: boolean;
         supplements?: OralSupplementSchedule[];
         modules?: OralModuleSchedule[];
@@ -429,6 +431,8 @@ export interface OralTherapy {
     safeConsistency?: string;
     estimatedVET?: number;
     estimatedProtein?: number;
+    estimatedCarbs?: number;
+    estimatedLipids?: number;
     hasOralTherapy?: boolean;
     supplements?: OralSupplementSchedule[];
     modules?: OralModuleSchedule[];
@@ -1320,10 +1324,14 @@ export const prescriptionsService = {
                 effectiveDate?: string;
             },
     ) {
-        const normalizedPayload = typeof payload === "string" ? { status: payload } : payload;
+        const hospitalId = resolveSessionHospitalId();
+        const normalizedPayload = {
+            ...(typeof payload === "string" ? { status: payload } : payload),
+            hospitalId,
+        };
         return queueUpdate(
             'prescriptions',
-            `/prescriptions/${id}/status`,
+            appendHospitalIdQuery(`/prescriptions/${id}/status`, hospitalId),
             id,
             normalizedPayload as Record<string, unknown>,
             normalizePrescription,

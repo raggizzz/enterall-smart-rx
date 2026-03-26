@@ -16,6 +16,8 @@ export interface DietMapItem {
     times: string[]; // e.g., ['09:00', '12:00']
     productCode?: string;
     observation?: string;
+    unitPrice?: number;
+    subtotal?: number;
 }
 
 export interface ConsolidatedItem {
@@ -29,11 +31,13 @@ export interface ConsolidatedItem {
 }
 
 export interface RequisitionData {
+    documentType?: 'billing' | 'cancellation' | 'extra';
     unitName: string;
     therapyLabel: string;
     startDate: string;
     endDate: string;
     printDate: string;
+    effectiveDate?: string;
     selectedTimes: string[];
     dietMap: DietMapItem[];
     consolidated: ConsolidatedItem[];

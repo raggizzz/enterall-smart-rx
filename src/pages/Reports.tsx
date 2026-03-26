@@ -392,9 +392,14 @@ const Reports = () => {
     });
   }, [prescriptions, effectivePatientIds, startDate, endDate]);
 
+  const enteralPrescriptions = useMemo(
+    () => filteredPrescriptions.filter((prescription) => prescription.therapyType === "enteral"),
+    [filteredPrescriptions],
+  );
+
   const prescriptionsByPatient = useMemo(() => {
     const map = new Map<string, Prescription[]>();
-    filteredPrescriptions.forEach((prescription) => {
+    enteralPrescriptions.forEach((prescription) => {
       const list = map.get(prescription.patientId) || [];
       list.push(prescription);
       map.set(prescription.patientId, list);
@@ -763,11 +768,16 @@ const Reports = () => {
       });
   }, [filteredPrescriptions, startDate, endDate, formulasById, formulas, modulesById, modules, supplies]);
 
+  const reportProductUsage = useMemo(
+    () => productUsage.filter((item) => item.therapyType === "enteral"),
+    [productUsage],
+  );
+
   useEffect(() => {
-    if (productUsage.length === 0) return;
+    if (reportProductUsage.length === 0) return;
     if (selectedProducts.some(Boolean)) return;
-    setSelectedProducts(productUsage.slice(0, 3).map((item) => item.productId).concat(["", "", ""]).slice(0, 3));
-  }, [productUsage, selectedProducts]);
+    setSelectedProducts(reportProductUsage.slice(0, 3).map((item) => item.productId).concat(["", "", ""]).slice(0, 3));
+  }, [reportProductUsage, selectedProducts]);
 
   const managementSummary = useMemo(() => {
     const attendedPatients = new Set<string>();
@@ -794,25 +804,26 @@ const Reports = () => {
       });
     });
 
-    const formulasCost = productUsage
+    const formulasCost = reportProductUsage
       .filter((item) => item.category === "formula")
       .reduce((sum, item) => sum + item.totalCost, 0);
-    const modulesCost = productUsage
+    const modulesCost = reportProductUsage
       .filter((item) => item.category === "module")
       .reduce((sum, item) => sum + item.totalCost, 0);
-    const suppliesCost = productUsage
+    const suppliesCost = reportProductUsage
       .filter((item) => item.category === "supply")
       .reduce((sum, item) => sum + item.totalCost, 0);
     const totalProductCost = formulasCost + modulesCost + suppliesCost;
     const patientCount = attendedPatients.size;
     const patientDays = patientDaySet.size;
+    const averagePatientsPerDay = daysInPeriod.length > 0 ? patientDays / daysInPeriod.length : 0;
 
     return {
       patientCount,
-      prescriptionCount: filteredPrescriptions.length,
-      patientDays,
+      prescriptionCount: prescriptionDays,
+      patientDays: averagePatientsPerDay,
       prescriptionDays,
-      productCount: productUsage.length,
+      productCount: reportProductUsage.length,
       formulasCost,
       modulesCost,
       suppliesCost,
@@ -825,15 +836,15 @@ const Reports = () => {
       therapyCostTotal,
       indirectCostPerDay: settings?.indirectCosts?.laborCosts || 0,
     };
-  }, [filteredPrescriptions, startDate, endDate, productUsage, daysInPeriod, settings]);
+  }, [daysInPeriod, endDate, enteralPrescriptions, reportProductUsage, settings, startDate]);
 
   const comparisonRows = useMemo(() => {
     const selected = selectedProducts.filter(Boolean);
     const rows = (selected.length > 0
       ? selected
-        .map((productId) => productUsage.find((item) => item.productId === productId))
+        .map((productId) => reportProductUsage.find((item) => item.productId === productId))
         .filter((item): item is ProductUsageRow => Boolean(item))
-      : productUsage.slice(0, 3));
+      : reportProductUsage.slice(0, 3));
 
     return rows.map((item) => ({
       product: item.productName,
@@ -842,10 +853,10 @@ const Reports = () => {
       cost: Number(item.totalCost.toFixed(2)),
       estimatedUnits: Number(item.estimatedUnits.toFixed(1)),
     }));
-  }, [productUsage, selectedProducts]);
+  }, [reportProductUsage, selectedProducts]);
 
   const wasteSummary = useMemo(() => {
-    return productUsage.reduce(
+    return reportProductUsage.reduce(
       (acc, item) => ({
         plasticG: acc.plasticG + item.plasticG,
         paperG: acc.paperG + item.paperG,
@@ -854,7 +865,7 @@ const Reports = () => {
       }),
       { plasticG: 0, paperG: 0, metalG: 0, glassG: 0 },
     );
-  }, [productUsage]);
+  }, [reportProductUsage]);
 
   const wasteChartData = useMemo(() => ([
     { material: "Plastico", grams: Number(wasteSummary.plasticG.toFixed(1)) },
@@ -903,7 +914,7 @@ const Reports = () => {
     </dia>`).join("\n")}
   </historicoAssistencial>
   <consumoProdutos>
-    ${productUsage.map((item) => `    <produto id="${escapeXml(item.productId)}">
+    ${reportProductUsage.map((item) => `    <produto id="${escapeXml(item.productId)}">
       <nome>${escapeXml(item.productName)}</nome>
       <categoria>${escapeXml(CATEGORY_LABEL[item.category])}</categoria>
       <fabricante>${escapeXml(item.manufacturer)}</fabricante>
@@ -932,7 +943,7 @@ const Reports = () => {
     historyData,
     historySummary.avgPercentage,
     managementSummary,
-    productUsage,
+    reportProductUsage,
     selectedHospitalName,
     selectedPatientName,
     selectedWard,
@@ -1074,7 +1085,7 @@ const Reports = () => {
                 <CardContent className="pt-6">
                   <div className="text-center">
                     <p className="text-3xl font-bold text-primary">{managementSummary.patientCount}</p>
-                    <p className="text-sm text-muted-foreground">Pacientes atendidos</p>
+                    <p className="text-sm text-muted-foreground">Pacientes que receberam nutrição enteral no período</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1082,15 +1093,15 @@ const Reports = () => {
                 <CardContent className="pt-6">
                   <div className="text-center">
                     <p className="text-3xl font-bold text-emerald-600">{formatCurrency(managementSummary.totalProductCost)}</p>
-                    <p className="text-sm text-muted-foreground">Custo total de produtos</p>
+                    <p className="text-sm text-muted-foreground">Custo total incluindo fórmulas, suplementos, módulos, frascos e equipos de nutrição enteral</p>
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <p className="text-3xl font-bold text-sky-600">{managementSummary.patientDays}</p>
-                    <p className="text-sm text-muted-foreground">Paciente-dia</p>
+                    <p className="text-3xl font-bold text-sky-600">{formatNumber(managementSummary.patientDays, 1)}</p>
+                    <p className="text-sm text-muted-foreground">Média de pacientes em TNE/dia</p>
                   </div>
                 </CardContent>
               </Card>
@@ -1117,40 +1128,40 @@ const Reports = () => {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Prescricoes no periodo</CardTitle>
+                      <CardTitle className="text-base">Prescrições de TNE no período</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{managementSummary.prescriptionCount}</p>
                       <p className="text-sm text-muted-foreground">
-                        {managementSummary.prescriptionDays} dias de prescricao considerados.
+                        Soma dos pacientes em dieta enteral ao longo do período filtrado.
                       </p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Custo medio por paciente/dia</CardTitle>
+                      <CardTitle className="text-base">Custo médio por paciente/dia</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatientDay)}</p>
-                      <p className="text-sm text-muted-foreground">Custo total dividido pelo total de paciente-dia.</p>
+                      <p className="text-sm text-muted-foreground">Custo médio por paciente em TNE/dia.</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Custo medio por paciente no periodo</CardTitle>
+                      <CardTitle className="text-base">Média de pacientes atendidos/dia</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatient)}</p>
-                      <p className="text-sm text-muted-foreground">Baseado no subtotal de formulas, modulos e insumos no periodo filtrado.</p>
+                      <p className="text-3xl font-bold">{formatNumber(managementSummary.patientDays, 1)}</p>
+                      <p className="text-sm text-muted-foreground">Média de pacientes em TNE/dia.</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Media diaria do custo da ala</CardTitle>
+                      <CardTitle className="text-base">Média diária do custo da ala</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerDay)}</p>
-                      <p className="text-sm text-muted-foreground">Media diaria do custo da ala selecionada no periodo.</p>
+                      <p className="text-sm text-muted-foreground">Média diária do custo relacionado à TNE, da ala e período selecionados.</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -1313,7 +1324,7 @@ const Reports = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {productUsage.map((item) => (
+                          {reportProductUsage.map((item) => (
                             <tr key={`${item.category}-${item.productId}`} className="border-t">
                               <td className="p-3 font-medium">{item.productName}</td>
                               <td className="p-3">
@@ -1369,7 +1380,7 @@ const Reports = () => {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value={`empty-${index}`}>Nenhum</SelectItem>
-                              {productUsage.map((item) => (
+                              {reportProductUsage.map((item) => (
                                 <SelectItem key={`${item.category}-${item.productId}`} value={item.productId}>
                                   {item.productName}
                                 </SelectItem>
@@ -1542,7 +1553,7 @@ const Reports = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {productUsage
+                          {reportProductUsage
                             .filter((item) => item.plasticG + item.paperG + item.metalG + item.glassG > 0)
                             .map((item) => (
                               <tr key={`waste-${item.category}-${item.productId}`} className="border-t">

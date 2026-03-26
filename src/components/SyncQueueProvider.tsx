@@ -57,7 +57,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
       }
 
       if (result.failed > 0) {
-        toast.error("Algumas operacoes permaneceram pendentes ou falharam na sincronizacao.");
+        toast.error(`${result.failed} operacao(oes) precisam de revisao na Central Sync.`);
       }
     } finally {
       setIsSyncing(false);

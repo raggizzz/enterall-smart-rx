@@ -1179,14 +1179,31 @@ const Formulas = () => {
                           filteredFormulas.map((formula) => (
                             <TableRow key={formula.id} className="align-top">
                               <TableCell className="min-w-[260px]">
-                                <div className="font-medium">{formula.name}</div>
-                                <div className="text-xs text-muted-foreground">{renderMeta([formula.code, formula.manufacturer, formula.classification])}</div>
-                                <div className="text-xs text-muted-foreground">{renderMeta([FORMULA_TYPE_OPTIONS.find((option) => option.value === formula.type)?.label, formula.ageGroup, formula.macronutrientComplexity, formula.systemType, formula.presentationForm, formula.presentations?.length ? `${formula.presentations.join(", ")} ml/g` : undefined])}</div>
-                                {formula.formulaTypes?.length ? <div className="text-xs text-muted-foreground mt-1">{formula.formulaTypes.join(", ")}</div> : null}
-                                {formula.administrationRoutes?.length ? <div className="text-xs text-muted-foreground mt-1">Uso: {formula.administrationRoutes.join(", ")}</div> : null}
+                                <div className="font-semibold">
+                                  {formula.code ? `${formula.code} - ${formula.name}` : formula.name}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {renderMeta([formula.manufacturer, formula.classification])}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {renderMeta([
+                                    formula.ageGroup ? FORMULA_AGE_GROUP_OPTIONS.find((option) => option.value === formula.ageGroup)?.label : undefined,
+                                    formula.macronutrientComplexity ? FORMULA_COMPLEXITY_OPTIONS.find((option) => option.value === formula.macronutrientComplexity)?.label : undefined,
+                                    formula.systemType === "open"
+                                      ? "Sistema aberto"
+                                      : formula.systemType === "closed"
+                                        ? "Sistema fechado"
+                                        : "Sistema aberto e fechado",
+                                    formula.presentations?.length
+                                      ? `${formula.presentations.join(", ")} ${formula.presentationForm === "po" ? "g" : "mL"}`
+                                      : undefined,
+                                  ])}
+                                </div>
+                                {formula.formulaTypes?.length ? <div className="text-xs text-muted-foreground mt-1">{formula.formulaTypes.map((type) => FORMULA_TAG_OPTIONS.find((option) => option.value === type)?.label || type).join(", ")}</div> : null}
+                                {formula.administrationRoutes?.length ? <div className="text-xs text-muted-foreground mt-1">Uso: {formula.administrationRoutes.map((route) => FORMULA_ROUTE_OPTIONS.find((option) => option.value === route)?.label || route).join(", ")}</div> : null}
                               </TableCell>
                               <TableCell className="min-w-[260px]">
-                                <div className="text-sm">{renderMeta([formula.density ? `${formula.density.toFixed(2)} kcal/ml` : undefined, formula.proteinPerUnit ? `${formula.proteinPerUnit} g PTN/100 ml` : undefined, formula.fiberPerUnit ? `${formula.fiberPerUnit} g fibra/100 ml` : undefined, formula.waterContent ? `${formula.waterContent}% agua livre` : undefined])}</div>
+                                <div className="text-sm">{renderMeta([formula.density ? `${formula.density.toFixed(2)} kcal/${formula.presentationForm === "po" ? "g" : "mL"}` : undefined, formula.proteinPerUnit ? `${formula.proteinPerUnit} g PTN/${formula.presentationForm === "po" ? "100 g" : "100 mL"}` : undefined, formula.fiberPerUnit ? `${formula.fiberPerUnit} g fibra/${formula.presentationForm === "po" ? "100 g" : "100 mL"}` : undefined, formula.waterContent ? `${formula.waterContent}% agua livre` : undefined])}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{renderMeta([formula.proteinPct ? `${formula.proteinPct}% PTN` : undefined, formula.carbPct ? `${formula.carbPct}% CHO` : undefined, formula.fatPct ? `${formula.fatPct}% LIP` : undefined, formula.fiberType ? `Fibra ${formula.fiberType}` : undefined, formula.osmolality ? `${formula.osmolality} mOsm/L` : undefined])}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{renderMeta([formula.proteinSources, formula.carbSources, formula.fatSources, formula.fiberSources])}</div>
                                 {formula.specialCharacteristics ? <div className="text-xs text-muted-foreground mt-1">{formula.specialCharacteristics}</div> : null}
