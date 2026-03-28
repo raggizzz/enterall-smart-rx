@@ -128,6 +128,16 @@ app.get('/metrics', async (req, res) => {
     }
 });
 
+app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'API route not found' });
+});
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[server] unhandled error', err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: 'Internal server error' });
+});
+
 app.listen(port, () => {
     console.log(`[server]: Server is running at http://localhost:${port}`);
 });

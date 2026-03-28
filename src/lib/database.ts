@@ -1129,10 +1129,11 @@ const queueDelete = async (
     entityId: string,
 ) => {
     const current = await readLocalRecord(entityType, entityId) as { version?: number } | undefined;
+    const hospitalId = resolveSessionHospitalId();
     return executeOrQueueMutation({
         entityType,
         action: 'delete',
-        endpoint,
+        endpoint: appendHospitalIdQuery(endpoint, hospitalId),
         method: 'DELETE',
         entityId,
         expectedVersion: current?.version,

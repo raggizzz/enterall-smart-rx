@@ -119,4 +119,34 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
+    await withIdempotency(prisma, req, res, async () => {
+      const current = await prisma.professional.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { id: true, hospitalId: true },
+      });
+
+      if (!ensureScopedEntity(current, hospitalId)) {
+        return { statusCode: 404, body: { error: 'Professional not found' } };
+      }
+
+      await prisma.professional.update({
+        where: { id: req.params.id },
+        data: {
+          isActive: false,
+          version: { increment: 1 },
+        },
+      });
+
+      return { body: { success: true } };
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to delete professional' });
+  }
+});
+
 export default router;

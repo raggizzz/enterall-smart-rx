@@ -76,4 +76,34 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const hospitalId = requireScopedHospitalId(req, res);
+    if (!hospitalId) return;
+
+    await withIdempotency(prisma, req, res, async () => {
+      const current = await prisma.supply.findFirst({
+        where: { id: req.params.id, hospitalId },
+        select: { id: true, hospitalId: true },
+      });
+
+      if (!ensureScopedEntity(current, hospitalId)) {
+        return { statusCode: 404, body: { error: 'Supply not found' } };
+      }
+
+      await prisma.supply.update({
+        where: { id: req.params.id },
+        data: {
+          isActive: false,
+          version: { increment: 1 },
+        },
+      });
+
+      return { body: { success: true } };
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to delete supply' });
+  }
+});
+
 export default router;

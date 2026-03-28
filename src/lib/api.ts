@@ -41,7 +41,20 @@ const parseResponseBody = async (res: Response) => {
         return null;
     }
 
-    return JSON.parse(text);
+    const contentType = res.headers.get("content-type") || "";
+    const looksLikeJson = contentType.includes("application/json")
+        || text.trim().startsWith("{")
+        || text.trim().startsWith("[");
+
+    if (!looksLikeJson) {
+        return text;
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch {
+        return text;
+    }
 };
 
 export class ApiError extends Error {
