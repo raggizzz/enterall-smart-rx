@@ -40,7 +40,7 @@ const SyncStatusBadge = () => {
     );
   }
 
-  if (pendingCount > 0 || isSyncing) {
+  if (pendingCount > 0) {
     return (
       <Badge
         variant="outline"
@@ -49,6 +49,19 @@ const SyncStatusBadge = () => {
       >
         <RefreshCw className={`h-3 w-3 ${isSyncing ? "animate-spin" : ""}`} />
         Pendentes ({pendingCount})
+      </Badge>
+    );
+  }
+
+  if (isSyncing) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-sky-500/40 bg-sky-500/10 text-sky-700"
+        title="Sincronizando dados com a unidade"
+      >
+        <RefreshCw className="h-3 w-3 animate-spin" />
+        Sincronizando
       </Badge>
     );
   }
