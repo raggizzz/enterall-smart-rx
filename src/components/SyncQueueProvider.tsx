@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { hasStoredAccessToken, offlineDb, flushPendingOperations, reactivateAuthenticationFailures } from "@/lib/offlineStore";
@@ -34,6 +34,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [hasAuthToken, setHasAuthToken] = useState(() => hasStoredAccessToken());
+  const isSyncingRef = useRef(false);
 
   const pendingCount = useLiveQuery(
     async () => offlineDb.pendingOperations.where("status").equals("pending").count(),
@@ -47,8 +48,18 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   );
 
   const syncNow = useCallback(async () => {
-    if (isSyncing || !isOnline || !isServerReachable || !hasAuthToken) return;
+    if (isSyncingRef.current || !isOnline || !isServerReachable || !hasAuthToken) return;
 
+    if (pendingCount === 0) {
+      if (failedCount === 0) return;
+
+      const reactivatedCount = await reactivateAuthenticationFailures();
+      if (reactivatedCount === 0) {
+        return;
+      }
+    }
+
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const reactivatedCount = await reactivateAuthenticationFailures();
@@ -67,9 +78,10 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
         toast.error(`${result.failed} operacao(oes) precisam de revisao na Central Sync.`);
       }
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [hasAuthToken, isSyncing, isOnline, isServerReachable]);
+  }, [failedCount, hasAuthToken, isOnline, isServerReachable, pendingCount]);
 
   useEffect(() => {
     const syncAuthState = () => {

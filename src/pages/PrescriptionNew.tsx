@@ -17,7 +17,7 @@ import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import EnteralIcon from "@/components/icons/EnteralIcon";
 import SupplementIcon from "@/components/icons/SupplementIcon";
-import { getAllFormulas, getAllModules, Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
+import type { Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
 import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
 import {
@@ -98,13 +98,6 @@ type ExtendedCatalogModule = CatalogModule & {
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription) =>
   (right.startDate || "").localeCompare(left.startDate || "");
-
-const normalizeCatalogKey = (value?: string | null) =>
-  (value || "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/[^a-zA-Z0-9]+/g, "")
-    .toLowerCase();
 
 const normalizeFormulaType = (type?: string): CatalogFormula["type"] => {
   switch (type) {
@@ -255,136 +248,33 @@ const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
   };
 };
 
-const mergeFormulasWithCatalog = (dbFormulas: any[], staticFormulas: CatalogFormula[]): ExtendedCatalogFormula[] => {
-  if (dbFormulas.length === 0) return staticFormulas;
-
-  return dbFormulas.map((dbFormula) => {
-    const dbKey = normalizeCatalogKey(dbFormula.code || dbFormula.name);
-    const staticMatch = staticFormulas.find((formula) =>
-      normalizeCatalogKey(formula.code) === dbKey || normalizeCatalogKey(formula.name) === dbKey,
-    );
-
-    if (!staticMatch) return buildFallbackCatalogFormula(dbFormula);
-
-    return {
-      ...staticMatch,
-      id: dbFormula.id || staticMatch.id,
-      code: dbFormula.code || staticMatch.code,
-      manufacturer: dbFormula.manufacturer || staticMatch.manufacturer,
-      type: normalizeFormulaType(dbFormula.type || staticMatch.type),
-      classification: dbFormula.classification || staticMatch.classification,
-      macronutrientComplexity: dbFormula.macronutrientComplexity ?? (staticMatch as ExtendedCatalogFormula).macronutrientComplexity,
-      ageGroup: dbFormula.ageGroup ?? (staticMatch as ExtendedCatalogFormula).ageGroup,
-      systemType: normalizeSystemType(dbFormula.systemType || staticMatch.systemType, dbFormula.formulaTypes || staticMatch.formulaTypes),
-      formulaTypes: dbFormula.formulaTypes?.length ? dbFormula.formulaTypes : staticMatch.formulaTypes,
-      administrationRoutes: dbFormula.administrationRoutes?.length ? dbFormula.administrationRoutes : (staticMatch as ExtendedCatalogFormula).administrationRoutes,
-      presentationForm: dbFormula.presentationForm || staticMatch.presentationForm,
-      presentations: dbFormula.presentations?.length ? dbFormula.presentations : staticMatch.presentations,
-      presentationDescription: dbFormula.presentationDescription || staticMatch.presentationDescription,
-      description: dbFormula.description || staticMatch.description,
-      billingUnit: dbFormula.billingUnit || staticMatch.billingUnit,
-      conversionFactor: dbFormula.conversionFactor ?? staticMatch.conversionFactor,
-      billingPrice: dbFormula.billingPrice ?? staticMatch.billingPrice,
-      fiberType: dbFormula.fiberType ?? (staticMatch as ExtendedCatalogFormula).fiberType,
-      specialCharacteristics: dbFormula.specialCharacteristics ?? (staticMatch as ExtendedCatalogFormula).specialCharacteristics,
-      density: dbFormula.density ?? staticMatch.composition.density,
-      caloriesPerUnit: dbFormula.caloriesPerUnit ?? staticMatch.composition.calories,
-      proteinPerUnit: dbFormula.proteinPerUnit ?? staticMatch.composition.protein,
-      proteinPct: dbFormula.proteinPct ?? staticMatch.composition.proteinPct,
-      carbPerUnit: dbFormula.carbPerUnit ?? staticMatch.composition.carbohydrates,
-      carbPct: dbFormula.carbPct ?? staticMatch.composition.carbohydratesPct,
-      fatPerUnit: dbFormula.fatPerUnit ?? staticMatch.composition.fat,
-      fatPct: dbFormula.fatPct ?? staticMatch.composition.fatPct,
-      fiberPerUnit: dbFormula.fiberPerUnit ?? staticMatch.composition.fiber,
-      waterContent: dbFormula.waterContent ?? staticMatch.composition.waterContent,
-      sodiumPerUnit: dbFormula.sodiumPerUnit ?? staticMatch.composition.sodium,
-      potassiumPerUnit: dbFormula.potassiumPerUnit ?? staticMatch.composition.potassium,
-      calciumPerUnit: dbFormula.calciumPerUnit ?? staticMatch.composition.calcium,
-      phosphorusPerUnit: dbFormula.phosphorusPerUnit ?? staticMatch.composition.phosphorus,
-      plasticG: dbFormula.plasticG ?? staticMatch.residueInfo?.plastic ?? 0,
-      paperG: dbFormula.paperG ?? staticMatch.residueInfo?.paper ?? 0,
-      metalG: dbFormula.metalG ?? staticMatch.residueInfo?.metal ?? 0,
-      glassG: dbFormula.glassG ?? staticMatch.residueInfo?.glass ?? 0,
-      proteinSources: dbFormula.proteinSources,
-      carbSources: dbFormula.carbSources,
-      fatSources: dbFormula.fatSources,
-      fiberSources: dbFormula.fiberSources,
-      composition: {
-        ...staticMatch.composition,
-        density: dbFormula.density ?? staticMatch.composition.density,
-        calories: dbFormula.density ? dbFormula.density * 100 : staticMatch.composition.calories,
-        protein: typeof dbFormula.proteinPerUnit === "number"
-          ? (dbFormula.proteinPerUnit <= 1 ? dbFormula.proteinPerUnit * 100 : dbFormula.proteinPerUnit)
-          : staticMatch.composition.protein,
-        carbohydrates: typeof dbFormula.carbPerUnit === "number"
-          ? (dbFormula.carbPerUnit <= 1 ? dbFormula.carbPerUnit * 100 : dbFormula.carbPerUnit)
-          : staticMatch.composition.carbohydrates,
-        fat: typeof dbFormula.fatPerUnit === "number"
-          ? (dbFormula.fatPerUnit <= 1 ? dbFormula.fatPerUnit * 100 : dbFormula.fatPerUnit)
-          : staticMatch.composition.fat,
-        fiber: typeof dbFormula.fiberPerUnit === "number"
-          ? (dbFormula.fiberPerUnit <= 1 ? dbFormula.fiberPerUnit * 100 : dbFormula.fiberPerUnit)
-          : staticMatch.composition.fiber,
-        sodium: dbFormula.sodiumPerUnit ?? staticMatch.composition.sodium,
-        potassium: dbFormula.potassiumPerUnit ?? staticMatch.composition.potassium,
-        calcium: dbFormula.calciumPerUnit ?? staticMatch.composition.calcium,
-        phosphorus: dbFormula.phosphorusPerUnit ?? staticMatch.composition.phosphorus,
-        waterContent: dbFormula.waterContent ?? staticMatch.composition.waterContent,
-        osmolality: dbFormula.osmolality ?? staticMatch.composition.osmolality,
-      },
-      residueInfo: {
-        plastic: dbFormula.plasticG ?? staticMatch.residueInfo?.plastic ?? 0,
-        paper: dbFormula.paperG ?? staticMatch.residueInfo?.paper ?? 0,
-        metal: dbFormula.metalG ?? staticMatch.residueInfo?.metal ?? 0,
-        glass: dbFormula.glassG ?? staticMatch.residueInfo?.glass ?? 0,
-      },
-    };
-  });
-};
-
-const mergeModulesWithCatalog = (dbModules: any[], staticModules: CatalogModule[]): ExtendedCatalogModule[] => {
-  if (dbModules.length === 0) return staticModules;
-
-  return dbModules.map((dbModule) => {
-    const dbKey = normalizeCatalogKey(dbModule.name);
-    const staticMatch = staticModules.find((module) => normalizeCatalogKey(module.name) === dbKey);
-
-    return {
-      ...(staticMatch || {
-        id: dbModule.id,
-        name: dbModule.name || "",
-        density: dbModule.density || 0,
-        referenceAmount: dbModule.referenceAmount || 0,
-        referenceTimesPerDay: dbModule.referenceTimesPerDay || 0,
-        calories: dbModule.calories || 0,
-        protein: dbModule.protein || 0,
-        sodium: dbModule.sodium || 0,
-        potassium: dbModule.potassium || 0,
-        fiber: dbModule.fiber || 0,
-        freeWater: dbModule.freeWater || 0,
-      }),
-      id: dbModule.id || staticMatch?.id || "",
-      name: dbModule.name || staticMatch?.name || "",
-      density: dbModule.density ?? staticMatch?.density ?? 0,
-      referenceAmount: dbModule.referenceAmount ?? staticMatch?.referenceAmount ?? 0,
-      referenceTimesPerDay: dbModule.referenceTimesPerDay ?? staticMatch?.referenceTimesPerDay ?? 0,
-      calories: dbModule.calories ?? staticMatch?.calories ?? 0,
-      protein: dbModule.protein ?? staticMatch?.protein ?? 0,
-      carbs: dbModule.carbs ?? (staticMatch as ExtendedCatalogModule | undefined)?.carbs,
-      fat: dbModule.fat ?? (staticMatch as ExtendedCatalogModule | undefined)?.fat,
-      sodium: dbModule.sodium ?? staticMatch?.sodium ?? 0,
-      potassium: dbModule.potassium ?? staticMatch?.potassium ?? 0,
-      calcium: dbModule.calcium ?? (staticMatch as ExtendedCatalogModule | undefined)?.calcium,
-      phosphorus: dbModule.phosphorus ?? (staticMatch as ExtendedCatalogModule | undefined)?.phosphorus,
-      fiber: dbModule.fiber ?? staticMatch?.fiber ?? 0,
-      freeWater: dbModule.freeWater ?? staticMatch?.freeWater ?? 0,
-      proteinSources: dbModule.proteinSources,
-      carbSources: dbModule.carbSources,
-      fatSources: dbModule.fatSources,
-      fiberSources: dbModule.fiberSources,
-    };
-  });
-};
+const buildFallbackCatalogModule = (moduleItem: any): ExtendedCatalogModule => ({
+  id: moduleItem.id,
+  code: moduleItem.code,
+  name: moduleItem.name || "",
+  manufacturer: moduleItem.manufacturer || "",
+  description: moduleItem.description,
+  presentationForm: moduleItem.presentationForm,
+  presentations: Array.isArray(moduleItem.presentations) ? moduleItem.presentations : undefined,
+  conversionFactor: moduleItem.conversionFactor,
+  density: moduleItem.density || 0,
+  referenceAmount: moduleItem.referenceAmount || 0,
+  referenceTimesPerDay: moduleItem.referenceTimesPerDay || 0,
+  calories: moduleItem.calories || 0,
+  protein: moduleItem.protein || 0,
+  carbs: moduleItem.carbs,
+  fat: moduleItem.fat,
+  sodium: moduleItem.sodium || 0,
+  potassium: moduleItem.potassium || 0,
+  calcium: moduleItem.calcium,
+  phosphorus: moduleItem.phosphorus,
+  fiber: moduleItem.fiber || 0,
+  freeWater: moduleItem.freeWater || 0,
+  proteinSources: moduleItem.proteinSources,
+  carbSources: moduleItem.carbSources,
+  fatSources: moduleItem.fatSources,
+  fiberSources: moduleItem.fiberSources,
+});
 
 const toFormulaCalculationInput = (formula: ExtendedCatalogFormula) => ({
   id: formula.id,
@@ -435,9 +325,6 @@ const PrescriptionNew = () => {
     parenteral: null,
   });
   const [hydratedFromPrescription, setHydratedFromPrescription] = useState(false);
-
-  const staticFormulas = useMemo(() => getAllFormulas(), []);
-  const staticModules = useMemo(() => getAllModules(), []);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState(1);
@@ -530,12 +417,12 @@ const PrescriptionNew = () => {
   const { modules: dbModules } = useDbModules();
   const { supplies } = useSupplies();
   const availableFormulas = useMemo<ExtendedCatalogFormula[]>(
-    () => mergeFormulasWithCatalog(dbFormulas, staticFormulas),
-    [dbFormulas, staticFormulas],
+    () => dbFormulas.map((formula) => buildFallbackCatalogFormula(formula)),
+    [dbFormulas],
   );
   const availableModules = useMemo<ExtendedCatalogModule[]>(
-    () => mergeModulesWithCatalog(dbModules, staticModules),
-    [dbModules, staticModules],
+    () => dbModules.map((moduleItem) => buildFallbackCatalogModule(moduleItem)),
+    [dbModules],
   );
 
   const ORAL_MEAL_SCHEDULES = useMemo(() => [

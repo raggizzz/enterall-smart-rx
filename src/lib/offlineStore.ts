@@ -465,7 +465,9 @@ export const reactivateAuthenticationFailures = async () => {
 };
 
 export const flushPendingOperations = async () => {
-  const operations = await offlineDb.pendingOperations.orderBy("createdAt").toArray();
+  const operations = (await offlineDb.pendingOperations.orderBy("createdAt").toArray()).filter(
+    (operation) => operation.status === "pending",
+  );
   if (operations.length === 0) return { processed: 0, failed: 0 };
   if (!hasStoredAccessToken()) return { processed: 0, failed: 0 };
 
