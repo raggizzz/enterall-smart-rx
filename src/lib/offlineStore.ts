@@ -77,6 +77,7 @@ export const offlineDb = new EnmetaOfflineDb();
 const nowIso = () => new Date().toISOString();
 const buildShadowKey = (entityType: OfflineEntityType, entityId: string) => `${entityType}:${entityId}`;
 const buildMappingKey = (entityType: OfflineEntityType, tempId: string) => `${entityType}:${tempId}`;
+const SESSION_STORAGE_KEY = "local_session";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -407,9 +408,66 @@ export const executeOrQueueMutation = async (params: {
   }
 };
 
+const getStoredAccessToken = () => {
+  if (typeof window === "undefined") return null;
+  const rawSession = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!rawSession) return null;
+
+  try {
+    const parsed = JSON.parse(rawSession) as { access_token?: string };
+    return typeof parsed.access_token === "string" && parsed.access_token.trim().length > 0
+      ? parsed.access_token
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+export const hasStoredAccessToken = () => Boolean(getStoredAccessToken());
+
+const isAuthApiError = (error: unknown) => {
+  if (!(error instanceof ApiError)) return false;
+
+  if (error.status === 401 || error.status === 403) {
+    return true;
+  }
+
+  const bodyError =
+    error.body && typeof error.body === "object" && "error" in (error.body as Record<string, unknown>)
+      ? String((error.body as Record<string, unknown>).error || "")
+      : "";
+
+  return /token|sess[aã]o expirada|autentica/i.test(bodyError);
+};
+
+const isAuthErrorText = (lastError?: string) =>
+  Boolean(lastError && /token|sess[aã]o expirada|autentica/i.test(lastError));
+
+export const reactivateAuthenticationFailures = async () => {
+  const operations = await offlineDb.pendingOperations.where("status").equals("failed").toArray();
+  const authFailures = operations.filter((operation) => isAuthErrorText(operation.lastError));
+
+  if (authFailures.length === 0) return 0;
+
+  await Promise.all(
+    authFailures.map((operation) =>
+      offlineDb.pendingOperations.put({
+        ...operation,
+        status: "pending",
+        lastError: undefined,
+        updatedAt: nowIso(),
+      }),
+    ),
+  );
+
+  emitSyncChange();
+  return authFailures.length;
+};
+
 export const flushPendingOperations = async () => {
   const operations = await offlineDb.pendingOperations.orderBy("createdAt").toArray();
   if (operations.length === 0) return { processed: 0, failed: 0 };
+  if (!hasStoredAccessToken()) return { processed: 0, failed: 0 };
 
   const replacements = await getIdReplacements();
   let processed = 0;
@@ -477,6 +535,7 @@ export const flushPendingOperations = async () => {
     } catch (error) {
       failed += 1;
       const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500;
+      const isAuthenticationError = isAuthApiError(error);
       const errorBody =
         error instanceof ApiError && error.body && typeof error.body === "object"
           ? (error.body as Record<string, unknown>)
@@ -504,7 +563,7 @@ export const flushPendingOperations = async () => {
         updatedAt: nowIso(),
       });
 
-      if (!(error instanceof ApiError) || error.status >= 500 || error.status === 409) {
+      if (isAuthenticationError || !(error instanceof ApiError) || error.status >= 500 || error.status === 409) {
         break;
       }
     }

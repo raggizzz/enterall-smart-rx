@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
-import { offlineDb, flushPendingOperations } from "@/lib/offlineStore";
+import { hasStoredAccessToken, offlineDb, flushPendingOperations, reactivateAuthenticationFailures } from "@/lib/offlineStore";
 import { useConnectivityContext } from "@/components/ConnectivityProvider";
 
 interface SyncQueueContextValue {
@@ -27,11 +27,13 @@ interface SyncQueueProviderProps {
 }
 
 const SYNC_INTERVAL_MS = 15000;
+const SESSION_CHANGE_EVENT = "enmeta-session-updated";
 
 const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   const { isOnline, isServerReachable } = useConnectivityContext();
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+  const [hasAuthToken, setHasAuthToken] = useState(() => hasStoredAccessToken());
 
   const pendingCount = useLiveQuery(
     async () => offlineDb.pendingOperations.where("status").equals("pending").count(),
@@ -45,15 +47,20 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   );
 
   const syncNow = useCallback(async () => {
-    if (isSyncing || !isOnline || !isServerReachable) return;
+    if (isSyncing || !isOnline || !isServerReachable || !hasAuthToken) return;
 
     setIsSyncing(true);
     try {
+      const reactivatedCount = await reactivateAuthenticationFailures();
       const result = await flushPendingOperations();
       setLastSyncAt(new Date());
 
       if (result.processed > 0) {
         toast.success(`${result.processed} operacao(oes) sincronizada(s) com a unidade.`);
+      }
+
+      if (reactivatedCount > 0 && result.processed === 0 && result.failed === 0) {
+        toast.success("Fila de sincronizacao reativada apos renovar a sessao.");
       }
 
       if (result.failed > 0) {
@@ -62,10 +69,20 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, isOnline, isServerReachable]);
+  }, [hasAuthToken, isSyncing, isOnline, isServerReachable]);
 
   useEffect(() => {
-    if (!isOnline || !isServerReachable) return;
+    const syncAuthState = () => {
+      setHasAuthToken(hasStoredAccessToken());
+    };
+
+    syncAuthState();
+    window.addEventListener(SESSION_CHANGE_EVENT, syncAuthState);
+    return () => window.removeEventListener(SESSION_CHANGE_EVENT, syncAuthState);
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline || !isServerReachable || !hasAuthToken) return;
     void syncNow();
 
     const intervalId = window.setInterval(() => {
@@ -73,7 +90,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     }, SYNC_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [isOnline, isServerReachable, syncNow]);
+  }, [hasAuthToken, isOnline, isServerReachable, syncNow]);
 
   const value = useMemo(
     () => ({
