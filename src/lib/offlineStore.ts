@@ -19,6 +19,7 @@ export interface PendingOperation {
   queueId: string;
   entityType: OfflineEntityType;
   entityId: string;
+  hospitalId?: string;
   action: OfflineOperationAction;
   endpoint: string;
   method: "POST" | "PUT" | "DELETE";
@@ -78,6 +79,7 @@ const nowIso = () => new Date().toISOString();
 const buildShadowKey = (entityType: OfflineEntityType, entityId: string) => `${entityType}:${entityId}`;
 const buildMappingKey = (entityType: OfflineEntityType, tempId: string) => `${entityType}:${tempId}`;
 const SESSION_STORAGE_KEY = "local_session";
+const HOSPITAL_STORAGE_KEY = "userHospitalId";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -125,11 +127,46 @@ const replaceIdsInText = (text: string, replacements: Record<string, string>) =>
 
 const isTemporaryId = (value?: string) => Boolean(value?.startsWith("local-"));
 
+const getCurrentSessionHospitalId = () => {
+  if (typeof window === "undefined") return undefined;
+  return localStorage.getItem(HOSPITAL_STORAGE_KEY) || undefined;
+};
+
+const resolveOperationHospitalId = (params: {
+  endpoint: string;
+  payload?: Record<string, unknown>;
+  localEntity?: Record<string, unknown>;
+}) => {
+  const payloadHospitalId =
+    typeof params.payload?.hospitalId === "string"
+      ? params.payload.hospitalId
+      : typeof params.localEntity?.hospitalId === "string"
+        ? params.localEntity.hospitalId
+        : undefined;
+
+  if (payloadHospitalId) return payloadHospitalId;
+
+  const endpointMatch = params.endpoint.match(/[?&]hospitalId=([^&]+)/);
+  if (endpointMatch?.[1]) {
+    try {
+      return decodeURIComponent(endpointMatch[1]);
+    } catch {
+      return endpointMatch[1];
+    }
+  }
+
+  return getCurrentSessionHospitalId();
+};
+
 export const createTemporaryId = (entityType: OfflineEntityType) =>
   `local-${entityType.slice(0, -1)}-${crypto.randomUUID()}`;
 
 export const getPendingOperationCount = async () =>
-  offlineDb.pendingOperations.where("status").anyOf("pending", "failed").count();
+  (await offlineDb.pendingOperations.toArray()).filter((operation) => {
+    const currentHospitalId = getCurrentSessionHospitalId();
+    return (!currentHospitalId || !operation.hospitalId || operation.hospitalId === currentHospitalId)
+      && (operation.status === "pending" || operation.status === "failed");
+  }).length;
 
 export const cacheSnapshot = async (
   entityType: OfflineEntityType,
@@ -341,6 +378,7 @@ export const queueEntityMutation = async (params: {
     queueId,
     entityType: params.entityType,
     entityId: params.entityId,
+    hospitalId: resolveOperationHospitalId(params),
     action: params.action,
     endpoint: params.endpoint,
     method: params.method,
@@ -469,8 +507,13 @@ const isAuthErrorText = (lastError?: string) =>
   Boolean(lastError && /token|sess[aã]o expirada|autentica/i.test(lastError));
 
 export const reactivateAuthenticationFailures = async () => {
+  const currentHospitalId = getCurrentSessionHospitalId();
   const operations = await offlineDb.pendingOperations.where("status").equals("failed").toArray();
-  const authFailures = operations.filter((operation) => isAuthErrorText(operation.lastError));
+  const authFailures = operations.filter(
+    (operation) =>
+      (!currentHospitalId || !operation.hospitalId || operation.hospitalId === currentHospitalId)
+      && isAuthErrorText(operation.lastError),
+  );
 
   if (authFailures.length === 0) return 0;
 
@@ -613,8 +656,11 @@ const reconcilePrescriptionReferences = async (payload?: Record<string, unknown>
 };
 
 export const flushPendingOperations = async () => {
+  const currentHospitalId = getCurrentSessionHospitalId();
   const operations = (await offlineDb.pendingOperations.orderBy("createdAt").toArray()).filter(
-    (operation) => operation.status === "pending",
+    (operation) =>
+      operation.status === "pending"
+      && (!currentHospitalId || !operation.hospitalId || operation.hospitalId === currentHospitalId),
   );
   if (operations.length === 0) return { processed: 0, failed: 0 };
   if (!hasStoredAccessToken()) return { processed: 0, failed: 0 };
@@ -747,7 +793,10 @@ export const getDeviceId = () => {
 };
 
 export const getPendingOperations = async () =>
-  offlineDb.pendingOperations.orderBy("createdAt").toArray();
+  (await offlineDb.pendingOperations.orderBy("createdAt").toArray()).filter((operation) => {
+    const currentHospitalId = getCurrentSessionHospitalId();
+    return !currentHospitalId || !operation.hospitalId || operation.hospitalId === currentHospitalId;
+  });
 
 export const readLocalRecord = async (entityType: OfflineEntityType, entityId: string) =>
   getMergedRecordById(entityType, entityId);

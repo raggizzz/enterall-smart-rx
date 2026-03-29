@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
-import { hasStoredAccessToken, offlineDb, flushPendingOperations, reactivateAuthenticationFailures } from "@/lib/offlineStore";
+import { flushPendingOperations, getPendingOperations, hasStoredAccessToken, reactivateAuthenticationFailures } from "@/lib/offlineStore";
 import { useConnectivityContext } from "@/components/ConnectivityProvider";
 
 interface SyncQueueContextValue {
@@ -37,12 +37,12 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   const isSyncingRef = useRef(false);
 
   const pendingCount = useLiveQuery(
-    async () => offlineDb.pendingOperations.where("status").equals("pending").count(),
+    async () => (await getPendingOperations()).filter((operation) => operation.status === "pending").length,
     [],
     0,
   );
   const failedCount = useLiveQuery(
-    async () => offlineDb.pendingOperations.where("status").equals("failed").count(),
+    async () => (await getPendingOperations()).filter((operation) => operation.status === "failed").length,
     [],
     0,
   );

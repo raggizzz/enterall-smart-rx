@@ -11,13 +11,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { offlineDb, discardPendingOperation, retryPendingOperation, type PendingOperation } from "@/lib/offlineStore";
+import { discardPendingOperation, getPendingOperations, retryPendingOperation, type PendingOperation } from "@/lib/offlineStore";
 import { useSyncQueue } from "@/components/SyncQueueProvider";
 
 const SyncCenterDialog = () => {
   const { pendingCount, failedCount, isSyncing, lastSyncAt, syncNow } = useSyncQueue();
   const operations = useLiveQuery(
-    async () => offlineDb.pendingOperations.orderBy("createdAt").reverse().toArray(),
+    async () => (await getPendingOperations()).slice().reverse(),
     [],
     [],
   );
