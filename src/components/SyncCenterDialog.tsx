@@ -38,6 +38,43 @@ const SyncCenterDialog = () => {
     return `${actionLabel} de ${operation.entityType}`;
   };
 
+  const classifyOperationError = (operation: PendingOperation) => {
+    const errorText = (operation.lastError || "").toLowerCase();
+
+    if (/token|sess[aã]o expirada|autentica/i.test(errorText)) {
+      return {
+        canRetry: true,
+        hint: "Refaca o login e sincronize novamente.",
+      };
+    }
+
+    if (/formula not found|module not found|supply not found|patient not found|professional not found|prescription not found|hospital not found|ward not found/.test(errorText)) {
+      return {
+        canRetry: false,
+        hint: "A referencia original nao existe mais. Descarte esta operacao e refaca com os dados atuais.",
+      };
+    }
+
+    if (/version conflict|conflito de versao/.test(errorText)) {
+      return {
+        canRetry: false,
+        hint: "Os dados mudaram em outro aparelho. Atualize a tela e refaca a alteracao na versao atual.",
+      };
+    }
+
+    if (/doctype|is not valid json|unexpected token/.test(errorText)) {
+      return {
+        canRetry: false,
+        hint: "Falha antiga de resposta invalida. Se a operacao ainda for necessaria, refaca no cadastro atual; senao, descarte.",
+      };
+    }
+
+    return {
+      canRetry: true,
+      hint: undefined,
+    };
+  };
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -83,6 +120,9 @@ const SyncCenterDialog = () => {
             </div>
           ) : (
             operations.map((operation) => (
+              (() => {
+                const resolution = classifyOperationError(operation);
+                return (
               <div key={operation.queueId} className="rounded-xl border p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="space-y-2">
@@ -105,10 +145,20 @@ const SyncCenterDialog = () => {
                         <span>{operation.lastError}</span>
                       </div>
                     )}
+                    {resolution.hint && (
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {resolution.hint}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => void retryPendingOperation(operation.queueId)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void retryPendingOperation(operation.queueId)}
+                      disabled={!resolution.canRetry}
+                    >
                       Reenfileirar
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => void discardPendingOperation(operation.queueId)}>
@@ -118,6 +168,8 @@ const SyncCenterDialog = () => {
                   </div>
                 </div>
               </div>
+                );
+              })()
             ))
           )}
         </div>
