@@ -54,11 +54,11 @@ const normalizeStoredResponse = (statusCode: number, responseBody: string) => {
   }
 };
 
-export const withIdempotency = async <T>(
+export const withIdempotency = async (
   prisma: PrismaClient,
   req: Request,
   res: Response,
-  operation: () => Promise<{ statusCode?: number; body: T }>,
+  operation: () => Promise<{ statusCode?: number; body: Record<string, unknown> }>,
 ) => {
   const idempotencyKey = req.header('x-idempotency-key');
   if (!idempotencyKey) {

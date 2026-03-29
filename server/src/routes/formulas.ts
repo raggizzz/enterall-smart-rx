@@ -2,23 +2,11 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { toNumber, toJsonString } from '../lib/coerce';
+import { createFormulaSchema, validateBody } from '../lib/schemas';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
-
-const toJsonString = (value: unknown) => {
-    if (Array.isArray(value)) return JSON.stringify(value);
-    if (typeof value === 'string') return value;
-    return undefined;
-};
-
-const toNumber = (value: unknown) => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim() !== '') {
-        const parsed = Number(value.replace(',', '.'));
-        return Number.isFinite(parsed) ? parsed : undefined;
-    }
-    return undefined;
-};
 
 const mapFormulaToClient = (formula: any) => ({
     ...formula,
@@ -109,7 +97,7 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager', 'local_manager'), validateBody(createFormulaSchema), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -125,7 +113,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -162,7 +150,7 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -10,56 +10,33 @@ import { Badge } from "@/components/ui/badge";
 import { useProfessionals } from "@/hooks/useDatabase";
 import SyncCenterDialog from "@/components/SyncCenterDialog";
 import SyncStatusBadge from "@/components/SyncStatusBadge";
+import { useSession } from "@/hooks/useSession";
 
 const Header = () => {
   const navigate = useNavigate();
   const role = useCurrentRole();
-  const [userName, setUserName] = useState("Usuario");
-  const [userProfessionalId, setUserProfessionalId] = useState("");
-  const [hospitalId, setHospitalId] = useState("");
-  const [hospitalName, setHospitalName] = useState("Unidade nao selecionada");
-  const [wardName, setWardName] = useState("Setor nao selecionado");
+  const { name, professionalId, hospitalId, hospitalName, ward, saveSession, clearSession } = useSession();
   const { professionals } = useProfessionals(hospitalId || undefined);
 
   useEffect(() => {
-    const syncSessionContext = () => {
-      if (typeof window === "undefined") return;
-      setUserName(localStorage.getItem("userName") || "Usuario");
-      setUserProfessionalId(localStorage.getItem("userProfessionalId") || "");
-      setHospitalId(localStorage.getItem("userHospitalId") || "");
-      setHospitalName(localStorage.getItem("userHospitalName") || "Unidade nao selecionada");
-      setWardName(localStorage.getItem("userWard") || "Setor nao selecionado");
-    };
-
-    syncSessionContext();
-    window.addEventListener("enmeta-session-updated", syncSessionContext);
-    return () => window.removeEventListener("enmeta-session-updated", syncSessionContext);
-  }, []);
-
-  useEffect(() => {
-    if (!userProfessionalId || professionals.length === 0) return;
-    const loggedUser = professionals.find((professional) => professional.id === userProfessionalId);
-    if (!loggedUser?.name || loggedUser.name === userName) return;
-    setUserName(loggedUser.name);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("userName", loggedUser.name);
-      window.dispatchEvent(new Event("enmeta-session-updated"));
-    }
-  }, [professionals, userName, userProfessionalId]);
+    if (!professionalId || professionals.length === 0) return;
+    const loggedUser = professionals.find((p) => p.id === professionalId);
+    if (!loggedUser?.name || loggedUser.name === name) return;
+    saveSession({
+      token: localStorage.getItem('local_session') ? JSON.parse(localStorage.getItem('local_session')!).access_token : '',
+      role: role,
+      name: loggedUser.name,
+      professionalId,
+      hospitalId: hospitalId ?? '',
+      hospitalName: hospitalName ?? '',
+      ward: ward ?? undefined,
+    });
+  }, [professionals, name, professionalId, role, hospitalId, hospitalName, ward, saveSession]);
 
   const handleLogout = () => {
     toast.success("Logout realizado com sucesso!");
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userName");
-      localStorage.removeItem("userProfessionalId");
-      localStorage.removeItem("userHospitalId");
-      localStorage.removeItem("userHospitalName");
-      localStorage.removeItem("userWard");
-      localStorage.removeItem("local_session");
-      clearPermissionMatrix();
-      window.dispatchEvent(new Event("enmeta-session-updated"));
-    }
+    clearPermissionMatrix();
+    clearSession();
     navigate("/");
   };
 
@@ -78,13 +55,13 @@ const Header = () => {
         <div className="flex items-center gap-3">
           <div className="hidden max-w-[360px] text-right sm:block">
             <div className="flex items-center justify-end gap-2">
-              <p className="text-sm font-medium">{userName}</p>
+              <p className="text-sm font-medium">{name ?? "Usuario"}</p>
               <SyncStatusBadge />
             </div>
             <p className="text-xs text-muted-foreground">{ROLE_LABELS[role]}</p>
             <div className="mt-1 flex flex-wrap justify-end gap-1">
-              <Badge variant="outline" className="max-w-[170px] truncate text-[10px]">{hospitalName}</Badge>
-              <Badge variant="secondary" className="max-w-[120px] truncate text-[10px]">{wardName}</Badge>
+              <Badge variant="outline" className="max-w-[170px] truncate text-[10px]">{hospitalName ?? "Unidade nao selecionada"}</Badge>
+              <Badge variant="secondary" className="max-w-[120px] truncate text-[10px]">{ward ?? "Setor nao selecionado"}</Badge>
             </div>
           </div>
           <div className="block">

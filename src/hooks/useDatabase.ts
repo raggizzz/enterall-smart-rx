@@ -34,9 +34,14 @@ import {
 } from '@/lib/database';
 import { hasActiveSession } from '@/lib/permissions';
 
-const AUTO_REFRESH_INTERVAL_MS = 10000;
+/** Dados clínicos ativos (pacientes, prescrições, evoluções): 60 segundos */
+const CLINICAL_REFRESH_MS = 60_000;
+/** Dados de catálogo (fórmulas, módulos, suprimentos): 5 minutos */
+const CATALOG_REFRESH_MS = 5 * 60_000;
+/** Dashboard / resumos: 90 segundos */
+const DASHBOARD_REFRESH_MS = 90_000;
 
-const useAutoRefresh = (refresh: () => Promise<void>, deps: unknown[] = []) => {
+const useAutoRefresh = (refresh: () => Promise<void>, intervalMs: number, deps: unknown[] = []) => {
     useEffect(() => {
         let cancelled = false;
 
@@ -53,24 +58,17 @@ const useAutoRefresh = (refresh: () => Promise<void>, deps: unknown[] = []) => {
 
         void runRefresh();
 
-        const handleFocus = () => {
-            void runRefresh();
-        };
-
+        const handleFocus = () => void runRefresh();
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
-                void runRefresh();
-            }
+            if (document.visibilityState === 'visible') void runRefresh();
         };
 
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         const intervalId = window.setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                void runRefresh();
-            }
-        }, AUTO_REFRESH_INTERVAL_MS);
+            if (document.visibilityState === 'visible') void runRefresh();
+        }, intervalMs);
 
         return () => {
             cancelled = true;
@@ -78,7 +76,7 @@ const useAutoRefresh = (refresh: () => Promise<void>, deps: unknown[] = []) => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.clearInterval(intervalId);
         };
-    }, [refresh, ...deps]);
+    }, [refresh, intervalMs, ...deps]);
 };
 
 // ============================================
@@ -120,7 +118,7 @@ export function usePatients() {
         }
     }, []);
 
-    useAutoRefresh(fetchPatients, [fetchPatients]);
+    useAutoRefresh(fetchPatients, CLINICAL_REFRESH_MS, [fetchPatients]);
 
     const createPatient = useCallback(async (patient: Omit<Patient, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await patientsService.create(patient);
@@ -185,7 +183,7 @@ export function useActivePatients() {
         }
     }, []);
 
-    useAutoRefresh(fetchActivePatients, [fetchActivePatients]);
+    useAutoRefresh(fetchActivePatients, CLINICAL_REFRESH_MS, [fetchActivePatients]);
 
     return { patients, isLoading };
 }
@@ -209,7 +207,7 @@ export function useFormulas() {
         }
     }, []);
 
-    useAutoRefresh(fetchFormulas, [fetchFormulas]);
+    useAutoRefresh(fetchFormulas, CATALOG_REFRESH_MS, [fetchFormulas]);
 
     const createFormula = useCallback(async (formula: Omit<Formula, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await formulasService.create(formula);
@@ -274,7 +272,7 @@ export function useFormulasBySystem(systemType: 'open' | 'closed') {
         }
     }, [systemType]);
 
-    useAutoRefresh(fetchFormulasBySystem, [fetchFormulasBySystem]);
+    useAutoRefresh(fetchFormulasBySystem, CATALOG_REFRESH_MS, [fetchFormulasBySystem]);
 
     return { formulas, isLoading };
 }
@@ -298,7 +296,7 @@ export function useModules() {
         }
     }, []);
 
-    useAutoRefresh(fetchModules, [fetchModules]);
+    useAutoRefresh(fetchModules, CATALOG_REFRESH_MS, [fetchModules]);
 
     const createModule = useCallback(async (module: Omit<Module, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await modulesService.create(module);
@@ -345,7 +343,7 @@ export function useSupplies() {
         }
     }, []);
 
-    useAutoRefresh(fetchSupplies, [fetchSupplies]);
+    useAutoRefresh(fetchSupplies, CATALOG_REFRESH_MS, [fetchSupplies]);
 
     const createSupply = useCallback(async (supply: Omit<Supply, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await suppliesService.create(supply);
@@ -397,7 +395,7 @@ export function useProfessionals(hospitalId?: string) {
         }
     }, [hospitalId]);
 
-    useAutoRefresh(fetchProfessionals, [fetchProfessionals]);
+    useAutoRefresh(fetchProfessionals, CATALOG_REFRESH_MS, [fetchProfessionals]);
 
     const createProfessional = useCallback(async (professional: Omit<Professional, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await professionalsService.create(professional);
@@ -444,7 +442,7 @@ export function usePrescriptions() {
         }
     }, []);
 
-    useAutoRefresh(fetchPrescriptions, [fetchPrescriptions]);
+    useAutoRefresh(fetchPrescriptions, CLINICAL_REFRESH_MS, [fetchPrescriptions]);
 
     const createPrescription = useCallback(async (prescription: Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await prescriptionsService.create(prescription);
@@ -510,7 +508,7 @@ export function usePatientPrescriptions(patientId: string | undefined) {
         }
     }, [patientId]);
 
-    useAutoRefresh(fetchPatientPrescriptions, [fetchPatientPrescriptions]);
+    useAutoRefresh(fetchPatientPrescriptions, CLINICAL_REFRESH_MS, [fetchPatientPrescriptions]);
 
     return { prescriptions, isLoading };
 }
@@ -530,7 +528,7 @@ export function useActivePrescriptions() {
         }
     }, []);
 
-    useAutoRefresh(fetchActivePrescriptions, [fetchActivePrescriptions]);
+    useAutoRefresh(fetchActivePrescriptions, CLINICAL_REFRESH_MS, [fetchActivePrescriptions]);
 
     return { prescriptions, isLoading };
 }
@@ -554,7 +552,7 @@ export function useEvolutions() {
         }
     }, []);
 
-    useAutoRefresh(fetchEvolutions, [fetchEvolutions]);
+    useAutoRefresh(fetchEvolutions, CLINICAL_REFRESH_MS, [fetchEvolutions]);
 
     const createEvolution = useCallback(async (evolution: Omit<DailyEvolution, 'id' | 'createdAt'>) => {
         const id = await evolutionsService.create(evolution);
@@ -603,7 +601,7 @@ export function usePatientEvolutions(patientId: string | undefined) {
         }
     }, [patientId]);
 
-    useAutoRefresh(fetchPatientEvolutions, [fetchPatientEvolutions]);
+    useAutoRefresh(fetchPatientEvolutions, CLINICAL_REFRESH_MS, [fetchPatientEvolutions]);
 
     return { evolutions, isLoading };
 }
@@ -627,7 +625,7 @@ export function useClinics() {
         }
     }, []);
 
-    useAutoRefresh(fetchClinics, [fetchClinics]);
+    useAutoRefresh(fetchClinics, CATALOG_REFRESH_MS, [fetchClinics]);
 
     const createClinic = useCallback(async (clinic: Omit<Clinic, 'id' | 'createdAt'>) => {
         const id = await clinicsService.create(clinic);
@@ -679,7 +677,7 @@ export function useHospitals() {
         }
     }, []);
 
-    useAutoRefresh(fetchHospitals, [fetchHospitals]);
+    useAutoRefresh(fetchHospitals, CATALOG_REFRESH_MS, [fetchHospitals]);
 
     const createHospital = useCallback(async (hospital: Omit<Hospital, 'id' | 'createdAt' | 'updatedAt'>) => {
         const id = await hospitalsService.create(hospital);
@@ -728,7 +726,7 @@ export function useWards(hospitalId?: string) {
         }
     }, [hospitalId]);
 
-    useAutoRefresh(fetchWards, [fetchWards]);
+    useAutoRefresh(fetchWards, CATALOG_REFRESH_MS, [fetchWards]);
 
     const createWard = useCallback(async (ward: Omit<Ward, 'id' | 'createdAt'>) => {
         const id = await wardsService.create(ward);
@@ -775,7 +773,7 @@ export function useSettings() {
         }
     }, []);
 
-    useAutoRefresh(fetchSettings, [fetchSettings]);
+    useAutoRefresh(fetchSettings, CATALOG_REFRESH_MS, [fetchSettings]);
 
     const saveSettings = useCallback(async (data: Omit<AppSettings, 'id' | 'createdAt' | 'updatedAt'>) => {
         await settingsService.save(data);
@@ -809,7 +807,7 @@ export function useAppTools() {
         }
     }, []);
 
-    useAutoRefresh(fetchTools, [fetchTools]);
+    useAutoRefresh(fetchTools, CATALOG_REFRESH_MS, [fetchTools]);
 
     return {
         tools,
@@ -961,7 +959,7 @@ export function useDashboardData() {
         }
     }, []);
 
-    useAutoRefresh(fetchDashboardData, [fetchDashboardData]);
+    useAutoRefresh(fetchDashboardData, DASHBOARD_REFRESH_MS, [fetchDashboardData]);
 
     return { ...data, isLoading };
 }
@@ -985,7 +983,7 @@ export function useLabelData(date?: string) {
         }
     }, [date]);
 
-    useAutoRefresh(fetchLabelData, [fetchLabelData]);
+    useAutoRefresh(fetchLabelData, CLINICAL_REFRESH_MS, [fetchLabelData]);
 
     return { prescriptions, isLoading };
 }

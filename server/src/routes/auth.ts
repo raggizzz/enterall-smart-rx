@@ -1,12 +1,29 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { rateLimit } from 'express-rate-limit';
 import prisma from '../lib/prisma';
+import { loginSchema, validateBody } from '../lib/schemas';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'clinical-secret-key-super-secure';
 
-router.post('/login', async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  limit: 10,                 // máx 10 tentativas por IP
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas de login. Aguarde 15 minutos.' },
+});
+
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('[security] JWT_SECRET environment variable is required. Set it in your .env file.');
+  }
+  return secret;
+};
+
+router.post('/login', loginLimiter, validateBody(loginSchema), async (req, res) => {
     try {
         const { hospitalId, identifier, password, role } = req.body || {};
 
@@ -47,7 +64,7 @@ router.post('/login', async (req, res) => {
                 role: professional.role,
                 registrationNumber: professional.registrationNumber,
             },
-            JWT_SECRET,
+            getJwtSecret(),
             { expiresIn: '24h' },
         );
 

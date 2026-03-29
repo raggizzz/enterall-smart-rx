@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { offlineDb, flushPendingOperations } from "@/lib/offlineStore";
@@ -44,7 +44,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     0,
   );
 
-  const syncNow = async () => {
+  const syncNow = useCallback(async () => {
     if (isSyncing || !isOnline || !isServerReachable) return;
 
     setIsSyncing(true);
@@ -62,7 +62,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     } finally {
       setIsSyncing(false);
     }
-  };
+  }, [isSyncing, isOnline, isServerReachable]);
 
   useEffect(() => {
     if (!isOnline || !isServerReachable) return;
@@ -73,7 +73,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     }, SYNC_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
-  }, [isOnline, isServerReachable]);
+  }, [isOnline, isServerReachable, syncNow]);
 
   const value = useMemo(
     () => ({
@@ -83,7 +83,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
       lastSyncAt,
       syncNow,
     }),
-    [failedCount, isSyncing, lastSyncAt, pendingCount],
+    [failedCount, isSyncing, lastSyncAt, pendingCount, syncNow],
   );
 
   return <SyncQueueContext.Provider value={value}>{children}</SyncQueueContext.Provider>;

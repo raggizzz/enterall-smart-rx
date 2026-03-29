@@ -32,7 +32,23 @@ const Tools = lazy(() => import("./pages/Tools"));
 const Forbidden = lazy(() => import("./pages/Forbidden"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Dados considerados "frescos" por 60 segundos — sem re-fetch desnecessário
+      staleTime: 60 * 1000,
+      // Manter cache por 5 minutos após componente desmontar
+      gcTime: 5 * 60 * 1000,
+      // Re-fetch ao focar na aba (já coberto pelos hooks manuais, mas garante consistência)
+      refetchOnWindowFocus: true,
+      // Não re-tentar em erros de autenticação (401/403)
+      retry: (failureCount, error: unknown) => {
+        if (error instanceof Error && /401|403/.test(error.message)) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

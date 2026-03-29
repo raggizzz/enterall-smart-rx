@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Save } from "lucide-react";
 import { useEvolutions } from "@/hooks/useDatabase";
+import { useSession } from "@/hooks/useSession";
 
 interface DailyEvolutionDialogProps {
     open: boolean;
@@ -29,6 +30,7 @@ export function DailyEvolutionDialog({
     prescribedCalories
 }: DailyEvolutionDialogProps) {
     const { createEvolution } = useEvolutions();
+    const { hospitalId: sessionHospitalId, professionalId: sessionProfessionalId } = useSession();
     const [infusedVolume, setInfusedVolume] = useState("");
     const [intercurrences, setIntercurrences] = useState<string[]>([]);
     const [notes, setNotes] = useState("");
@@ -60,8 +62,6 @@ export function DailyEvolutionDialog({
             toast.error("Paciente invalido para evolucao");
             return;
         }
-        const sessionHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
-        const sessionProfessionalId = typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined;
         if (!sessionHospitalId) {
       toast.error("Unidade da sessão não identificada. Refaça o login.");
             return;

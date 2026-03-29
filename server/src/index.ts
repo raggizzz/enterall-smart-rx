@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import prisma from './lib/prisma';
 import {
     databaseHealth,
@@ -13,11 +13,10 @@ import {
     refreshApplicationMetrics,
 } from './lib/metrics';
 
-dotenv.config();
-
 const app = express();
 const port = process.env.PORT || 3000;
 
+import { requireAuth } from './lib/auth-middleware';
 import authRoutes from './routes/auth';
 import patientRoutes from './routes/patients';
 import prescriptionRoutes from './routes/prescriptions';
@@ -33,7 +32,22 @@ import clinicRoutes from './routes/clinics';
 import rolePermissionRoutes from './routes/role-permissions';
 import appToolRoutes from './routes/app-tools';
 
-app.use(cors());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (same-origin, curl, Postman)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.use((req, res, next) => {
@@ -76,13 +90,17 @@ app.use((req, res, next) => {
     next();
 });
 
+// Rotas públicas (sem autenticação)
 app.use('/api/auth', authRoutes);
+app.use('/api/hospitals', hospitalRoutes);
+
+// Todas as demais rotas /api exigem JWT válido
+app.use('/api', requireAuth);
 app.use('/api/patients', patientRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/formulas', formulaRoutes);
 app.use('/api/evolutions', evolutionRoutes);
 app.use('/api/wards', wardRoutes);
-app.use('/api/hospitals', hospitalRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/modules', moduleRoutes);
 app.use('/api/supplies', supplyRoutes);

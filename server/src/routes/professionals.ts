@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, getScopedHospitalId, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { createProfessionalSchema, validateBody } from '../lib/schemas';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
 
@@ -62,18 +64,16 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager', 'local_manager'), validateBody(createProfessionalSchema), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;
 
     await withIdempotency(prisma, req, res, async () => {
       const data = await buildProfessionalPayload(req.body);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const created = await prisma.professional.create({
-        data: {
-          ...data,
-          hospitalId,
-        },
+        data: { ...data, hospitalId } as any,
       });
       return { statusCode: 201, body: sanitizeProfessional(created) };
     });
@@ -82,7 +82,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;
@@ -119,7 +119,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;

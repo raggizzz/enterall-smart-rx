@@ -2,33 +2,9 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { toDate, toNumber, toDateOnly } from '../lib/coerce';
 
 const router = Router();
-
-const toDate = (value?: string) => {
-    if (!value) return undefined;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-};
-
-const toNumber = (value: unknown) => {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim() !== '') {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : undefined;
-    }
-
-    return undefined;
-};
-
-const toDateOnly = (value?: Date | string | null) => {
-    if (!value) return undefined;
-    if (typeof value === 'string') {
-        return value.includes('T') ? value.split('T')[0] : value;
-    }
-
-    return value.toISOString().split('T')[0];
-};
 
 const mapEvolutionToClient = (evo: any) => ({
     ...evo,
@@ -144,7 +120,9 @@ router.post('/', async (req, res) => {
                         hospitalId,
                         patientId: payload.patientId,
                         date: targetDate,
-                        prescriptionId: payload.prescriptionId || null,
+                        ...(payload.prescriptionId
+                            ? { prescriptionId: payload.prescriptionId }
+                            : {}),
                     }
                 })
                 : null;

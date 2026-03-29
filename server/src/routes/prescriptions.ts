@@ -2,23 +2,11 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { toDate, toDateOnly } from '../lib/coerce';
+import { parsePagination, buildPaginatedResult } from '../lib/pagination';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
-
-const toDate = (value?: string) => {
-    if (!value) return undefined;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-};
-
-const toDateOnly = (value?: Date | string | null) => {
-    if (!value) return undefined;
-    if (typeof value === 'string') {
-        return value.includes('T') ? value.split('T')[0] : value;
-    }
-
-    return value.toISOString().split('T')[0];
-};
 
 const toJsonString = (value: unknown) => {
     if (Array.isArray(value)) return JSON.stringify(value);
@@ -273,11 +261,13 @@ const ensurePrescriptionReferences = async ({
     return { ok: true as const };
 };
 
-// Get all active prescriptions
+// Get all prescriptions (com paginação cursor-based: ?limit=N&cursor=<id>)
 router.get('/', async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
+
+        const { limit, cursor } = parsePagination(req, 50);
 
         const prescriptions = await prisma.prescription.findMany({
             where: { hospitalId },
@@ -289,10 +279,12 @@ router.get('/', async (req, res) => {
                 supplies: { include: { supply: true } },
                 statusEvents: { orderBy: { createdAt: 'desc' } },
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            take: limit + 1,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         });
 
-        res.json(prescriptions.map(mapPrescriptionToClient));
+        res.json(buildPaginatedResult(prescriptions.map(mapPrescriptionToClient), limit));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch prescriptions' });
     }
@@ -327,7 +319,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create a new prescription
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager', 'local_manager', 'nutritionist'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -422,7 +414,7 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager', 'local_manager', 'nutritionist'), async (req, res) => {
     try {
         const { id } = req.params;
         const hospitalId = requireScopedHospitalId(req, res);
@@ -502,7 +494,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // Update prescription status
-router.put('/:id/status', async (req, res) => {
+router.put('/:id/status', requireRole('general_manager', 'local_manager', 'nutritionist'), async (req, res) => {
     try {
         const { id } = req.params;
         const hospitalId = requireScopedHospitalId(req, res);
@@ -614,7 +606,7 @@ router.get('/:id/history', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;

@@ -57,7 +57,12 @@ const ConnectivityProvider = ({ children }: ConnectivityProviderProps) => {
     };
   }, [connectivity.isOnline, connectivity.isServerReachable]);
 
-  const value = useMemo(() => connectivity, [connectivity]);
+  const { isOnline, isServerReachable, isChecking, lastCheckedAt, refresh } = connectivity;
+
+  const value = useMemo(
+    () => ({ isOnline, isServerReachable, isChecking, lastCheckedAt, refresh }),
+    [isOnline, isServerReachable, isChecking, lastCheckedAt, refresh],
+  );
 
   return <ConnectivityContext.Provider value={value}>{children}</ConnectivityContext.Provider>;
 };

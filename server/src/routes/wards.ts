@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.get('/hospital/:hospitalId', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager', 'local_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;
@@ -54,7 +55,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;
@@ -91,7 +92,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res);
     if (!hospitalId) return;

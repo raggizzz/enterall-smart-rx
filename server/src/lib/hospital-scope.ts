@@ -7,7 +7,13 @@ type AuthPayload = jwt.JwtPayload & {
   role?: string;
 };
 
-const JWT_SECRET = process.env.JWT_SECRET || 'clinical-secret-key-super-secure';
+const getJwtSecret = (): string => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('[security] JWT_SECRET environment variable is required. Set it in your .env file.');
+  }
+  return secret;
+};
 
 const normalizeHospitalId = (value: unknown): string | undefined => {
   if (typeof value !== 'string') return undefined;
@@ -23,7 +29,7 @@ const getAuthPayload = (req: Request): AuthPayload | undefined => {
   if (!token) return undefined;
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
     if (decoded && typeof decoded === 'object') {
       return decoded as AuthPayload;
     }
@@ -72,4 +78,3 @@ export const ensureScopedEntity = <T extends { hospitalId?: string | null }>(
   entity: T | null,
   hospitalId: string,
 ): entity is T => Boolean(entity && entity.hospitalId === hospitalId);
-

@@ -969,7 +969,7 @@ const mapPrescriptionPayload = (data: any) => ({
                 formulaId: firstNonEmptyString(formula.formulaId),
                 schedules: Array.isArray(formula.schedules) ? formula.schedules : [],
             }))
-            .filter((formula: any) => typeof formula?.formulaId === 'string' && formula.formulaId.trim() !== '' && !formula.formulaId.startsWith('local-'))
+            .filter((formula: any) => typeof formula?.formulaId === 'string' && formula.formulaId.trim() !== '')
         : [],
     modules: Array.isArray(data.modules)
         ? data.modules
@@ -978,7 +978,7 @@ const mapPrescriptionPayload = (data: any) => ({
                 moduleId: firstNonEmptyString(module.moduleId),
                 schedules: Array.isArray(module.schedules) ? module.schedules : [],
             }))
-            .filter((module: any) => typeof module?.moduleId === 'string' && module.moduleId.trim() !== '' && !module.moduleId.startsWith('local-'))
+            .filter((module: any) => typeof module?.moduleId === 'string' && module.moduleId.trim() !== '')
         : [],
     supplies: Array.isArray(data.supplies)
         ? data.supplies
@@ -986,7 +986,7 @@ const mapPrescriptionPayload = (data: any) => ({
                 ...supply,
                 supplyId: firstNonEmptyString(supply?.supplyId),
             }))
-            .filter((supply: any) => typeof supply?.supplyId === 'string' && supply.supplyId.trim() !== '' && !supply.supplyId.startsWith('local-'))
+            .filter((supply: any) => typeof supply?.supplyId === 'string' && supply.supplyId.trim() !== '')
         : [],
 });
 

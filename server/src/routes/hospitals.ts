@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, getScopedHospitalId, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager'), async (req, res) => {
   try {
     await withIdempotency(prisma, req, res, async () => {
       const created = await prisma.hospital.create({
@@ -31,7 +32,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res, req.params.id);
     if (!hospitalId) return;
@@ -67,7 +68,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager'), async (req, res) => {
   try {
     const hospitalId = requireScopedHospitalId(req, res, req.params.id);
     if (!hospitalId) return;

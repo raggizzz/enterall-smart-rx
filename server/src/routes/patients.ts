@@ -2,31 +2,12 @@ import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { ensureScopedEntity, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
+import { toDate, toOptionalString, toOptionalNumber, hasOwn } from '../lib/coerce';
+import { createPatientSchema, validateBody } from '../lib/schemas';
+import { parsePagination, buildPaginatedResult } from '../lib/pagination';
+import { requireRole } from '../lib/auth-middleware';
 
 const router = Router();
-
-const toDate = (value?: string) => {
-    if (!value) return undefined;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-};
-
-const hasOwn = (payload: Record<string, unknown>, key: string) =>
-    Object.prototype.hasOwnProperty.call(payload, key);
-
-const toOptionalString = (value: unknown) => {
-    if (value === undefined) return undefined;
-    if (value === null) return null;
-    const normalized = String(value).trim();
-    return normalized.length > 0 ? normalized : null;
-};
-
-const toOptionalNumber = (value: unknown) => {
-    if (value === undefined) return undefined;
-    if (value === null || value === '') return null;
-    const parsed = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-};
 
 const toOptionalDate = (value: unknown) => {
     if (value === undefined) return undefined;
@@ -175,20 +156,20 @@ const buildPatientUpdateData = async (payload: Record<string, unknown>, hospital
     if (hasOwn(payload, 'wardId')) {
         data.wardId = toOptionalString(payload.wardId);
     } else if (hasOwn(payload, 'ward')) {
-        const hospitalId = typeof data.hospitalId === 'string'
-            ? data.hospitalId
-            : hospitalId;
-        data.wardId = await resolveWardId(hospitalId, typeof payload.ward === 'string' ? payload.ward : undefined) ?? null;
+        const scopedHospitalId = typeof data.hospitalId === 'string' ? data.hospitalId : hospitalId;
+        data.wardId = await resolveWardId(scopedHospitalId, typeof payload.ward === 'string' ? payload.ward : undefined) ?? null;
     }
 
     return data;
 };
 
-// Get all active patients
+// Get all active patients (com paginação cursor-based: ?limit=N&cursor=<id>)
 router.get('/', async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
+
+        const { limit, cursor } = parsePagination(req, 100);
 
         const patients = await prisma.patient.findMany({
             where: { isActive: true, hospitalId },
@@ -199,9 +180,12 @@ router.get('/', async (req, res) => {
                     take: 1,
                 },
             },
-            orderBy: { name: 'asc' }
+            orderBy: { name: 'asc' },
+            take: limit + 1,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         });
-        res.json(patients.map(mapPatientToClient));
+
+        res.json(buildPaginatedResult(patients.map(mapPatientToClient), limit));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch patients' });
     }
@@ -235,7 +219,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Create a new patient
-router.post('/', async (req, res) => {
+router.post('/', requireRole('general_manager', 'local_manager', 'nutritionist'), validateBody(createPatientSchema), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -252,7 +236,7 @@ router.post('/', async (req, res) => {
 });
 
 // Update a patient
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('general_manager', 'local_manager', 'nutritionist'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -289,7 +273,7 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('general_manager', 'local_manager'), async (req, res) => {
     try {
         const hospitalId = requireScopedHospitalId(req, res);
         if (!hospitalId) return;
@@ -309,7 +293,7 @@ router.delete('/:id', async (req, res) => {
                 where: { id },
                 data: { isActive: false, version: { increment: 1 } },
             });
-            return { body: { success: true } };
+            return { statusCode: 200, body: { success: true } as Record<string, unknown> };
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete patient' });
