@@ -32,10 +32,22 @@ import clinicRoutes from './routes/clinics';
 import rolePermissionRoutes from './routes/role-permissions';
 import appToolRoutes from './routes/app-tools';
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+const defaultAllowedOrigins = [
+  'http://localhost:8080',
+  'http://localhost:5173',
+  'https://enterall-smart-rx.vercel.app',
+  'https://enmeta-six.vercel.app',
+];
+
+const allowedOrigins = Array.from(
+  new Set([
+    ...defaultAllowedOrigins,
+    ...(process.env.ALLOWED_ORIGINS || '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  ]),
+);
 
 app.use(
   cors({
