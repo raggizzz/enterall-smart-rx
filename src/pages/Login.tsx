@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import LogoEnmeta from "@/components/LogoEnmeta";
-import { useProfessionals, useHospitals } from "@/hooks/useDatabase";
+import { useHospitals } from "@/hooks/useDatabase";
 import { ApiError, apiClient } from "@/lib/api";
 import { rolePermissionsService } from "@/lib/database";
 import {
@@ -28,11 +28,9 @@ const Login = () => {
     password: "",
     role: "nutritionist",
   });
-  const { professionals } = useProfessionals(formData.hospital || undefined);
   const { hospitals, isLoading: hospitalsLoading } = useHospitals();
 
   const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
-  const hospitalProfessionals = professionals;
 
   useEffect(() => {
     if (hospitals.length > 0 && !formData.hospital) {
@@ -64,31 +62,6 @@ const Login = () => {
     }
 
     const normalizedRole = normalizeRole(formData.role);
-
-    if (hospitalProfessionals.length === 0 && normalizedRole === "general_manager") {
-      toast.info("Modo de inicializacao da unidade: nenhum profissional cadastrado. Acesso de gestor liberado.");
-      localStorage.setItem("userRole", normalizedRole);
-      localStorage.setItem("userName", "Gestor Inicial");
-      localStorage.removeItem("userProfessionalId");
-      localStorage.setItem("userHospitalId", formData.hospital);
-      localStorage.setItem("userHospitalName", selectedHospitalName);
-
-      window.dispatchEvent(new Event("enmeta-session-updated"));
-      await syncRolePermissions();
-      navigate("/dashboard");
-      return;
-    }
-
-    const user = hospitalProfessionals.find((professional) => {
-      const isRoleMatch = normalizeRole(professional.role) === normalizedRole;
-      const isIdMatch = professional.registrationNumber === formData.identifier;
-      return isRoleMatch && isIdMatch;
-    });
-
-    if (user?.isActive === false) {
-      toast.error("Usuario inativo. Contate o gestor.");
-      return;
-    }
 
     try {
       const response = await apiClient.post("/auth/login", {
@@ -129,8 +102,18 @@ const Login = () => {
           ? String((error.body as Record<string, unknown>).error)
           : "";
 
+        if (message === "Invalid credentials") {
+          toast.error("Credenciais invalidas. Verifique hospital, funcao, matricula e senha.");
+          return;
+        }
+
         if (message === "Password not configured") {
           toast.error("Profissional sem senha cadastrada. Configure uma senha de 8 digitos no cadastro.");
+          return;
+        }
+
+        if (message) {
+          toast.error(message);
           return;
         }
       }
