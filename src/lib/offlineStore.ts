@@ -81,6 +81,13 @@ const SESSION_STORAGE_KEY = "local_session";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
+const normalizeLookupKey = (value?: string | null) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-zA-Z0-9]+/g, "")
+    .toLowerCase();
+
 const emitSyncChange = () => {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("enmeta-sync-changed"));
@@ -138,6 +145,24 @@ export const cacheSnapshot = async (
 
 export const getSnapshotRecords = async (entityType: OfflineEntityType) =>
   (await offlineDb.snapshots.get(entityType))?.records ?? [];
+
+const findRecordById = (records: Array<Record<string, unknown>>, id?: unknown) =>
+  records.find((record) => typeof id === "string" && record.id === id);
+
+const findRecordByIdentity = (
+  records: Array<Record<string, unknown>>,
+  primaryName?: unknown,
+  secondaryCode?: unknown,
+) => {
+  const nameKey = typeof primaryName === "string" ? normalizeLookupKey(primaryName) : "";
+  const codeKey = typeof secondaryCode === "string" ? normalizeLookupKey(secondaryCode) : "";
+
+  return records.find((record) => {
+    const recordNameKey = normalizeLookupKey(typeof record.name === "string" ? record.name : undefined);
+    const recordCodeKey = normalizeLookupKey(typeof record.code === "string" ? record.code : undefined);
+    return (nameKey && recordNameKey === nameKey) || (codeKey && recordCodeKey === codeKey);
+  });
+};
 
 const getShadowRecords = async (entityType: OfflineEntityType) =>
   offlineDb.shadowRecords.where("entityType").equals(entityType).toArray();
@@ -464,6 +489,129 @@ export const reactivateAuthenticationFailures = async () => {
   return authFailures.length;
 };
 
+const reconcilePrescriptionReferences = async (payload?: Record<string, unknown>) => {
+  if (!payload) return payload;
+
+  const [formulaRecords, moduleRecords] = await Promise.all([
+    getMergedRecords("formulas"),
+    getMergedRecords("modules"),
+  ]);
+
+  const mapFormulaRef = (item: Record<string, unknown>) => {
+    const current = findRecordById(formulaRecords, item.formulaId);
+    if (current) {
+      return {
+        ...item,
+        formulaId: current.id,
+        formulaName: (current.name as string | undefined) || item.formulaName,
+      };
+    }
+
+    const fallback = findRecordByIdentity(formulaRecords, item.formulaName, item.formulaCode);
+    if (!fallback) return item;
+
+    return {
+      ...item,
+      formulaId: fallback.id,
+      formulaName: (fallback.name as string | undefined) || item.formulaName,
+    };
+  };
+
+  const mapModuleRef = (item: Record<string, unknown>) => {
+    const current = findRecordById(moduleRecords, item.moduleId);
+    if (current) {
+      return {
+        ...item,
+        moduleId: current.id,
+        moduleName: (current.name as string | undefined) || item.moduleName,
+      };
+    }
+
+    const fallback = findRecordByIdentity(moduleRecords, item.moduleName, item.moduleCode);
+    if (!fallback) return item;
+
+    return {
+      ...item,
+      moduleId: fallback.id,
+      moduleName: (fallback.name as string | undefined) || item.moduleName,
+    };
+  };
+
+  const nextPayload = clone(payload);
+
+  if (Array.isArray(nextPayload.formulas)) {
+    nextPayload.formulas = nextPayload.formulas.map((item) => mapFormulaRef(item as Record<string, unknown>));
+  }
+
+  if (Array.isArray(nextPayload.modules)) {
+    nextPayload.modules = nextPayload.modules.map((item) => mapModuleRef(item as Record<string, unknown>));
+  }
+
+  if (nextPayload.enteralDetails && typeof nextPayload.enteralDetails === "object") {
+    const enteralDetails = { ...(nextPayload.enteralDetails as Record<string, unknown>) };
+
+    if (enteralDetails.closedFormula && typeof enteralDetails.closedFormula === "object") {
+      enteralDetails.closedFormula = mapFormulaRef(enteralDetails.closedFormula as Record<string, unknown>);
+    }
+
+    if (Array.isArray(enteralDetails.openFormulas)) {
+      enteralDetails.openFormulas = enteralDetails.openFormulas.map((item) =>
+        mapFormulaRef(item as Record<string, unknown>),
+      );
+    }
+
+    if (Array.isArray(enteralDetails.modules)) {
+      enteralDetails.modules = enteralDetails.modules.map((item) =>
+        mapModuleRef(item as Record<string, unknown>),
+      );
+    }
+
+    nextPayload.enteralDetails = enteralDetails;
+  }
+
+  if (nextPayload.oralDetails && typeof nextPayload.oralDetails === "object") {
+    const oralDetails = { ...(nextPayload.oralDetails as Record<string, unknown>) };
+
+    if (Array.isArray(oralDetails.supplements)) {
+      oralDetails.supplements = oralDetails.supplements.map((item) =>
+        mapFormulaRef(item as Record<string, unknown>),
+      );
+    }
+
+    if (Array.isArray(oralDetails.modules)) {
+      oralDetails.modules = oralDetails.modules.map((item) =>
+        mapModuleRef(item as Record<string, unknown>),
+      );
+    }
+
+    if (oralDetails.thickenerFormulaId) {
+      const current = findRecordById(formulaRecords, oralDetails.thickenerFormulaId);
+      if (!current && typeof oralDetails.thickenerProduct === "string") {
+        const fallback = findRecordByIdentity(formulaRecords, oralDetails.thickenerProduct, undefined);
+        if (fallback) {
+          oralDetails.thickenerFormulaId = fallback.id;
+          oralDetails.thickenerProduct = fallback.name;
+        }
+      }
+    }
+
+    if (oralDetails.thickenerModuleId) {
+      const current = findRecordById(moduleRecords, oralDetails.thickenerModuleId);
+      if (!current && typeof oralDetails.thickenerProduct === "string") {
+        const fallback = findRecordByIdentity(moduleRecords, oralDetails.thickenerProduct, undefined);
+        if (fallback) {
+          oralDetails.thickenerModuleId = fallback.id;
+          oralDetails.thickenerProduct = fallback.name;
+        }
+      }
+    }
+
+    nextPayload.oralDetails = oralDetails;
+  }
+
+  return nextPayload;
+};
+
 export const flushPendingOperations = async () => {
   const operations = (await offlineDb.pendingOperations.orderBy("createdAt").toArray()).filter(
     (operation) => operation.status === "pending",
@@ -484,7 +632,11 @@ export const flushPendingOperations = async () => {
 
     const resolvedEntityId = replacements[operation.entityId] || operation.entityId;
     const endpoint = replaceIdsInText(operation.endpoint, replacements);
-    const payload = replaceIdsDeep(operation.payload, replacements) as Record<string, unknown> | undefined;
+    let payload = replaceIdsDeep(operation.payload, replacements) as Record<string, unknown> | undefined;
+
+    if (operation.entityType === "prescriptions" && payload) {
+      payload = await reconcilePrescriptionReferences(payload);
+    }
 
     try {
       const response = await apiClient.request(
@@ -535,6 +687,15 @@ export const flushPendingOperations = async () => {
       await offlineDb.pendingOperations.delete(operation.queueId);
       processed += 1;
     } catch (error) {
+      if (error instanceof ApiError && error.status === 404 && operation.action === "delete") {
+        const finalEntityId = replacements[operation.entityId] || resolvedEntityId;
+        await removeSnapshotRecord(operation.entityType, finalEntityId);
+        await removeShadowRecord(operation.entityType, finalEntityId);
+        await offlineDb.pendingOperations.delete(operation.queueId);
+        processed += 1;
+        continue;
+      }
+
       failed += 1;
       const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500;
       const isAuthenticationError = isAuthApiError(error);
