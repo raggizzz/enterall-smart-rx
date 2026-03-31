@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
-import { flushPendingOperations, getPendingOperations, hasStoredAccessToken, reactivateAuthenticationFailures } from "@/lib/offlineStore";
+import { discardIrrecoverableOperations, flushPendingOperations, getPendingOperations, hasStoredAccessToken, reactivateAuthenticationFailures } from "@/lib/offlineStore";
 import { useConnectivityContext } from "@/components/ConnectivityProvider";
 
 interface SyncQueueContextValue {
@@ -35,6 +35,8 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const [hasAuthToken, setHasAuthToken] = useState(() => hasStoredAccessToken());
   const isSyncingRef = useRef(false);
+  const lastFailedCountRef = useRef(0);
+  const failedToastCooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pendingCount = useLiveQuery(
     async () => (await getPendingOperations()).filter((operation) => operation.status === "pending").length,
@@ -74,8 +76,16 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
         toast.success("Fila de sincronizacao reativada apos renovar a sessao.");
       }
 
-      if (result.failed > 0) {
-        toast.error(`${result.failed} operacao(oes) precisam de revisao na Central Sync.`);
+      if (result.failed > 0 && result.failed > lastFailedCountRef.current) {
+        // Only toast when the failure count increases (new failures), not on every retry cycle
+        if (failedToastCooldownRef.current) clearTimeout(failedToastCooldownRef.current);
+        failedToastCooldownRef.current = setTimeout(() => {
+          toast.error(`${result.failed} operacao(oes) precisam de revisao na Central Sync.`);
+          lastFailedCountRef.current = result.failed;
+          failedToastCooldownRef.current = null;
+        }, 500);
+      } else if (result.failed === 0) {
+        lastFailedCountRef.current = 0;
       }
     } finally {
       isSyncingRef.current = false;
@@ -83,9 +93,16 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
     }
   }, [failedCount, hasAuthToken, isOnline, isServerReachable, pendingCount]);
 
+  // On mount: auto-discard irrecoverable operations left over from past sessions
+  useEffect(() => {
+    void discardIrrecoverableOperations();
+  }, []);
+
   useEffect(() => {
     const syncAuthState = () => {
       setHasAuthToken(hasStoredAccessToken());
+      // When a new session starts, also re-run cleanup
+      void discardIrrecoverableOperations();
     };
 
     syncAuthState();

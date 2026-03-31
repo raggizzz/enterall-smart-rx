@@ -93,7 +93,8 @@ export const PrescriptionDetails = ({
     // Calcular peso ideal (IMC 25) se paciente tiver altura
     const idealWeight = useMemo(() => {
         if (!patient.height) return undefined;
-        const heightM = patient.height / 100;
+        const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
+        const heightM = heightCm / 100;
         return 25 * heightM * heightM;
     }, [patient.height]);
 
@@ -377,7 +378,8 @@ export const PrescriptionDetails = ({
         const proteinPerKg = weight > 0 ? (nutritionTotals.protein / weight).toFixed(2) : '?';
         let proteinLine = `Proteínas: ${nutritionTotals.protein.toFixed(1)}g/dia - ${proteinPerKg} g/kg`;
         if (patient.weight && patient.height) {
-            const imc = patient.weight / Math.pow(patient.height / 100, 2);
+            const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
+            const imc = patient.weight / Math.pow(heightCm / 100, 2);
             if (imc > 30 && idealWeight) {
                 proteinLine += ` - ${(nutritionTotals.protein / idealWeight).toFixed(2)} g/kg de peso ideal`;
             }

@@ -829,3 +829,59 @@ export const retryPendingOperation = async (queueId: string) => {
   });
   emitSyncChange();
 };
+
+/** Descarta todas as operações (pending + failed) do hospital atual. */
+export const discardAllOperations = async () => {
+  const currentHospitalId = getCurrentSessionHospitalId();
+  const all = await offlineDb.pendingOperations.toArray();
+  const toRemove = all.filter(
+    (op) => !currentHospitalId || !op.hospitalId || op.hospitalId === currentHospitalId,
+  );
+
+  await Promise.all(
+    toRemove.map(async (op) => {
+      await offlineDb.pendingOperations.delete(op.queueId);
+      const remaining = (await offlineDb.pendingOperations.toArray()).filter(
+        (item) => item.entityId === op.entityId && item.entityType === op.entityType,
+      ).length;
+      if (remaining === 0) {
+        await removeShadowRecord(op.entityType, op.entityId);
+      }
+    }),
+  );
+
+  emitSyncChange();
+  return toRemove.length;
+};
+
+/** Descarta automaticamente operações irrecuperáveis (failed + padrão fatal) após N tentativas. */
+const IRRECOVERABLE_PATTERNS = /formula not found|module not found|supply not found|patient not found|professional not found|hospital not found|ward not found|prescription not found|version conflict|conflito de versao|doctype|is not valid json|unexpected token/i;
+const MAX_AUTO_DISCARD_ATTEMPTS = 3;
+
+export const discardIrrecoverableOperations = async () => {
+  const currentHospitalId = getCurrentSessionHospitalId();
+  const failed = await offlineDb.pendingOperations.where("status").equals("failed").toArray();
+  const irrecoverable = failed.filter(
+    (op) =>
+      (!currentHospitalId || !op.hospitalId || op.hospitalId === currentHospitalId) &&
+      op.attemptCount >= MAX_AUTO_DISCARD_ATTEMPTS &&
+      IRRECOVERABLE_PATTERNS.test(op.lastError || ""),
+  );
+
+  if (irrecoverable.length === 0) return 0;
+
+  await Promise.all(
+    irrecoverable.map(async (op) => {
+      await offlineDb.pendingOperations.delete(op.queueId);
+      const remaining = (await offlineDb.pendingOperations.toArray()).filter(
+        (item) => item.entityId === op.entityId && item.entityType === op.entityType,
+      ).length;
+      if (remaining === 0) {
+        await removeShadowRecord(op.entityType, op.entityId);
+      }
+    }),
+  );
+
+  emitSyncChange();
+  return irrecoverable.length;
+};

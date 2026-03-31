@@ -24,9 +24,12 @@ const getActivePrescriptionsForPatient = (prescriptionList: Prescription[], pati
     .filter((prescription) => prescription.patientId === patientId && prescription.status === "active")
     .sort(sortByMostRecentStartDate);
 
+const normalizeHeightCm = (heightCm: number): number =>
+  heightCm < 3 ? heightCm * 100 : heightCm;
+
 const calculateBmi = (patient: Patient): number | null => {
   if (!patient.weight || !patient.height) return null;
-  const heightMeters = patient.height / 100;
+  const heightMeters = normalizeHeightCm(patient.height) / 100;
   if (!heightMeters) return null;
   return patient.weight / (heightMeters * heightMeters);
 };
@@ -34,7 +37,7 @@ const calculateBmi = (patient: Patient): number | null => {
 const calculateIdealWeight = (patient: Patient): number | null => {
   const bmi = calculateBmi(patient);
   if (!bmi || bmi < 30 || !patient.height) return null;
-  const heightMeters = patient.height / 100;
+  const heightMeters = normalizeHeightCm(patient.height) / 100;
   return 25 * heightMeters * heightMeters;
 };
 

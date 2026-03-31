@@ -122,14 +122,16 @@ export const PatientMonitoring = ({
     // Calcular peso ideal (IMC 25)
     const idealWeight = useMemo(() => {
         if (!patient.height) return undefined;
-        const heightM = patient.height / 100;
+        const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
+        const heightM = heightCm / 100;
         return 25 * heightM * heightM;
     }, [patient.height]);
 
     // Calcular IMC
     const bmi = useMemo(() => {
         if (!patient.weight || !patient.height) return undefined;
-        const heightM = patient.height / 100;
+        const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
+        const heightM = heightCm / 100;
         return patient.weight / (heightM * heightM);
     }, [patient.weight, patient.height]);
 

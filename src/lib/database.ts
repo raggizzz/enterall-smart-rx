@@ -523,6 +523,7 @@ export interface Ward {
     type: 'uti-adulto' | 'uti-pediatrica' | 'enfermaria' | 'ambulatorio' | 'other';
     beds?: number;
     isActive: boolean;
+    defaultSchedules?: string[];
     createdAt: string;
 }
 
@@ -920,6 +921,7 @@ const normalizeWard = (raw: any): Ward => ({
     type: raw.type ?? "other",
     beds: toNumber(raw.beds ?? raw.bedCount),
     isActive: raw.isActive !== false,
+    defaultSchedules: ensureArray<string>(raw.defaultSchedules),
     createdAt: raw.createdAt || new Date().toISOString(),
 });
 

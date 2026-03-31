@@ -18,7 +18,7 @@ import BottomNav from "@/components/BottomNav";
 import EnteralIcon from "@/components/icons/EnteralIcon";
 import SupplementIcon from "@/components/icons/SupplementIcon";
 import type { Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
-import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSupplies, useWards } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
 import {
   addNutritionAccumulators,
@@ -416,6 +416,7 @@ const PrescriptionNew = () => {
   const { formulas: dbFormulas } = useFormulas();
   const { modules: dbModules } = useDbModules();
   const { supplies } = useSupplies();
+  const { wards } = useWards();
   const availableFormulas = useMemo<ExtendedCatalogFormula[]>(
     () => dbFormulas.map((formula) => buildFallbackCatalogFormula(formula)),
     [dbFormulas],
@@ -998,6 +999,17 @@ const PrescriptionNew = () => {
   const bmi = nutritionSummary.weightMetrics.bmi;
   const idealWeight = nutritionSummary.weightMetrics.idealWeight;
 
+  const wardScheduleTimes = useMemo(() => {
+    if (!selectedPatient) return SCHEDULE_TIMES;
+    const ward = wards.find(w =>
+      (selectedPatient.wardId && w.id === selectedPatient.wardId) ||
+      (selectedPatient.ward && w.name === selectedPatient.ward)
+    );
+    return (ward?.defaultSchedules && ward.defaultSchedules.length > 0)
+      ? ward.defaultSchedules
+      : SCHEDULE_TIMES;
+  }, [selectedPatient, wards]);
+
   const sidebarSummary = useMemo(() => {
     if (currentStep === 8 && feedingRoutes.oral) {
       return {
@@ -1450,10 +1462,10 @@ const PrescriptionNew = () => {
                     <strong>{selectedPatient.name}</strong>
                     <br />Peso: {selectedPatient.weight || '-'}kg
                     {bmi && <span> | IMC: {bmi.toFixed(1)}</span>}
-                    {idealWeight && <span> | Peso ideal (IMC 25): {idealWeight.toFixed(1)}kg</span>}
+                    {bmi && bmi > 30 && idealWeight && <span> | Peso ideal (IMC 25): {idealWeight.toFixed(1)}kg</span>}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.carbsPerKgIdeal !== null ? `${nutritionSummary.carbsPerKg} g/kg PA | ${nutritionSummary.carbsPerKgIdeal} g/kg PI` : `${nutritionSummary.carbsPerKg} g/kg`} | {nutritionSummary.carbPct}% VET</p></div>
+                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.carbsPerKgIdeal !== null ? `${nutritionSummary.carbsPerKg} g/kg PA | ${nutritionSummary.carbsPerKgIdeal} g/kg PI` : `${nutritionSummary.carbsPerKg} g/kg`} | {nutritionSummary.carbsPct}% VET</p></div>
                     <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Lipidios</p><p>{nutritionSummary.fat} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.fatPerKgIdeal !== null ? `${nutritionSummary.fatPerKg} g/kg PA | ${nutritionSummary.fatPerKgIdeal} g/kg PI` : `${nutritionSummary.fatPerKg} g/kg`} | {nutritionSummary.fatPct}% VET</p></div>
                     <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Fibras</p><p>{nutritionSummary.fiber} g/dia</p><p className="text-muted-foreground">Resumo global das vias</p></div>
                     <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Micronutrientes</p><p>Na {nutritionSummary.sodium} | K {nutritionSummary.potassium}</p><p className="text-muted-foreground">Ca {nutritionSummary.calcium} | P {nutritionSummary.phosphorus} mg/dia</p></div>
@@ -1724,7 +1736,7 @@ const PrescriptionNew = () => {
                     <Label>Horários de Envio das Bolsas</Label>
                     <p className="text-xs text-muted-foreground">Preencher com o número de bolsas a ser entregue em cada horário</p>
                     <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
-                      {SCHEDULE_TIMES.map(t => (
+                      {wardScheduleTimes.map(t => (
                         <div key={t} className="space-y-1">
                           <Label className="text-xs text-center block">{t}</Label>
                           <Input
@@ -1790,7 +1802,7 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
                         <p className="text-sm text-muted-foreground">Se informar diluicao, o volume final da etapa considera a quantidade prescrita somada ao volume de agua necessario ate atingir o total desejado.</p>
-                        <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
+                        <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{wardScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
                     ))}
@@ -1814,7 +1826,7 @@ const PrescriptionNew = () => {
                         <div className="space-y-2"><Label>Quantidade</Label><Input type="number" value={m.quantity} onChange={e => updateModule(m.id, "quantity", e.target.value)} /></div>
                         <div className="space-y-2"><Label>Unidade</Label><Select value={m.unit} onValueChange={v => updateModule(m.id, "unit", v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="g">g</SelectItem><SelectItem value="ml">ml</SelectItem></SelectContent></Select></div>
                       </div>
-                      <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>
+                      <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{wardScheduleTimes.map(t => <Button key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>
                       {m.moduleId && m.quantity && m.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(m.quantity) * m.times.length} {m.unit}/dia</p>}
                     </div>
                   ))}
@@ -1830,7 +1842,7 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
-                  <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{SCHEDULE_TIMES.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
+                  <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{wardScheduleTimes.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
                   {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
@@ -1929,7 +1941,7 @@ const PrescriptionNew = () => {
                           <div className="space-y-2">
                             <Label>Horarios da agua espessada</Label>
                             <div className="flex flex-wrap gap-2">
-                              {SCHEDULE_TIMES.map(time => (
+                              {wardScheduleTimes.map(time => (
                                 <Button key={time} type="button" variant={oralThickenerTimes.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleOralThickenerTime(time)}>{time}</Button>
                               ))}
                             </div>
@@ -2086,7 +2098,7 @@ const PrescriptionNew = () => {
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Calculator className="h-6 w-6 text-primary" />Resumo da Prescrição Nutricional</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                  {selectedPatient && <div className="p-4 bg-muted rounded-lg"><p className="font-semibold">{selectedPatient.name}</p><p className="text-sm text-muted-foreground">{selectedPatient.bed} - Peso: {selectedPatient.weight}kg {bmi && `(IMC: ${bmi.toFixed(1)})`} {idealWeight && `(PI: ${idealWeight.toFixed(1)}kg)`}</p></div>}
+                  {selectedPatient && <div className="p-4 bg-muted rounded-lg"><p className="font-semibold">{selectedPatient.name}</p><p className="text-sm text-muted-foreground">{selectedPatient.bed} - Peso: {selectedPatient.weight}kg {bmi && `(IMC: ${bmi.toFixed(1)})`} {bmi && bmi > 30 && idealWeight && `(PI: ${idealWeight.toFixed(1)}kg)`}</p></div>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.vetPerKgIdeal !== null ? `${nutritionSummary.vetPerKg} kcal/kg PA | ${nutritionSummary.vetPerKgIdeal} kcal/kg PI` : `${nutritionSummary.vetPerKg} kcal/kg`})</p><p className="text-xs font-medium mt-1">VET</p></div>
                     <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${nutritionSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${nutritionSummary.proteinPerKg} g/kg`})</p><p className="text-xs font-medium mt-1">Proteínas</p></div>

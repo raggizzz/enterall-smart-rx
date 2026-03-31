@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { Calendar as CalendarIcon, Clock, DollarSign, FileText, Printer, Users }
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { RequisitionDocument } from "@/components/billing/RequisitionDocument";
-import { useFormulas, useModules, usePatients, usePrescriptions, useSupplies } from "@/hooks/useDatabase";
+import { useFormulas, useModules, usePatients, usePrescriptions, useSupplies, useWards } from "@/hooks/useDatabase";
 import { prescriptionsService, Prescription } from "@/lib/database";
 import { RequisitionData } from "@/types/requisition";
 import { generateRequisitionData } from "@/utils/requisitionGenerator";
@@ -51,6 +51,7 @@ const Billing = () => {
     const { formulas } = useFormulas();
     const { modules } = useModules();
     const { supplies } = useSupplies();
+    const { wards: wardObjects } = useWards();
 
     const [startDate, setStartDate] = useState<Date | undefined>(new Date());
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
@@ -82,6 +83,18 @@ const Billing = () => {
         });
         return Array.from(uniqueWards).sort((left, right) => left.localeCompare(right));
     }, [patients]);
+
+    const availableScheduleTimes = useMemo(() => {
+        if (unit === "all") return SCHEDULE_TIMES;
+        const wardObj = wardObjects.find(w => w.name === unit);
+        return (wardObj?.defaultSchedules && wardObj.defaultSchedules.length > 0)
+            ? wardObj.defaultSchedules
+            : SCHEDULE_TIMES;
+    }, [unit, wardObjects]);
+
+    useEffect(() => {
+        setSelectedTimes([...availableScheduleTimes]);
+    }, [availableScheduleTimes]);
 
     const activePrescriptions = useMemo(
         () => prescriptions.filter((prescription) => prescription.status === "active"),
@@ -256,7 +269,7 @@ const Billing = () => {
                         : "Parenteral",
             startDate: effectiveDate,
             endDate: effectiveDate,
-            selectedTimes: [...SCHEDULE_TIMES],
+            selectedTimes: [...availableScheduleTimes],
             signatures: {
                 prescriber: signatureConfig.signature1,
                 technician: signatureConfig.signature2,
@@ -329,7 +342,7 @@ const Billing = () => {
         setSelectedPatients(filteredPatients.map((patient) => patient.id || "").filter(Boolean));
     };
 
-    const selectAllTimes = () => setSelectedTimes([...SCHEDULE_TIMES]);
+    const selectAllTimes = () => setSelectedTimes([...availableScheduleTimes]);
     const clearAllTimes = () => setSelectedTimes([]);
 
     const toggleManualCancelItem = (key: string) => {
@@ -450,7 +463,7 @@ const Billing = () => {
                                 </div>
                             </div>
                             <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                                {SCHEDULE_TIMES.map((time) => (
+                                {availableScheduleTimes.map((time) => (
                                     <div
                                         key={time}
                                         onClick={() => toggleTime(time)}
@@ -514,9 +527,9 @@ const Billing = () => {
                                     <CardTitle>Pacientes com Terapia Nutricional</CardTitle>
                                     <div className="text-sm text-muted-foreground">{selectedPatients.length} selecionados</div>
                                 </div>
-                                {selectedTimes.length < SCHEDULE_TIMES.length && (
+                                {selectedTimes.length < availableScheduleTimes.length && (
                                     <CardDescription className="text-orange-600">
-                                        Requisicao parcial: {selectedTimes.length} de {SCHEDULE_TIMES.length} horarios selecionados
+                                        Requisicao parcial: {selectedTimes.length} de {availableScheduleTimes.length} horarios selecionados
                                     </CardDescription>
                                 )}
                             </CardHeader>

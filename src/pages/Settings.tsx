@@ -29,7 +29,8 @@ import {
     Users,
     Plus,
     Edit2,
-    Bed
+    Bed,
+    X
 } from "lucide-react";
 import { toast } from "sonner";
 import Header from "@/components/Header";
@@ -829,11 +830,34 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
     );
 };
 
+const DEFAULT_SCHEDULE_OPTIONS = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
+
 const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManageWards: boolean }) => {
     const { wards, createWard, updateWard, deleteWard } = useWards(hospitalId);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingWard, setEditingWard] = useState<Ward | null>(null);
-    const [newWard, setNewWard] = useState<{ name: string, type: Ward["type"] }>({ name: "", type: "uti-adulto" });
+    const [newWard, setNewWard] = useState<{ name: string; type: Ward["type"]; defaultSchedules: string[] }>({
+        name: "", type: "uti-adulto", defaultSchedules: [],
+    });
+    const [customTimeInput, setCustomTimeInput] = useState("");
+
+    const toggleScheduleTime = (time: string) => {
+        setNewWard(prev => ({
+            ...prev,
+            defaultSchedules: prev.defaultSchedules.includes(time)
+                ? prev.defaultSchedules.filter(t => t !== time)
+                : [...prev.defaultSchedules, time].sort(),
+        }));
+    };
+
+    const addCustomTime = () => {
+        const t = customTimeInput.trim();
+        if (!t || !/^\d{2}:\d{2}$/.test(t)) return;
+        if (!newWard.defaultSchedules.includes(t)) {
+            setNewWard(prev => ({ ...prev, defaultSchedules: [...prev.defaultSchedules, t].sort() }));
+        }
+        setCustomTimeInput("");
+    };
 
     const handleSave = async () => {
         if (!canManageWards) {
@@ -845,18 +869,20 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
             if (editingWard?.id) {
                 await updateWard(editingWard.id, {
                     name: newWard.name,
-                    type: newWard.type
+                    type: newWard.type,
+                    defaultSchedules: newWard.defaultSchedules,
                 });
             } else {
                 await createWard({
                     hospitalId,
                     name: newWard.name,
                     type: newWard.type,
-                    isActive: true
+                    isActive: true,
+                    defaultSchedules: newWard.defaultSchedules,
                 });
             }
             setIsDialogOpen(false);
-            setNewWard({ name: "", type: "uti-adulto" });
+            setNewWard({ name: "", type: "uti-adulto", defaultSchedules: [] });
             setEditingWard(null);
             toast.success("Ala salva!");
         } catch (e) { toast.error("Erro ao salvar ala"); }
@@ -867,11 +893,17 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {wards.map(ward => (
                     <div key={ward.id} className="flex justify-between items-center p-2 bg-muted/50 rounded text-sm group">
-                        <span>{ward.name} <span className="text-xs text-muted-foreground">({ward.type})</span></span>
+                        <div>
+                            <span className="font-medium">{ward.name}</span>
+                            <span className="text-xs text-muted-foreground ml-1">({ward.type})</span>
+                            {ward.defaultSchedules && ward.defaultSchedules.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-0.5">{ward.defaultSchedules.join(" · ")}</p>
+                            )}
+                        </div>
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                             <Button variant="ghost" size="icon" className="h-6 w-6" disabled={!canManageWards} onClick={() => {
                                 setEditingWard(ward);
-                                setNewWard({ name: ward.name, type: ward.type });
+                                setNewWard({ name: ward.name, type: ward.type, defaultSchedules: ward.defaultSchedules ?? [] });
                                 setIsDialogOpen(true);
                             }}>
                                 <Edit2 className="h-3 w-3" />
@@ -883,16 +915,16 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
                     </div>
                 ))}
             </div>
-            <Button variant="outline" size="sm" className="w-full mt-2 border-dashed" disabled={!canManageWards} onClick={() => { setEditingWard(null); setIsDialogOpen(true); }}>
+            <Button variant="outline" size="sm" className="w-full mt-2 border-dashed" disabled={!canManageWards} onClick={() => { setEditingWard(null); setNewWard({ name: "", type: "uti-adulto", defaultSchedules: [] }); setIsDialogOpen(true); }}>
                 <Plus className="h-3 w-3 mr-1" /> Adicionar Ala
             </Button>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle>{editingWard ? 'Editar' : 'Nova'} Ala</DialogTitle>
                         <DialogDescription>
-                            Defina o nome e o tipo da ala para organizacao dos pacientes por setor.
+                            Defina o nome, tipo e horários padrão de dieta para esta ala.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -912,6 +944,55 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
                                     <SelectItem value="other">Outro</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" /> Horários Padrão de Dieta
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Selecione os horários que serão exibidos nas prescrições desta ala.
+                                Se nenhum for selecionado, usa os horários globais padrão.
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {DEFAULT_SCHEDULE_OPTIONS.map(t => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => toggleScheduleTime(t)}
+                                        className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                                            newWard.defaultSchedules.includes(t)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background text-foreground border-border hover:border-primary"
+                                        }`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex gap-2 mt-1">
+                                <Input
+                                    type="time"
+                                    value={customTimeInput}
+                                    onChange={e => setCustomTimeInput(e.target.value)}
+                                    className="h-8 w-32 text-xs"
+                                    placeholder="HH:MM"
+                                />
+                                <Button type="button" variant="outline" size="sm" onClick={addCustomTime} className="h-8 text-xs">
+                                    <Plus className="h-3 w-3 mr-1" /> Adicionar
+                                </Button>
+                            </div>
+                            {newWard.defaultSchedules.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {newWard.defaultSchedules.map(t => (
+                                        <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                            {t}
+                                            <button type="button" onClick={() => toggleScheduleTime(t)} className="hover:text-red-500">
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <DialogFooter><Button onClick={handleSave}>Salvar</Button></DialogFooter>

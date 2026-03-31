@@ -10,7 +10,7 @@ import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, 
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import LabelPreview, { LabelData } from "@/components/LabelPreview";
-import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings } from "@/hooks/useDatabase";
+import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings, useWards } from "@/hooks/useDatabase";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 
 const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
@@ -58,6 +58,7 @@ const Labels = () => {
     const { settings } = useSettings();
     const { formulas } = useFormulas();
     const { modules } = useModules();
+    const { wards: wardObjects } = useWards();
 
     const patientsById = useMemo(() => {
         const map = new Map<string, (typeof patients)[number]>();
@@ -165,6 +166,18 @@ const Labels = () => {
 
         return Array.from(fromData).sort((a, b) => a.localeCompare(b));
     }, [clinics, patients, prescriptions]);
+
+    const availableScheduleTimes = useMemo(() => {
+        if (clinic === "all") return SCHEDULE_TIMES;
+        const wardObj = wardObjects.find(w => w.name === clinic);
+        return (wardObj?.defaultSchedules && wardObj.defaultSchedules.length > 0)
+            ? wardObj.defaultSchedules
+            : SCHEDULE_TIMES;
+    }, [clinic, wardObjects]);
+
+    useEffect(() => {
+        setSelectedTimes([...availableScheduleTimes]);
+    }, [availableScheduleTimes]);
 
     const activeDate = useMemo(() => date || new Date(), [date]);
     const activeDateText = useMemo(() => toDateOnly(activeDate), [activeDate]);
@@ -649,7 +662,7 @@ const Labels = () => {
         );
     };
 
-    const selectAllTimes = () => setSelectedTimes([...SCHEDULE_TIMES]);
+    const selectAllTimes = () => setSelectedTimes([...availableScheduleTimes]);
     const clearAllTimes = () => setSelectedTimes([]);
 
     const toggleLabel = (id: string) => {
@@ -766,7 +779,7 @@ const Labels = () => {
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                                    {SCHEDULE_TIMES.map((time) => (
+                                    {availableScheduleTimes.map((time) => (
                                         <button
                                             key={time}
                                             type="button"

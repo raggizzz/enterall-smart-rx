@@ -157,6 +157,17 @@ const Patients = () => {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
+    if (newPatient.height) {
+      const h = parseFloat(newPatient.height);
+      if (h > 0 && h < 50) {
+        toast.error("Estatura deve ser informada em centímetros (ex: 170). Valor informado parece estar em metros.");
+        return;
+      }
+      if (h > 250) {
+        toast.error("Estatura inválida. Informe em centímetros (ex: 170).");
+        return;
+      }
+    }
 
     try {
       if (editingPatient?.id) {

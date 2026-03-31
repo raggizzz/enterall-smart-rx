@@ -208,8 +208,9 @@ export function generateNutritionRecommendation(patient: PatientData): Nutrition
   const rationale: string[] = [];
   const warnings: string[] = [];
   
-  // Calculate BMI
-  const bmi = patient.weight / Math.pow(patient.height / 100, 2);
+  // Calculate BMI (normalize height: if < 3, assume meters and convert to cm)
+  const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
+  const bmi = patient.weight / Math.pow(heightCm / 100, 2);
   rationale.push(`IMC calculado: ${bmi.toFixed(1)} kg/m²`);
   
   // Calculate energy requirements

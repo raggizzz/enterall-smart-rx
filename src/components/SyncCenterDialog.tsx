@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AlertTriangle, RefreshCw, ShieldAlert, Trash2, Wifi } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,25 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { discardPendingOperation, getPendingOperations, retryPendingOperation, type PendingOperation } from "@/lib/offlineStore";
+import { discardAllOperations, discardPendingOperation, getPendingOperations, retryPendingOperation, type PendingOperation } from "@/lib/offlineStore";
 import { useSyncQueue } from "@/components/SyncQueueProvider";
+import { toast } from "sonner";
 
 const SyncCenterDialog = () => {
   const { pendingCount, failedCount, isSyncing, lastSyncAt, syncNow } = useSyncQueue();
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  const totalCount = (pendingCount ?? 0) + (failedCount ?? 0);
+
+  const handleDiscardAll = async () => {
+    if (!window.confirm(`Descartar todas as ${totalCount} operacao(oes) da fila? Esta acao nao pode ser desfeita.`)) return;
+    setIsDiscarding(true);
+    try {
+      const removed = await discardAllOperations();
+      toast.success(`${removed} operacao(oes) descartada(s) da fila.`);
+    } finally {
+      setIsDiscarding(false);
+    }
+  };
   const operations = useLiveQuery(
     async () => (await getPendingOperations()).slice().reverse(),
     [],
@@ -107,10 +121,20 @@ const SyncCenterDialog = () => {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => void syncNow()} disabled={isSyncing}>
+          <Button onClick={() => void syncNow()} disabled={isSyncing || totalCount === 0}>
             <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
             Sincronizar agora
           </Button>
+          {totalCount > 0 && (
+            <Button
+              variant="destructive"
+              onClick={() => void handleDiscardAll()}
+              disabled={isDiscarding || isSyncing}
+            >
+              <Trash2 className="h-4 w-4" />
+              Descartar tudo ({totalCount})
+            </Button>
+          )}
         </div>
 
         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">

@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-import { usePatients } from "@/hooks/useDatabase";
+import { usePatients, useWards } from "@/hooks/useDatabase";
 import { Patient } from "@/lib/database";
 
 interface FormulaEntry {
@@ -48,6 +48,7 @@ const DietPrescription = () => {
 
     // Usar pacientes do banco de dados
     const { patients, isLoading: patientsLoading } = usePatients();
+    const { wards: wardObjects } = useWards();
 
     const availableFormulas = getAllFormulas();
     const availableModules = getAllModules();
@@ -193,6 +194,17 @@ const DietPrescription = () => {
             residues: Math.round(totalResidues),
         };
     }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules]);
+
+    const wardScheduleTimes = useMemo(() => {
+        if (!selectedPatient) return SCHEDULE_TIMES;
+        const ward = wardObjects.find(w =>
+            (selectedPatient.wardId && w.id === selectedPatient.wardId) ||
+            (selectedPatient.ward && w.name === selectedPatient.ward)
+        );
+        return (ward?.defaultSchedules && ward.defaultSchedules.length > 0)
+            ? ward.defaultSchedules
+            : SCHEDULE_TIMES;
+    }, [selectedPatient, wardObjects]);
 
     // Cálculo de bolsas (sistema fechado)
     const bagCalculation = useMemo(() => {
@@ -686,7 +698,7 @@ const DietPrescription = () => {
                                             <Label>Horários de Envio das Bolsas</Label>
                                             <p className="text-xs text-muted-foreground">Selecione os horários para entrega das bolsas</p>
                                             <div className="flex flex-wrap gap-2">
-                                                {SCHEDULE_TIMES.map(time => (
+                                                {wardScheduleTimes.map(time => (
                                                     <Button key={time} variant={closedFormula.bagTimes.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleBagTime(time)}>{time}</Button>
                                                 ))}
                                             </div>
@@ -778,7 +790,7 @@ const DietPrescription = () => {
                                                 <div className="space-y-2">
                                                     <Label>Horários</Label>
                                                     <div className="flex flex-wrap gap-2">
-                                                        {SCHEDULE_TIMES.map(time => (
+                                                        {wardScheduleTimes.map(time => (
                                                             <Button key={time} variant={formula.times.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(formula.id, time)}>{time}</Button>
                                                         ))}
                                                     </div>
@@ -860,7 +872,7 @@ const DietPrescription = () => {
                                             <div className="space-y-2">
                                                 <Label>Horários</Label>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {SCHEDULE_TIMES.map(time => (
+                                                    {wardScheduleTimes.map(time => (
                                                         <Button key={time} variant={mod.times.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(mod.id, time)}>{time}</Button>
                                                     ))}
                                                 </div>
@@ -897,7 +909,7 @@ const DietPrescription = () => {
                                     <div className="space-y-2">
                                         <Label>Horários</Label>
                                         <div className="flex flex-wrap gap-2">
-                                            {SCHEDULE_TIMES.map(time => (
+                                            {wardScheduleTimes.map(time => (
                                                 <Button key={time} variant={hydration.times.includes(time) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(time)}>{time}</Button>
                                             ))}
                                         </div>

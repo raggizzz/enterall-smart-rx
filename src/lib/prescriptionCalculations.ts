@@ -195,15 +195,19 @@ export const addNutritionAccumulators = (
   return target;
 };
 
+// Normalize height to cm: if value looks like meters (< 3), convert to cm
+const normalizeHeightCm = (heightCm: number): number =>
+  heightCm < 3 ? heightCm * 100 : heightCm;
+
 export const calculateBmi = (weight?: number | null, heightCm?: number | null): number | null => {
   if (!hasNumber(weight) || !hasNumber(heightCm) || heightCm <= 0) return null;
-  const heightMeters = heightCm / 100;
+  const heightMeters = normalizeHeightCm(heightCm) / 100;
   return weight / (heightMeters * heightMeters);
 };
 
 export const calculateIdealWeight = (heightCm?: number | null): number | null => {
   if (!hasNumber(heightCm) || heightCm <= 0) return null;
-  const heightMeters = heightCm / 100;
+  const heightMeters = normalizeHeightCm(heightCm) / 100;
   return 25 * heightMeters * heightMeters;
 };
 
