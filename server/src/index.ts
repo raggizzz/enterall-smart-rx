@@ -14,6 +14,7 @@ import {
 } from './lib/metrics';
 
 const app = express();
+app.set('trust proxy', 1); // trust first proxy (Cloudflare tunnel / reverse proxy)
 const port = process.env.PORT || 3000;
 
 import { requireAuth } from './lib/auth-middleware';
