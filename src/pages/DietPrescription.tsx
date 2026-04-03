@@ -589,12 +589,12 @@ const DietPrescription = () => {
                                         <Label>Modo de Infusão *</Label>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === "pump" ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: "pump" })}>
-                                                <span className="font-medium">Bomba de Infusão</span>
-                                                <p className="text-xs text-muted-foreground">Velocidade em ml/h</p>
+                                                <span className="font-medium">Infusão através de BIC</span>
+                                                <p className="text-xs text-muted-foreground">Velocidade calculada em ml/h</p>
                                             </div>
                                             <div className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === "gravity" ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: "gravity" })}>
-                                                <span className="font-medium">Gravitacional</span>
-                                                <p className="text-xs text-muted-foreground">Velocidade em gotas/min (1ml = 20 gotas)</p>
+                                                <span className="font-medium">Infusão em modo gravitacional</span>
+                                                <p className="text-xs text-muted-foreground">Velocidade calculada em gotas/min (1ml = 20 gotas)</p>
                                             </div>
                                         </div>
                                     </div>
@@ -730,9 +730,9 @@ const DietPrescription = () => {
                                         <Label>Modo de Infusão *</Label>
                                         <div className="grid grid-cols-3 gap-4">
                                             {[
-                                                { value: "pump", label: "Bomba de Infusão", desc: "ml/h" },
-                                                { value: "gravity", label: "Gravitacional", desc: "gotas/min" },
-                                                { value: "bolus", label: "Bolus", desc: "Tudo de uma vez" },
+                                                { value: "pump", label: "Infusão através de BIC", desc: "velocidade calculada em ml/h" },
+                                                { value: "gravity", label: "Infusão em modo gravitacional", desc: "velocidade calculada em gotas/min" },
+                                                { value: "bolus", label: "Bolus", desc: "Infusão do volume total em um curto período de tempo" },
                                             ].map(mode => (
                                                 <div key={mode.value} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === mode.value ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(mode.value as any)}>
                                                     <span className="font-medium">{mode.label}</span>
@@ -745,7 +745,7 @@ const DietPrescription = () => {
                                     {/* Tempo por etapa */}
                                     {(openInfusionMode === "pump" || openInfusionMode === "gravity") && (
                                         <div className="space-y-2">
-                                            <Label>Infundir cada etapa em:</Label>
+                                            <Label>Tempo para infusão de cada etapa de NE:</Label>
                                             <div className="flex items-center gap-2 max-w-xs">
                                                 <Input type="number" value={openDurationPerStep} onChange={(e) => setOpenDurationPerStep(e.target.value)} placeholder="Ex: 2" />
                                                 <span className="text-sm font-medium">horas</span>

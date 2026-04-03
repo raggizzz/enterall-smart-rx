@@ -218,30 +218,34 @@ export const generateRequisitionData = ({
                     ? totalVol + (extraPowderPerAdministration * matchingTimes.length * dayDiff)
                     : totalVol + totalExtraVolume;
 
-                if (billingUnit === 'ml' && formulaObj?.presentations && formulaObj.presentations.length > 0) {
-                    // Calculate Bags
+                // Módulo 10: Sistema Fechado - Método Quantitativo (Qtd Bolsas × Preço)
+                if (p.systemType === 'closed') {
+                    const bagSize = formulaObj?.presentations?.[0] || 1000;
+                    const bagQuantities = p.enteralDetails?.closedFormula?.bagQuantities || {};
+                    const bagQtyFromPrescription = Object.values(bagQuantities).reduce((sum: number, qty: unknown) => sum + (Number(qty) || 0), 0);
+                    const dailyVolume = f.volume * matchingTimes.length;
+                    const dailyBags = bagQtyFromPrescription > 0
+                        ? bagQtyFromPrescription
+                        : Math.ceil(dailyVolume / bagSize);
+                    const totalBags = dailyBags * dayDiff;
+                    const pricePerBag = billingUnit === 'ml' ? price * bagSize : price;
+                    rowUnitPrice = pricePerBag;
+                    rowSubtotal = totalBags * pricePerBag;
+                    addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
+                } else if (billingUnit === 'ml' && formulaObj?.presentations && formulaObj.presentations.length > 0) {
+                    // Calculate Bags for open system with ml billing
                     // User Rule: "quantidade de bolsas deve ser calculada utilizando arredondamento para cima"
-                    // Use the first presentation as the standard bag size (e.g., 500, 1000)
                     const bagSize = formulaObj.presentations[0];
                     const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
                     const dailyBags = Math.ceil(dailyVolume / bagSize);
                     const totalBags = dailyBags * dayDiff;
 
-                    // If price is per ml, we need to convert or assume price is per bag? 
-                    // Usually if unit is ML, price is per ML. 
-                    // But user wants to bill by BAGS.
-                    // If we bill by bags, we should probably display Bags count, and price per BAG.
-                    // Price per bag = Price/ml * bagSize
                     const pricePerBag = price * bagSize;
                     rowUnitPrice = pricePerBag;
                     rowSubtotal = totalBags * pricePerBag;
 
                     addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
                 } else if (billingUnit === 'unit') {
-                    // Already billed by unit (bag)
-                    // Check if we need to calculate bags based on volume or just use quantity (if quantity existed)
-                    // But formula prescription uses VOLUME (ml).
-                    // So we must convert Volume -> Bags
                     const bagSize = formulaObj?.presentations?.[0] || 1000;
                     const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
                     const dailyBags = Math.ceil(dailyVolume / bagSize);

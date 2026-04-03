@@ -64,10 +64,19 @@ interface PatientMonitoringProps {
     // Dados das prescrições para calcular aporte total
     enteralKcal?: number;
     enteralProtein?: number;
+    enteralCarbs?: number;
+    enteralFat?: number;
+    enteralFiber?: number;
     oralKcal?: number;
     oralProtein?: number;
+    oralCarbs?: number;
+    oralFat?: number;
+    oralFiber?: number;
     parenteralKcal?: number;
     parenteralProtein?: number;
+    parenteralCarbs?: number;
+    parenteralFat?: number;
+    parenteralFiber?: number;
     historyData?: MonitoringChartRow[];
     savedEvolution?: DailyEvolution;
 }
@@ -77,10 +86,19 @@ export const PatientMonitoring = ({
     onSave,
     enteralKcal = 0,
     enteralProtein = 0,
+    enteralCarbs = 0,
+    enteralFat = 0,
+    enteralFiber = 0,
     oralKcal = 0,
     oralProtein = 0,
+    oralCarbs = 0,
+    oralFat = 0,
+    oralFiber = 0,
     parenteralKcal = 0,
     parenteralProtein = 0,
+    parenteralCarbs = 0,
+    parenteralFat = 0,
+    parenteralFiber = 0,
     historyData,
     savedEvolution,
 }: PatientMonitoringProps) => {
@@ -156,21 +174,48 @@ export const PatientMonitoring = ({
         const intentionalKcal = enteralKcal + oralKcal + parenteralKcal;
         const totalKcal = intentionalKcal + unintentionalKcal.total;
         const totalProtein = enteralProtein + oralProtein + parenteralProtein;
+        const totalCarbs = enteralCarbs + oralCarbs + parenteralCarbs;
+        const totalFat = enteralFat + oralFat + parenteralFat;
+        const totalFiber = enteralFiber + oralFiber + parenteralFiber;
 
         const kcalPerKg = patient.weight ? totalKcal / patient.weight : 0;
         const proteinPerKg = patient.weight ? totalProtein / patient.weight : 0;
         const proteinPerKgIdeal = idealWeight ? totalProtein / idealWeight : 0;
+        const carbsPerKg = patient.weight ? totalCarbs / patient.weight : 0;
+        const fatPerKg = patient.weight ? totalFat / patient.weight : 0;
+
+        const protKcal = totalProtein * 4;
+        const carbKcal = totalCarbs * 4;
+        const fatKcal = totalFat * 9;
+
+        const pctProt = totalKcal > 0 ? (protKcal / totalKcal) * 100 : 0;
+        const pctCarb = totalKcal > 0 ? (carbKcal / totalKcal) * 100 : 0;
+        const pctFat = totalKcal > 0 ? (fatKcal / totalKcal) * 100 : 0;
 
         return {
             intentionalKcal,
             totalKcal,
             totalProtein,
+            totalCarbs,
+            totalFat,
+            totalFiber,
             kcalPerKg,
             proteinPerKg,
             proteinPerKgIdeal,
+            carbsPerKg,
+            fatPerKg,
+            pctProt,
+            pctCarb,
+            pctFat,
         };
-    }, [enteralKcal, oralKcal, parenteralKcal,
-        enteralProtein, oralProtein, parenteralProtein, patient.weight, idealWeight, unintentionalKcal.total]);
+    }, [
+        enteralKcal, oralKcal, parenteralKcal,
+        enteralProtein, oralProtein, parenteralProtein,
+        enteralCarbs, oralCarbs, parenteralCarbs,
+        enteralFat, oralFat, parenteralFat,
+        enteralFiber, oralFiber, parenteralFiber,
+        patient.weight, idealWeight, unintentionalKcal.total
+    ]);
 
     const actualNutrition = useMemo(() => {
         const intentionalKcal = actualEnteralKcal + oralActualKcal + parenteralActualKcal;
@@ -374,7 +419,6 @@ export const PatientMonitoring = ({
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                         <Input
                             type="number"
-                            min="0"
                             max="100"
                             value={infusionPercentage}
                             onChange={(e) => setInfusionPercentage(parseInt(e.target.value) || 0)}
@@ -386,18 +430,18 @@ export const PatientMonitoring = ({
                     <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div className="rounded-lg border bg-sky-50 p-4">
                             <div className="flex items-center justify-between">
-                                <span className="font-medium text-sky-700">NE efetiva (automática)</span>
+                                <span className="font-medium text-sky-700">NE efetiva (consolidado executado do dia anterior)</span>
                                 <Badge className="bg-sky-600">{infusionPercentage}%</Badge>
                             </div>
                             <p className="mt-2 text-sm text-sky-900">
                                 {actualEnteralKcal.toFixed(0)} kcal e {actualEnteralProtein.toFixed(1)} g de proteína
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                                Calculada a partir do percentual de infusão das últimas 24h.
+                                Calculada a partir do percentual de infusão efetivamente administrado nas últimas 24h.
                             </p>
                         </div>
                         <div className="rounded-lg border bg-white p-4">
-                            <p className="font-medium">Aporte efetivo total das últimas 24h</p>
+                            <p className="font-medium">Resumo efetivo 24h (relativo ao dia anterior)</p>
                             <p className="mt-2 text-sm text-muted-foreground">
                                 {actualNutrition.totalKcal.toFixed(0)} kcal e {actualNutrition.totalProtein.toFixed(1)} g de proteína
                             </p>
@@ -413,7 +457,7 @@ export const PatientMonitoring = ({
                     </div>
                     <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="space-y-3 rounded-lg border bg-sky-50/60 p-4">
-                            <p className="font-medium text-sky-700">Resumo efetivo por via nas últimas 24h</p>
+                            <p className="font-medium text-sky-700">Resumo efetivo por via — últimas 24h (dia anterior)</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                 <div className="rounded-md border bg-white p-3">
                                     <p className="font-semibold text-sky-700">NE</p>
@@ -459,7 +503,6 @@ export const PatientMonitoring = ({
                                     <Label>kcal VO</Label>
                                     <Input
                                         type="number"
-                                        min="0"
                                         value={oralActualKcal}
                                         onChange={(e) => setOralActualKcal(parseFloat(e.target.value) || 0)}
                                     />
@@ -468,7 +511,6 @@ export const PatientMonitoring = ({
                                     <Label>Proteína VO (g)</Label>
                                     <Input
                                         type="number"
-                                        min="0"
                                         step="0.1"
                                         value={oralActualProtein}
                                         onChange={(e) => setOralActualProtein(parseFloat(e.target.value) || 0)}
@@ -483,7 +525,6 @@ export const PatientMonitoring = ({
                                     <Label>kcal NP</Label>
                                     <Input
                                         type="number"
-                                        min="0"
                                         value={parenteralActualKcal}
                                         onChange={(e) => setParenteralActualKcal(parseFloat(e.target.value) || 0)}
                                     />
@@ -492,7 +533,6 @@ export const PatientMonitoring = ({
                                     <Label>Proteína NP (g)</Label>
                                     <Input
                                         type="number"
-                                        min="0"
                                         step="0.1"
                                         value={parenteralActualProtein}
                                         onChange={(e) => setParenteralActualProtein(parseFloat(e.target.value) || 0)}
@@ -786,10 +826,10 @@ export const PatientMonitoring = ({
                 <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-green-700">
                         <Calculator className="h-5 w-5" />
-                        Aporte Nutricional Total
+                        Aporte Nutricional Total (previsão da prescrição nova)
                     </CardTitle>
                     <CardDescription>
-                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico.
+                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico. Exibe a previsão com base na prescrição atual.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -827,15 +867,18 @@ export const PatientMonitoring = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 text-sm">
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-orange-600">Via Oral</div>
-                            <div>{oralKcal} kcal / {oralProtein}g</div>
+                            <div>{oralKcal} kcal / {oralProtein}g Prot</div>
+                            <div className="text-xs text-muted-foreground mt-1">Carb: {oralCarbs}g | Lip: {oralFat}g | Fib: {oralFiber}g</div>
                         </div>
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-blue-600">TNE</div>
-                            <div>{enteralKcal} kcal / {enteralProtein}g</div>
+                            <div>{enteralKcal} kcal / {enteralProtein}g Prot</div>
+                            <div className="text-xs text-muted-foreground mt-1">Carb: {enteralCarbs}g | Lip: {enteralFat}g | Fib: {enteralFiber}g</div>
                         </div>
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-purple-600">TNP</div>
-                            <div>{parenteralKcal} kcal / {parenteralProtein}g</div>
+                            <div>{parenteralKcal} kcal / {parenteralProtein}g Prot</div>
+                            <div className="text-xs text-muted-foreground mt-1">Carb: {parenteralCarbs}g | Lip: {parenteralFat}g | Fib: {parenteralFiber}g</div>
                         </div>
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-gray-600">Não Intencional</div>
@@ -844,6 +887,12 @@ export const PatientMonitoring = ({
                         <div className="p-2 bg-white rounded border">
                             <div className="font-semibold text-emerald-700">Total Geral</div>
                             <div>{totalNutrition.totalKcal.toFixed(0)} kcal</div>
+                            <div className="text-xs text-muted-foreground space-y-1 mt-1 border-t pt-1">
+                                <div><span className="font-medium text-blue-600">Prot:</span> {totalNutrition.totalProtein.toFixed(1)}g ({totalNutrition.pctProt.toFixed(1)}% VET)</div>
+                                <div><span className="font-medium text-amber-600">Carb:</span> {totalNutrition.totalCarbs.toFixed(1)}g ({totalNutrition.pctCarb.toFixed(1)}% VET)</div>
+                                <div><span className="font-medium text-red-500">Lip:</span> {totalNutrition.totalFat.toFixed(1)}g ({totalNutrition.pctFat.toFixed(1)}% VET)</div>
+                                <div><span className="font-medium text-green-600">Fibra:</span> {totalNutrition.totalFiber.toFixed(1)}g</div>
+                            </div>
                         </div>
                     </div>
                 </CardContent>

@@ -36,7 +36,7 @@ export interface Formula {
   code?: string; // T: Código
   name: string; // T: Nome comercial
   manufacturer: string; // T: Fabricante
-  type: 'standard' | 'high-protein' | 'high-calorie' | 'diabetic' | 'renal' | 'peptide' | 'fiber' | 'immune';
+  type: 'standard' | 'high-protein' | 'high-calorie' | 'diabetic' | 'renal' | 'peptide' | 'fiber' | 'immune' | 'oral-supplement' | 'infant-formula';
   classification?: string; // T: Classificação (ex: hiperproteica)
   macronutrientComplexity?: 'polymeric' | 'oligomeric'; // T: Complexidade dos macronutrientes
   systemType: 'open' | 'closed' | 'both'; // Legacy field, use formulaTypes for multi-select

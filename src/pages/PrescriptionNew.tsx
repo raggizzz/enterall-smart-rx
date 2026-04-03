@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Mic, ArrowLeft, Check, ChevronDown, ChevronRight, Droplet, Plus, Trash2, Utensils, Syringe, Calculator, Save, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -366,6 +367,108 @@ const PrescriptionNew = () => {
   // Summary expanded
   const [showDetails, setShowDetails] = useState(false);
 
+  // Security Alert for High Speed
+  const [highSpeedAlertOpen, setHighSpeedAlertOpen] = useState(false);
+  const [highSpeedAlertMessage, setHighSpeedAlertMessage] = useState("");
+
+  const checkHighSpeed = (rateVal: string, mode: "pump" | "gravity" | "bolus" | "") => {
+    const num = Number(rateVal);
+    if (!num) return;
+    if (mode === "pump" && num > 150) {
+      setHighSpeedAlertMessage(`A velocidade de infusão informada (${num} ml/h) é superior a 150 ml/h.`);
+      setHighSpeedAlertOpen(true);
+    } else if (mode === "gravity" && num > 50) {
+      setHighSpeedAlertMessage(`A velocidade de infusão informada (${num} gotas/min) é superior a 50 gotas/min.`);
+      setHighSpeedAlertOpen(true);
+    }
+  };
+
+  const checkHighSpeedOpen = (durVal: string) => {
+    if (openInfusionMode !== "pump" && openInfusionMode !== "gravity") return;
+    const dur = Number(durVal);
+    if (!dur) return;
+    
+    // Calcula o maior volume entre as fórmulas para verificar a velocidade máxima
+    let maxVol = 0;
+    openFormulas.forEach(f => {
+      const vol = Number(f.diluteTo || f.volume);
+      if (vol && vol > maxVol) maxVol = vol;
+    });
+
+    if (maxVol > 0) {
+      const rate = calculateOpenStageRate(maxVol, openInfusionMode as any, dur);
+      if (rate) {
+        if (openInfusionMode === "pump" && rate.mlPerHour && rate.mlPerHour > 150) {
+          setHighSpeedAlertMessage(`A velocidade de infusão calculada da dieta aberta (${rate.mlPerHour.toFixed(1)} ml/h) é superior a 150 ml/h, considerando o volume de ${maxVol} ml.`);
+          setHighSpeedAlertOpen(true);
+        } else if (openInfusionMode === "gravity" && rate.dropsPerMin && rate.dropsPerMin > 50) {
+          setHighSpeedAlertMessage(`A velocidade de infusão calculada da dieta aberta (${rate.dropsPerMin.toFixed(1)} gotas/min) é superior a 50 gotas/min, considerando o volume de ${maxVol} ml.`);
+          setHighSpeedAlertOpen(true);
+        }
+      }
+    }
+  };
+
+  // Módulo 7: Alerta de volumes diferentes por etapa (Sistema Aberto)
+  const checkVolumeDivergence = useCallback(() => {
+    if (systemType !== "open" || !feedingRoutes.enteral) return;
+    const volumes = openFormulas
+      .filter(f => isPersistedDbId(f.formulaId) && f.volume)
+      .map(f => parseFloat(f.volume) || 0)
+      .filter(v => v > 0);
+    if (volumes.length < 2) return;
+    const uniqueVolumes = Array.from(new Set(volumes.map(v => v.toFixed(1))));
+    if (uniqueVolumes.length > 1) {
+      setHighSpeedAlertMessage(
+        `Os volumes das etapas são diferentes (${uniqueVolumes.join(" / ")} mL). Verifique se esta diferença é intencional. Volumes divergentes podem afetar a velocidade de infusão e o aporte nutricional.`
+      );
+      setHighSpeedAlertOpen(true);
+    }
+  }, [openFormulas, systemType, feedingRoutes.enteral]);
+
+  // Módulo 7: Alerta de sobreposição de horários entre fórmulas, módulos e hidratação
+  const checkScheduleOverlap = useCallback(() => {
+    if (!feedingRoutes.enteral || systemType !== "open") return;
+    const scheduleMap = new Map<string, string[]>();
+    openFormulas.forEach(f => {
+      if (!isPersistedDbId(f.formulaId)) return;
+      const name = availableFormulas.find(af => af.id === f.formulaId)?.name || "Fórmula";
+      f.times.forEach(t => {
+        const existing = scheduleMap.get(t) || [];
+        existing.push(name);
+        scheduleMap.set(t, existing);
+      });
+    });
+    modules.forEach(m => {
+      if (!isPersistedDbId(m.moduleId)) return;
+      const name = availableModules.find(am => am.id === m.moduleId)?.name || "Módulo";
+      m.times.forEach(t => {
+        const existing = scheduleMap.get(t) || [];
+        existing.push(name);
+        scheduleMap.set(t, existing);
+      });
+    });
+    if (hydration.times.length > 0 && parseFloat(hydration.volume) > 0) {
+      hydration.times.forEach(t => {
+        const existing = scheduleMap.get(t) || [];
+        existing.push("Água/Hidratação");
+        scheduleMap.set(t, existing);
+      });
+    }
+    const overlaps: string[] = [];
+    scheduleMap.forEach((items, time) => {
+      if (items.length > 1) {
+        overlaps.push(`${time} → ${items.join(", ")}`);
+      }
+    });
+    if (overlaps.length > 0) {
+      toast.warning(
+        `Sobreposição de horários detectada:\n${overlaps.slice(0, 5).join("\n")}${overlaps.length > 5 ? `\n...e mais ${overlaps.length - 5}` : ""}`,
+        { duration: 8000 }
+      );
+    }
+  }, [openFormulas, modules, hydration, feedingRoutes.enteral, systemType, availableFormulas, availableModules]);
+
   // --- Oral Inline State (Step 8) ---
   const [oralDietConsistency, setOralDietConsistency] = useState('');
   const [oralDietCharacteristics, setOralDietCharacteristics] = useState('');
@@ -445,9 +548,12 @@ const PrescriptionNew = () => {
         : null;
 
   const formulaMatchesPatient = useCallback((formula: ExtendedCatalogFormula) => {
+    if (selectedPatient?.age !== undefined && selectedPatient.age > 3 && formula.type === "infant-formula") {
+      return false;
+    }
     if (!formula.ageGroup || !suggestedAgeGroup) return true;
     return formula.ageGroup === suggestedAgeGroup;
-  }, [suggestedAgeGroup]);
+  }, [suggestedAgeGroup, selectedPatient?.age]);
 
   const enteralAvailableClosedFormulas = useMemo(() => {
     return availableFormulas.filter((formula) =>
@@ -1115,6 +1221,10 @@ const PrescriptionNew = () => {
       return;
     }
 
+    // Módulo 7: Verificar volumes divergentes e sobreposição de horários antes de salvar
+    checkVolumeDivergence();
+    checkScheduleOverlap();
+
     setIsSaving(true);
     try {
       const hasPendingClosedFormula =
@@ -1315,7 +1425,7 @@ const PrescriptionNew = () => {
               times: hydration.times,
             },
           },
-          notes: `TNE: ${systemType === "closed" ? "sistema fechado" : "sistema aberto"} | Acesso: ${enteralAccess || "-"} | Infusão: ${(systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || "-"} | Volume para equipo: ${systemType === "open" ? (equipmentVolume || "-") : "n/a"} ml`,
+          notes: `TNE: ${systemType === "closed" ? "Fórmula Enteral de Sistema Fechado" : "Fórmula Enteral de Sistema Aberto"} | Acesso: ${enteralAccess || "-"} | Infusão: ${(systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || "-"} | Volume para equipo: ${systemType === "open" ? (equipmentVolume || "-") : "n/a"} ml`,
         });
         savedRoutes.push("TNE");
       }
@@ -1729,8 +1839,8 @@ const PrescriptionNew = () => {
                     </div>
                   )}
                   <div className="space-y-2"><Label>Fórmula *</Label><Select value={closedFormula.formulaId} onValueChange={v => setClosedFormula({ ...closedFormula, formulaId: v })}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableClosedFormulas.map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.composition.density} kcal/ml)</SelectItem>)}</SelectContent></Select></div>
-                  <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-2 gap-4">{[{ v: "pump", l: "Bomba de Infusão", d: "ml/h" }, { v: "gravity", l: "Gravitacional", d: "gotas/min (1ml=20gotas)" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: m.v as any })}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
-                  {closedFormula.infusionMode && <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Velocidade *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.rate} onChange={e => setClosedFormula({ ...closedFormula, rate: e.target.value })} /><span className="text-sm whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span></div></div><div className="space-y-2"><Label>Tempo de Infusão *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.duration} onChange={e => setClosedFormula({ ...closedFormula, duration: e.target.value })} /><span className="text-sm">horas/dia</span></div></div></div>}
+                  <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-2 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: m.v as any })}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
+                  {closedFormula.infusionMode && <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Velocidade *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.rate} onChange={e => setClosedFormula({ ...closedFormula, rate: e.target.value })} onBlur={e => checkHighSpeed(e.target.value, closedFormula.infusionMode)} /><span className="text-sm whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span></div></div><div className="space-y-2"><Label>Tempo de Infusão *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.duration} onChange={e => setClosedFormula({ ...closedFormula, duration: e.target.value })} /><span className="text-sm">horas/dia</span></div></div></div>}
                   {bagCalculation && <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><p className="font-semibold text-blue-800">Volume prescrito para 24h: {bagCalculation.totalVolume} ml</p><p className="text-blue-700">A fórmula possui {bagCalculation.bagSize} ml por bolsa</p><p className="font-medium text-blue-800">Enviar para 24h: {bagCalculation.numBags} bolsa(s) necessárias</p></div>}
                   {bagCalculation && <div className="space-y-3">
                     <Label>Horários de Envio das Bolsas</Label>
@@ -1741,7 +1851,6 @@ const PrescriptionNew = () => {
                           <Label className="text-xs text-center block">{t}</Label>
                           <Input
                             type="number"
-                            min="0"
                             className="text-center h-10"
                             value={closedFormula.bagQuantities[t] || ""}
                             onChange={e => updateBagQuantity(t, parseInt(e.target.value) || 0)}
@@ -1774,21 +1883,33 @@ const PrescriptionNew = () => {
                       Nenhuma formula aberta compativel com a faixa etaria e a rota cadastradas para este paciente.
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Bomba", d: "ml/h" }, { v: "gravity", l: "Gravitacional", d: "gotas/min" }, { v: "bolus", l: "Bolus", d: "Tudo de uma vez" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
+                  <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }, { v: "bolus", l: "Bolus", d: "Infusão do volume total em um curto período de tempo" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
                   {(openInfusionMode === "pump" || openInfusionMode === "gravity") && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Infundir cada etapa em</Label>
+                        <Label>Tempo para infusão de cada etapa de NE</Label>
                         <div className="flex items-center gap-2 max-w-xs">
-                          <Input type="number" value={openDurationPerStep} onChange={e => setOpenDurationPerStep(e.target.value)} />
+                          <Input type="number" value={openDurationPerStep} onChange={e => setOpenDurationPerStep(e.target.value)} onBlur={e => checkHighSpeedOpen(e.target.value)} />
                           <span className="text-sm">horas</span>
                         </div>
                         <p className="text-sm text-muted-foreground">Tempo previsto para correr cada etapa da dieta aberta. Ex.: cada oferta de 200 mL administrada ao longo de 2 horas.</p>
                       </div>
                       <div className="space-y-2">
-                        <Label>Volume por equipo (mL)</Label>
+                        <Label>Volume adicionado em cada etapa de NE (mL)</Label>
                         <Input type="number" value={equipmentVolume} onChange={e => setEquipmentVolume(e.target.value)} className="max-w-xs" placeholder="Ex: 20" />
-                        <p className="text-sm text-muted-foreground">Usado no faturamento da dieta aberta: quantidade de etapas/frascos x volume por equipo. Nao entra no calculo nutricional.</p>
+                        <p className="text-sm text-muted-foreground" title="Este volume é faturado mas não é considerado aporte nutricional.">Usado no faturamento da dieta aberta. Este volume é faturado mas não é considerado aporte nutricional.</p>
+                        {(() => {
+                           const totalCalcVol = openFormulas.reduce((sum, f) => sum + Number(f.diluteTo || f.volume || 0), 0);
+                           if (equipmentVolume && Number(equipmentVolume) !== totalCalcVol && totalCalcVol > 0) {
+                             return (
+                               <div className="mt-2 text-amber-600 text-sm flex items-center gap-1 bg-amber-50 p-2 rounded border border-amber-200">
+                                 <AlertCircle className="h-4 w-4" />
+                                 <span>O volume ajustado para o equipo ({equipmentVolume} ml) difere do volume total calculado da dieta ({totalCalcVol} ml).</span>
+                               </div>
+                             );
+                           }
+                           return null;
+                        })()}
                       </div>
                     </div>
                   )}
@@ -1801,7 +1922,7 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Quantidade por etapa (ml ou g)</Label><Input type="number" value={f.volume} onChange={e => updateOpenFormula(f.id, "volume", e.target.value)} /></div>
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
-                        <p className="text-sm text-muted-foreground">Se informar diluicao, o volume final da etapa considera a quantidade prescrita somada ao volume de agua necessario ate atingir o total desejado.</p>
+                        <p className="text-sm text-muted-foreground" title="Preencher volume total somente se a dieta for diluída.">Preencher volume total somente se for necessário diluir (o volume de água será adicionado para atingir este total desejado).</p>
                         <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{wardScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
@@ -2165,7 +2286,7 @@ const PrescriptionNew = () => {
                                   return am ? `${am.name} ${m.quantity}${m.unit}, ${m.times.length} vezes ao dia` : '';
                                 }).filter(Boolean).join("; ");
                                 const totalVol = bagCalculation?.totalVolume || 0;
-                                return `Sistema fechado: ${f?.name || ''} ${f?.macronutrientComplexity === 'polymeric' ? 'polimérica' : 'oligomérica'}, ${f?.classification || 'padrão'}, ${fiberText}, ${totalVol} ml/dia, com infusão de ${closedFormula.duration}h e velocidade de ${closedFormula.rate} ${closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}, administrada via ${closedFormula.infusionMode === "pump" ? "bomba de infusão" : "gravitacional"}, através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
+                                return `Fórmula Enteral de Sistema Fechado: ${f?.name || ''} ${f?.macronutrientComplexity === 'polymeric' ? 'polimérica' : 'oligomérica'}, ${f?.classification || 'padrão'}, ${fiberText}, ${totalVol} ml/dia, com infusão de ${closedFormula.duration}h e velocidade de ${closedFormula.rate} ${closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}, administrada via ${closedFormula.infusionMode === "pump" ? "bomba de infusão" : "gravitacional"}, através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
                               })()}
                               
                               {systemType === "open" && (() => {
@@ -2178,7 +2299,7 @@ const PrescriptionNew = () => {
                                   const am = availableModules.find(x => x.id === m.moduleId);
                                   return am ? `${am.name} ${m.quantity}${m.unit}, ${m.times.length} vezes ao dia` : '';
                                 }).filter(Boolean).join("; ");
-                                return `Sistema aberto: ${formulasText}, administrada através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
+                                return `Fórmula Enteral de Sistema Aberto: ${formulasText}, administrada através de ${enteralAccess}.${modText ? ` Módulos: ${modText}.` : ''} Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia). Oferecendo VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`;
                               })()}
                             </div>
                           </div>
@@ -2244,6 +2365,35 @@ const PrescriptionNew = () => {
         </div>
       </div>
       <BottomNav />
+
+      {/* Alerta de Segurança: Alta Velocidade */}
+      <Dialog open={highSpeedAlertOpen} onOpenChange={setHighSpeedAlertOpen}>
+        <DialogContent className="max-w-md border-l-4 border-l-amber-500">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-6 w-6" />
+              Alerta de Segurança
+            </DialogTitle>
+            <DialogDescription className="text-base pt-2 text-foreground font-medium">
+              {highSpeedAlertMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground pb-4">
+            Velocidades elevadas de infusão podem trazer riscos associados (vômitos, distensão, diarreia ou intolerância gástrica). Deseja manter este valor?
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setClosedFormula({ ...closedFormula, rate: "" });
+              setHighSpeedAlertOpen(false);
+            }}>
+              Limpar valor
+            </Button>
+            <Button onClick={() => setHighSpeedAlertOpen(false)}>
+              Sim, manter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -241,11 +241,19 @@ export function calculateAdequacy(
 /**
  * Calculate BMI and nutritional status
  */
-export function calculateBMI(weight: number, height: number): {
+export function calculateBMI(weight: number, height: number, age?: number): {
   bmi: number;
   classification: string;
   nutritionalStatus: string;
 } {
+  if (age !== undefined && age < 2) {
+    return {
+      bmi: 0,
+      classification: 'Não aplicável para < 2 anos',
+      nutritionalStatus: 'Não calculado',
+    };
+  }
+
   const heightInMeters = height / 100;
   const bmi = weight / (heightInMeters * heightInMeters);
   const roundedBMI = Math.round(bmi * 10) / 10;
@@ -289,7 +297,11 @@ export function calculateBMI(weight: number, height: number): {
 /**
  * Calculate ideal body weight (Devine formula)
  */
-export function calculateIdealWeight(height: number, gender: 'male' | 'female'): number {
+export function calculateIdealWeight(height: number, gender: 'male' | 'female', age?: number): number {
+  if (age !== undefined && age < 18) {
+    return 0; // Não calcular peso ideal para < 18 anos
+  }
+
   const heightInInches = height / 2.54;
   
   if (gender === 'male') {
@@ -297,6 +309,22 @@ export function calculateIdealWeight(height: number, gender: 'male' | 'female'):
   } else {
     return Math.round(45.5 + 2.3 * (heightInInches - 60));
   }
+}
+
+/**
+ * Calculos Clínicos de Nutrição (Água Livre e TIG)
+ */
+export function calculateFreeWaterPowder(totalVolume: number, grammage: number): number {
+  return totalVolume - grammage;
+}
+
+export function calculateFreeWaterLiquid(formulaWater: number, dilutionVolume: number, dietVolume: number): number {
+  return formulaWater + (dilutionVolume - dietVolume);
+}
+
+export function calculateParenteralTIG(glucoseGramsPerDay: number, weightKg: number, infusionHours: number): number {
+  if (weightKg === 0 || infusionHours === 0) return 0;
+  return (glucoseGramsPerDay * 1000) / (weightKg * 60 * infusionHours);
 }
 
 /**
@@ -494,6 +522,31 @@ export function validateCalculations(calculations: any): {
   }
   if (calculations.volume?.totalVolume > 3000) {
     warnings.push('Volume muito alto (>3000ml/dia)');
+  }
+  
+  // Check Fibras Parenteral
+  if (calculations.therapyType === 'parenteral' && calculations.nutritional?.fiber && calculations.nutritional.fiber > 0) {
+    errors.push('Fibras não devem ser administradas por via parenteral (Fibras = 0)');
+  }
+
+  // Módulo 7: Alertas de velocidade de infusão
+  if (calculations.volume?.infusionRate) {
+    const rate = calculations.volume.infusionRate;
+    const mode = calculations.infusionMode || 'pump';
+    if (mode === 'pump' && rate > 150) {
+      warnings.push(`Alerta de velocidade alta de infusão: ${rate} ml/h (superior a 150 ml/h)`);
+    }
+    if (mode === 'gravity' && rate > 50) {
+      warnings.push(`Alerta de velocidade alta de infusão: ${rate} gotas/min (superior a 50 gotas/min)`);
+    }
+  }
+
+  // Módulo 7: Alerta de volumes divergentes por etapa
+  if (Array.isArray(calculations.stageVolumes) && calculations.stageVolumes.length > 1) {
+    const uniqueVolumes = Array.from(new Set(calculations.stageVolumes.map((v: number) => Number(v.toFixed(1)))));
+    if (uniqueVolumes.length > 1) {
+      warnings.push(`Os volumes das etapas são diferentes (${uniqueVolumes.join(' / ')} mL). Verifique se esta diferença é intencional.`);
+    }
   }
 
   // Check adequacy

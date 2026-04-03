@@ -947,11 +947,12 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
                         </div>
                         <div className="space-y-2">
                             <Label className="flex items-center gap-1">
-                                <Clock className="h-3.5 w-3.5" /> Horários Padrão de Dieta
+                                <Clock className="h-3.5 w-3.5" /> Horários Padrão de Administração (Global)
                             </Label>
                             <p className="text-xs text-muted-foreground">
-                                Selecione os horários que serão exibidos nas prescrições desta ala.
-                                Se nenhum for selecionado, usa os horários globais padrão.
+                                Configuração exclusiva para gestores. Os horários definidos aqui serão refletidos globalmente
+                                em todas as prescrições desta ala/enfermaria, e não apenas no nível do paciente.
+                                Se nenhum for selecionado, usa os horários globais padrão (03h, 06h, 09h, 12h, 15h, 18h, 21h, 00h).
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                                 {DEFAULT_SCHEDULE_OPTIONS.map(t => (

@@ -13,6 +13,7 @@ import { Calendar as CalendarIcon, Clock, DollarSign, FileText, Printer, Users }
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { RequisitionDocument } from "@/components/billing/RequisitionDocument";
+import DeliveryProtocol from "@/components/billing/DeliveryProtocol";
 import { useFormulas, useModules, usePatients, usePrescriptions, useSupplies, useWards } from "@/hooks/useDatabase";
 import { prescriptionsService, Prescription } from "@/lib/database";
 import { RequisitionData } from "@/types/requisition";
@@ -369,6 +370,21 @@ const Billing = () => {
                         <p className="text-muted-foreground">Controle de insumos por unidade, horario e via, com preview financeiro antes da impressao.</p>
                     </div>
                     <div className="flex gap-2">
+                        <DeliveryProtocol
+                            unitName={unit === "all" ? "Todas as Unidades" : unit}
+                            date={startDate ? formatDate(startDate) : "-"}
+                            items={(previewRequisitionData?.dietMap || []).map(item => ({
+                                ward: item.ward,
+                                bed: item.bed,
+                                patientName: item.patientName,
+                                systemType: item.observation?.includes("fechado") ? "closed" : "open",
+                                formulaName: item.productName,
+                                volume: `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
+                                scheduleTime: item.times?.[0] || "-",
+                                waterVolume: item.type === "water" ? `${item.volumeOrAmount || 0} ml` : undefined,
+                            }))}
+                            signatures={previewRequisitionData?.signatures}
+                        />
                         <Button variant="outline" onClick={handleGenerateRequisition} disabled={!previewRequisitionData || prescriptionsLoading}>
                             <Printer className="h-4 w-4 mr-2" />
                             Imprimir

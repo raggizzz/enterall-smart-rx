@@ -92,7 +92,7 @@ const Patients = () => {
     height: "",
     notes: "",
     gender: "male" as "male" | "female",
-    nutritionType: "enteral" as "enteral" | "parenteral" | "oral" | "jejum",
+    nutritionType: "jejum" as "enteral" | "parenteral" | "oral" | "jejum",
   });
 
   const { patients, isLoading, createPatient, updatePatient, deletePatient } = usePatients();
@@ -143,7 +143,7 @@ const Patients = () => {
       height: "",
       notes: "",
       gender: "male",
-      nutritionType: "enteral",
+      nutritionType: "jejum",
     });
     setEditingPatient(null);
   };
@@ -159,10 +159,6 @@ const Patients = () => {
     }
     if (newPatient.height) {
       const h = parseFloat(newPatient.height);
-      if (h > 0 && h < 50) {
-        toast.error("Estatura deve ser informada em centímetros (ex: 170). Valor informado parece estar em metros.");
-        return;
-      }
       if (h > 250) {
         toast.error("Estatura inválida. Informe em centímetros (ex: 170).");
         return;

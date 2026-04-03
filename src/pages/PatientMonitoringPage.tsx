@@ -123,20 +123,32 @@ export default function PatientMonitoringPage() {
             (acc, prescription) => {
                 const kcal = prescription.totalCalories || 0;
                 const protein = prescription.totalProtein || 0;
+                const carbs = prescription.totalCarbs || 0;
+                const fat = prescription.totalFat || 0;
+                const fiber = prescription.totalFiber || 0;
 
                 if (prescription.therapyType === "enteral") {
                     acc.enteralKcal += kcal;
                     acc.enteralProtein += protein;
+                    acc.enteralCarbs = (acc.enteralCarbs || 0) + carbs;
+                    acc.enteralFat = (acc.enteralFat || 0) + fat;
+                    acc.enteralFiber = (acc.enteralFiber || 0) + fiber;
                 }
 
                 if (prescription.therapyType === "oral") {
                     acc.oralKcal += kcal;
                     acc.oralProtein += protein;
+                    acc.oralCarbs = (acc.oralCarbs || 0) + carbs;
+                    acc.oralFat = (acc.oralFat || 0) + fat;
+                    acc.oralFiber = (acc.oralFiber || 0) + fiber;
                 }
 
                 if (prescription.therapyType === "parenteral") {
                     acc.parenteralKcal += kcal;
                     acc.parenteralProtein += protein;
+                    acc.parenteralCarbs = (acc.parenteralCarbs || 0) + carbs;
+                    acc.parenteralFat = (acc.parenteralFat || 0) + fat;
+                    acc.parenteralFiber = (acc.parenteralFiber || 0) + fiber;
                 }
 
                 return acc;
@@ -144,10 +156,19 @@ export default function PatientMonitoringPage() {
             {
                 enteralKcal: 0,
                 enteralProtein: 0,
+                enteralCarbs: 0,
+                enteralFat: 0,
+                enteralFiber: 0,
                 oralKcal: 0,
                 oralProtein: 0,
+                oralCarbs: 0,
+                oralFat: 0,
+                oralFiber: 0,
                 parenteralKcal: 0,
                 parenteralProtein: 0,
+                parenteralCarbs: 0,
+                parenteralFat: 0,
+                parenteralFiber: 0,
             },
         );
     }, [selectedPatient, prescriptions]);
@@ -362,10 +383,19 @@ export default function PatientMonitoringPage() {
                     onSave={handleSave}
                     enteralKcal={totals.enteralKcal}
                     enteralProtein={totals.enteralProtein}
+                    enteralCarbs={totals.enteralCarbs}
+                    enteralFat={totals.enteralFat}
+                    enteralFiber={totals.enteralFiber}
                     oralKcal={totals.oralKcal}
                     oralProtein={totals.oralProtein}
+                    oralCarbs={totals.oralCarbs}
+                    oralFat={totals.oralFat}
+                    oralFiber={totals.oralFiber}
                     parenteralKcal={totals.parenteralKcal}
                     parenteralProtein={totals.parenteralProtein}
+                    parenteralCarbs={totals.parenteralCarbs}
+                    parenteralFat={totals.parenteralFat}
+                    parenteralFiber={totals.parenteralFiber}
                     historyData={chartData}
                     savedEvolution={savedEvolution}
                 />
