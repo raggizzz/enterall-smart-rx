@@ -12,15 +12,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar as CalendarIcon, Clock, DollarSign, FileText, Printer, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { RequisitionDocument } from "@/components/billing/RequisitionDocument";
 import DeliveryProtocol from "@/components/billing/DeliveryProtocol";
-import { useFormulas, useModules, usePatients, usePrescriptions, useSupplies, useWards } from "@/hooks/useDatabase";
+import { RequisitionDocument } from "@/components/billing/RequisitionDocument";
+import { useFormulas, useModules, usePatients, usePrescriptions, useSettings, useSupplies, useWards } from "@/hooks/useDatabase";
 import { prescriptionsService, Prescription } from "@/lib/database";
 import { RequisitionData } from "@/types/requisition";
 import { generateRequisitionData } from "@/utils/requisitionGenerator";
 import { toast } from "sonner";
+import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
 
-const SCHEDULE_TIMES = ["09:00", "12:00", "15:00", "18:00", "21:00", "00:00", "03:00", "06:00"];
+const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
     { value: "all", label: "Todas as vias" },
     { value: "enteral", label: "Enteral" },
@@ -39,9 +40,6 @@ const formatDate = (date: Date | string | undefined | null) => {
     return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
 
-const sortScheduleTimes = (times: string[]) =>
-    [...times].sort((left, right) => SCHEDULE_TIMES.indexOf(left) - SCHEDULE_TIMES.indexOf(right));
-
 const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 type ManualRequestMode = "cancellation" | "extra";
@@ -49,6 +47,7 @@ type ManualRequestMode = "cancellation" | "extra";
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading, refetch: refetchPrescriptions } = usePrescriptions();
+    const { settings } = useSettings();
     const { formulas } = useFormulas();
     const { modules } = useModules();
     const { supplies } = useSupplies();
@@ -86,12 +85,10 @@ const Billing = () => {
     }, [patients]);
 
     const availableScheduleTimes = useMemo(() => {
-        if (unit === "all") return SCHEDULE_TIMES;
-        const wardObj = wardObjects.find(w => w.name === unit);
-        return (wardObj?.defaultSchedules && wardObj.defaultSchedules.length > 0)
-            ? wardObj.defaultSchedules
-            : SCHEDULE_TIMES;
-    }, [unit, wardObjects]);
+        if (unit === "all") return resolveConfiguredScheduleTimes({ settings });
+        const wardObj = findWardByReference(wardObjects, undefined, unit);
+        return resolveConfiguredScheduleTimes({ settings, ward: wardObj });
+    }, [settings, unit, wardObjects]);
 
     useEffect(() => {
         setSelectedTimes([...availableScheduleTimes]);
@@ -373,16 +370,21 @@ const Billing = () => {
                         <DeliveryProtocol
                             unitName={unit === "all" ? "Todas as Unidades" : unit}
                             date={startDate ? formatDate(startDate) : "-"}
-                            items={(previewRequisitionData?.dietMap || []).map(item => ({
-                                ward: item.ward,
-                                bed: item.bed,
-                                patientName: item.patientName,
-                                systemType: item.observation?.includes("fechado") ? "closed" : "open",
-                                formulaName: item.productName,
-                                volume: `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
-                                scheduleTime: item.times?.[0] || "-",
-                                waterVolume: item.type === "water" ? `${item.volumeOrAmount || 0} ml` : undefined,
-                            }))}
+                            items={(previewRequisitionData?.dietMap || [])
+                                .filter((item) => item.type === "formula" || item.type === "water")
+                                .flatMap((item) => {
+                                    const times = item.times && item.times.length > 0 ? item.times : ["-"];
+                                    return times.map((time) => ({
+                                        ward: item.ward,
+                                        bed: item.bed,
+                                        patientName: item.patientName,
+                                        systemType: item.observation?.toLowerCase().includes("fechado") ? "closed" : "open",
+                                        formulaName: item.productName,
+                                        volume: `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
+                                        scheduleTime: time,
+                                        waterVolume: item.type === "water" ? `${item.volumeOrAmount || 0} ml` : undefined,
+                                    }));
+                                })}
                             signatures={previewRequisitionData?.signatures}
                         />
                         <Button variant="outline" onClick={handleGenerateRequisition} disabled={!previewRequisitionData || prescriptionsLoading}>

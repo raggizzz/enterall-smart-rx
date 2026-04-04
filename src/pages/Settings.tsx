@@ -33,6 +33,7 @@ import {
     X
 } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { useSettings, useBackup, useDashboardData, useHospitals, useWards } from "@/hooks/useDatabase";
@@ -62,6 +63,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { DEFAULT_SCHEDULE_TIMES, normalizeScheduleTime, sortScheduleTimes } from "@/lib/scheduleTimes";
+
+const DEFAULT_SCHEDULE_OPTIONS = [...DEFAULT_SCHEDULE_TIMES];
 
 const Settings = () => {
     const { settings, saveSettings, isLoading: settingsLoading } = useSettings();
@@ -89,6 +93,12 @@ const Settings = () => {
         settings?.labelSettings?.closedConservation ||
         "Conservação: em temperatura ambiente."
     );
+    const [defaultDietSchedules, setDefaultDietSchedules] = useState<string[]>(
+        settings?.labelSettings?.defaultDietSchedules?.length
+            ? sortScheduleTimes(settings.labelSettings.defaultDietSchedules)
+            : [...DEFAULT_SCHEDULE_TIMES]
+    );
+    const [customDietScheduleInput, setCustomDietScheduleInput] = useState("");
     // Estados para Custos de Enfermagem
     const [nursingCosts, setNursingCosts] = useState<NursingCosts>({
         timeOpenSystemPump: settings?.nursingCosts?.timeOpenSystemPump || 0,
@@ -131,6 +141,12 @@ const Settings = () => {
             setClosedConservation(
                 settings.labelSettings?.closedConservation ||
                 "Conservação: em temperatura ambiente."
+            );
+
+            setDefaultDietSchedules(
+                settings.labelSettings?.defaultDietSchedules?.length
+                    ? sortScheduleTimes(settings.labelSettings.defaultDietSchedules)
+                    : [...DEFAULT_SCHEDULE_TIMES]
             );
 
             // Atualizar custos de enfermagem
@@ -192,6 +208,29 @@ const Settings = () => {
         }));
     };
 
+    const toggleGlobalDietSchedule = (time: string) => {
+        const normalized = normalizeScheduleTime(time);
+        if (!normalized) return;
+
+        setDefaultDietSchedules((current) => (
+            current.includes(normalized)
+                ? current.filter((entry) => entry !== normalized)
+                : sortScheduleTimes([...current, normalized])
+        ));
+    };
+
+    const addCustomGlobalDietSchedule = () => {
+        const normalized = normalizeScheduleTime(customDietScheduleInput);
+        if (!normalized) return;
+
+        setDefaultDietSchedules((current) => (
+            current.includes(normalized)
+                ? current
+                : sortScheduleTimes([...current, normalized])
+        ));
+        setCustomDietScheduleInput("");
+    };
+
     const handleSaveRolePermissions = async () => {
         try {
             setIsSavingPermissions(true);
@@ -230,7 +269,10 @@ const Settings = () => {
                     showConservation: true,
                     defaultConservation: openConservation,
                     openConservation,
-                    closedConservation
+                    closedConservation,
+                    defaultDietSchedules: defaultDietSchedules.length > 0
+                        ? sortScheduleTimes(defaultDietSchedules)
+                        : [...DEFAULT_SCHEDULE_TIMES],
                 },
                 nursingCosts,
                 indirectCosts
@@ -438,6 +480,56 @@ const Settings = () => {
                                     onChange={(e) => setClosedConservation(e.target.value)}
                                     placeholder="Ex: Validade de 24h apos conexao com equipo, em temperatura ambiente."
                                 />
+                            </div>
+
+                            <div className="space-y-3">
+                                <Label className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4" />
+                                    Horarios padrao globais de administracao
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Configuracao exclusiva da gestao. Estes horarios serao usados como padrao da unidade e, se a ala tiver horarios proprios, eles prevalecem na prescricao.
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {DEFAULT_SCHEDULE_OPTIONS.map((time) => (
+                                        <button
+                                            key={time}
+                                            type="button"
+                                            onClick={() => toggleGlobalDietSchedule(time)}
+                                            className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                                                defaultDietSchedules.includes(time)
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background text-foreground border-border hover:border-primary"
+                                            }`}
+                                        >
+                                            {time}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="time"
+                                        value={customDietScheduleInput}
+                                        onChange={(e) => setCustomDietScheduleInput(e.target.value)}
+                                        className="h-8 w-32 text-xs"
+                                        placeholder="HH:MM"
+                                    />
+                                    <Button type="button" variant="outline" size="sm" onClick={addCustomGlobalDietSchedule} className="h-8 text-xs">
+                                        <Plus className="h-3 w-3 mr-1" /> Adicionar horario
+                                    </Button>
+                                </div>
+                                {defaultDietSchedules.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {defaultDietSchedules.map((time) => (
+                                            <span key={time} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                                {time}
+                                                <button type="button" onClick={() => toggleGlobalDietSchedule(time)} className="hover:text-red-500">
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <Button onClick={handleSaveSettings} className="w-full">
@@ -737,6 +829,20 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
             setNewHospital({ name: "" });
             setEditingHospital(null);
         } catch (e) {
+            if (e instanceof ApiError) {
+                if (e.status === 401) {
+                    toast.error("Sessao expirada. Entre novamente para salvar a unidade.");
+                    return;
+                }
+                if (e.status === 403) {
+                    toast.error("Somente gestor geral pode salvar unidades.");
+                    return;
+                }
+                if (e.body && typeof e.body === "object" && "error" in (e.body as Record<string, unknown>)) {
+                    toast.error(String((e.body as Record<string, unknown>).error));
+                    return;
+                }
+            }
             toast.error("Erro ao salvar hospital");
         }
     };
@@ -830,8 +936,6 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
     );
 };
 
-const DEFAULT_SCHEDULE_OPTIONS = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
-
 const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManageWards: boolean }) => {
     const { wards, createWard, updateWard, deleteWard } = useWards(hospitalId);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -842,19 +946,21 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
     const [customTimeInput, setCustomTimeInput] = useState("");
 
     const toggleScheduleTime = (time: string) => {
+        const normalized = normalizeScheduleTime(time);
+        if (!normalized) return;
         setNewWard(prev => ({
             ...prev,
-            defaultSchedules: prev.defaultSchedules.includes(time)
-                ? prev.defaultSchedules.filter(t => t !== time)
-                : [...prev.defaultSchedules, time].sort(),
+            defaultSchedules: prev.defaultSchedules.includes(normalized)
+                ? prev.defaultSchedules.filter(t => t !== normalized)
+                : sortScheduleTimes([...prev.defaultSchedules, normalized]),
         }));
     };
 
     const addCustomTime = () => {
-        const t = customTimeInput.trim();
-        if (!t || !/^\d{2}:\d{2}$/.test(t)) return;
-        if (!newWard.defaultSchedules.includes(t)) {
-            setNewWard(prev => ({ ...prev, defaultSchedules: [...prev.defaultSchedules, t].sort() }));
+        const normalized = normalizeScheduleTime(customTimeInput);
+        if (!normalized) return;
+        if (!newWard.defaultSchedules.includes(normalized)) {
+            setNewWard(prev => ({ ...prev, defaultSchedules: sortScheduleTimes([...prev.defaultSchedules, normalized]) }));
         }
         setCustomTimeInput("");
     };
@@ -885,7 +991,23 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
             setNewWard({ name: "", type: "uti-adulto", defaultSchedules: [] });
             setEditingWard(null);
             toast.success("Ala salva!");
-        } catch (e) { toast.error("Erro ao salvar ala"); }
+        } catch (e) {
+            if (e instanceof ApiError) {
+                if (e.status === 401) {
+                    toast.error("Sessao expirada. Entre novamente para salvar a ala.");
+                    return;
+                }
+                if (e.status === 403) {
+                    toast.error("Seu perfil nao pode editar alas nesta unidade.");
+                    return;
+                }
+                if (e.body && typeof e.body === "object" && "error" in (e.body as Record<string, unknown>)) {
+                    toast.error(String((e.body as Record<string, unknown>).error));
+                    return;
+                }
+            }
+            toast.error("Erro ao salvar ala");
+        }
     };
 
     return (

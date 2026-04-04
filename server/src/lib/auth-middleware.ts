@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { getRequiredEnv } from './env';
 
 export type Role = 'general_manager' | 'local_manager' | 'nutritionist' | 'technician';
 
@@ -13,11 +14,7 @@ export type AuthenticatedRequest = Request & {
 };
 
 const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('[security] JWT_SECRET environment variable is required.');
-  }
-  return secret;
+  return getRequiredEnv('JWT_SECRET', '[security] JWT_SECRET environment variable is required.');
 };
 
 /**

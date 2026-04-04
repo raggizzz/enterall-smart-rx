@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { can, getCurrentHospitalId, getCurrentRole, hasActiveSession, PermissionKey } from "@/lib/permissions";
+import { can, normalizeRole, PermissionKey } from "@/lib/permissions";
+import { useSession } from "@/hooks/useSession";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,17 +9,19 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, requiredPermissions }: ProtectedRouteProps) => {
-  if (!hasActiveSession()) {
+  const { isAuthenticated, hospitalId, role } = useSession();
+
+  if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
-  if (!getCurrentHospitalId()) {
+  if (!hospitalId) {
     return <Navigate to="/" replace />;
   }
 
   if (requiredPermissions && requiredPermissions.length > 0) {
-    const role = getCurrentRole();
-    const isAllowed = requiredPermissions.some((permission) => can(role, permission));
+    const normalizedRole = normalizeRole(role);
+    const isAllowed = requiredPermissions.some((permission) => can(normalizedRole, permission));
     if (!isAllowed) {
       return <Navigate to="/forbidden" replace />;
     }

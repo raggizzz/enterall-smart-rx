@@ -5,6 +5,7 @@
  */
 
 import { apiClient } from './api';
+import { normalizeRole } from './permissions';
 import {
     cacheSnapshot,
     createTemporaryId,
@@ -92,6 +93,7 @@ export interface Patient {
     consistency?: string;
     safeConsistency?: string;
     mealCount?: string | number;
+    defaultSchedules?: string[];
     createdAt: string;
     updatedAt: string;
 }
@@ -494,6 +496,7 @@ export interface AppSettings {
         defaultConservation: string;
         openConservation?: string;
         closedConservation?: string;
+        defaultDietSchedules?: string[];
     };
     nursingCosts?: NursingCosts;
     indirectCosts?: IndirectCosts;
@@ -650,6 +653,7 @@ const normalizePatient = (raw: any): Patient => {
         consistency: raw.consistency,
         safeConsistency: raw.safeConsistency,
         mealCount: raw.mealCount,
+        defaultSchedules: ensureArray<string>(raw.defaultSchedules),
         createdAt: raw.createdAt || new Date().toISOString(),
         updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
     };
@@ -944,9 +948,10 @@ const mapPatientPayload = (data: any) => ({
     consistency: data.consistency,
     safeConsistency: data.safeConsistency,
     mealCount: data.mealCount,
+    defaultSchedules: Array.isArray(data.defaultSchedules) ? data.defaultSchedules : undefined,
     dischargeDate: data.dischargeDate,
     dischargeReason: data.dischargeReason,
-});
+  });
 
 const mapPrescriptionPayload = (data: any) => ({
     ...data,
@@ -1390,7 +1395,9 @@ export const clinicsService = {
 };
 export const hospitalsService = {
     async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+        const hospitalId = typeof window !== 'undefined' && normalizeRole(localStorage.getItem('userRole')) === 'general_manager'
+            ? undefined
+            : resolveSessionHospitalId();
         return mergeRemoteWithOffline('hospitals', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/hospitals', hospitalId)).catch(() => [])).map(normalizeHospital),
         ) as Promise<Hospital[]>;
@@ -1470,6 +1477,7 @@ const defaultSettingsForHospital = (hospitalId?: string): AppSettings => ({
     },
     labelSettings: {
         showConservation: true,
+        defaultDietSchedules: ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"],
         defaultConservation: 'Conservação: usar em até 4h após manipulação, em temperatura ambiente.',
         openConservation: 'Conservação: usar em até 4h após manipulação, em temperatura ambiente.',
         closedConservation: 'Conservação: em temperatura ambiente.',
@@ -1505,6 +1513,7 @@ const normalizeSettings = (raw: Partial<AppSettings> | undefined, hospitalId?: s
         labelSettings: {
             ...defaults.labelSettings,
             ...(raw?.labelSettings || {}),
+            defaultDietSchedules: ensureArray<string>(raw?.labelSettings?.defaultDietSchedules).filter(Boolean),
         },
         nursingCosts: {
             ...defaults.nursingCosts,

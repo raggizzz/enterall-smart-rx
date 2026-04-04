@@ -12,8 +12,9 @@ import Header from "@/components/Header";
 import LabelPreview, { LabelData } from "@/components/LabelPreview";
 import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings, useWards } from "@/hooks/useDatabase";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
+import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes } from "@/lib/scheduleTimes";
 
-const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
+const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
 
 const toDateOnly = (date: Date): string => new Intl.DateTimeFormat('pt-BR').format(date);
 const toDateOnlyFromIso = (value?: string): string | undefined => {
@@ -168,12 +169,10 @@ const Labels = () => {
     }, [clinics, patients, prescriptions]);
 
     const availableScheduleTimes = useMemo(() => {
-        if (clinic === "all") return SCHEDULE_TIMES;
-        const wardObj = wardObjects.find(w => w.name === clinic);
-        return (wardObj?.defaultSchedules && wardObj.defaultSchedules.length > 0)
-            ? wardObj.defaultSchedules
-            : SCHEDULE_TIMES;
-    }, [clinic, wardObjects]);
+        if (clinic === "all") return resolveConfiguredScheduleTimes({ settings });
+        const wardObj = findWardByReference(wardObjects, undefined, clinic);
+        return resolveConfiguredScheduleTimes({ settings, ward: wardObj });
+    }, [clinic, settings, wardObjects]);
 
     useEffect(() => {
         setSelectedTimes([...availableScheduleTimes]);
@@ -692,7 +691,7 @@ const Labels = () => {
                         </h1>
                         <p className="text-muted-foreground flex items-center gap-2">
                             <Database className="h-4 w-4" />
-                            Impressao alinhada ao padrao operacional e itens da RDC 502/2021
+                            Impressao alinhada ao padrao operacional da RDC 503/2021
                         </p>
                     </div>
                     <Button variant="outline" onClick={handlePrint} disabled={selectedLabels.length === 0}>

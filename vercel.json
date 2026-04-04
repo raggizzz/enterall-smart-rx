@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://physicians-aim-chips-unique.trycloudflare.com/health"
+      "destination": "https://clone-processes-expert-net.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://physicians-aim-chips-unique.trycloudflare.com/health/:path*"
+      "destination": "https://clone-processes-expert-net.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://physicians-aim-chips-unique.trycloudflare.com/api/:path*"
+      "destination": "https://clone-processes-expert-net.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",

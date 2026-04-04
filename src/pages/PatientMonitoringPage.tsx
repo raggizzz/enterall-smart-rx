@@ -108,10 +108,19 @@ export default function PatientMonitoringPage() {
             return {
                 enteralKcal: 0,
                 enteralProtein: 0,
+                enteralCarbs: 0,
+                enteralFat: 0,
+                enteralFiber: 0,
                 oralKcal: 0,
                 oralProtein: 0,
+                oralCarbs: 0,
+                oralFat: 0,
+                oralFiber: 0,
                 parenteralKcal: 0,
                 parenteralProtein: 0,
+                parenteralCarbs: 0,
+                parenteralFat: 0,
+                parenteralFiber: 0,
             };
         }
 
@@ -130,25 +139,25 @@ export default function PatientMonitoringPage() {
                 if (prescription.therapyType === "enteral") {
                     acc.enteralKcal += kcal;
                     acc.enteralProtein += protein;
-                    acc.enteralCarbs = (acc.enteralCarbs || 0) + carbs;
-                    acc.enteralFat = (acc.enteralFat || 0) + fat;
-                    acc.enteralFiber = (acc.enteralFiber || 0) + fiber;
+                    acc.enteralCarbs += carbs;
+                    acc.enteralFat += fat;
+                    acc.enteralFiber += fiber;
                 }
 
                 if (prescription.therapyType === "oral") {
                     acc.oralKcal += kcal;
                     acc.oralProtein += protein;
-                    acc.oralCarbs = (acc.oralCarbs || 0) + carbs;
-                    acc.oralFat = (acc.oralFat || 0) + fat;
-                    acc.oralFiber = (acc.oralFiber || 0) + fiber;
+                    acc.oralCarbs += carbs;
+                    acc.oralFat += fat;
+                    acc.oralFiber += fiber;
                 }
 
                 if (prescription.therapyType === "parenteral") {
                     acc.parenteralKcal += kcal;
                     acc.parenteralProtein += protein;
-                    acc.parenteralCarbs = (acc.parenteralCarbs || 0) + carbs;
-                    acc.parenteralFat = (acc.parenteralFat || 0) + fat;
-                    acc.parenteralFiber = (acc.parenteralFiber || 0) + fiber;
+                    acc.parenteralCarbs += carbs;
+                    acc.parenteralFat += fat;
+                    acc.parenteralFiber += fiber;
                 }
 
                 return acc;
@@ -374,6 +383,9 @@ export default function PatientMonitoringPage() {
                         <h1 className="text-2xl font-bold">Acompanhamento da Terapia Nutricional</h1>
                         <p className="text-muted-foreground">
                             {selectedPatient.name} - Prontuário: {selectedPatient.record}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                            Fechamento do dia anterior separado da prescrição atual para facilitar a leitura assistencial.
                         </p>
                     </div>
                 </div>

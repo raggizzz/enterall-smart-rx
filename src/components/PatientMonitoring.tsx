@@ -214,7 +214,7 @@ export const PatientMonitoring = ({
         enteralCarbs, oralCarbs, parenteralCarbs,
         enteralFat, oralFat, parenteralFat,
         enteralFiber, oralFiber, parenteralFiber,
-        patient.weight, idealWeight, unintentionalKcal.total
+        patient.weight, idealWeight, unintentionalKcal.total,
     ]);
 
     const actualNutrition = useMemo(() => {
@@ -305,6 +305,22 @@ export const PatientMonitoring = ({
 
         return { kcalReached, proteinReached, proteinIdealReached };
     }, [goals, totalNutrition, bmi]);
+
+    const interruptionCount = useMemo(() => {
+        const proceduresCount = interruptions.procedures
+            ? Object.values(interruptions.procedures).filter(Boolean).length
+            : 0;
+        const giCount = interruptions.gastrointestinal
+            ? Object.values(interruptions.gastrointestinal).filter(Boolean).length
+            : 0;
+        const deviceCount = interruptions.deviceProblems
+            ? Object.values(interruptions.deviceProblems).filter(Boolean).length
+            : 0;
+        const hemodynamicCount = interruptions.hemodynamicInstability ? 1 : 0;
+        const otherCount = interruptions.other?.trim() ? 1 : 0;
+
+        return proceduresCount + giCount + deviceCount + hemodynamicCount + otherCount;
+    }, [interruptions]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -404,15 +420,57 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <Card className="border-dashed border-primary/30 bg-gradient-to-r from-white to-sky-50/70">
+                <CardHeader>
+                    <CardTitle>Leitura Rápida</CardTitle>
+                    <CardDescription>
+                        Separação direta entre o fechamento do dia anterior e a previsão da prescrição atual.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Ontem executado</p>
+                        <p className="mt-2 text-2xl font-bold text-sky-700">{actualNutrition.totalKcal.toFixed(0)} kcal</p>
+                        <p className="text-sm text-muted-foreground">{actualNutrition.totalProtein.toFixed(1)} g de proteína</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {targetKcal > 0 ? `${actualNutritionShare.totalPct.toFixed(1)}% da meta energética` : "Meta energética ainda não definida"}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Prescrição atual</p>
+                        <p className="mt-2 text-2xl font-bold text-emerald-700">{totalNutrition.totalKcal.toFixed(0)} kcal</p>
+                        <p className="text-sm text-muted-foreground">{totalNutrition.totalProtein.toFixed(1)} g de proteína</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {goalStatus.kcalReached > 0 ? `${goalStatus.kcalReached.toFixed(1)}% da meta kcal planejada` : "Cadastre uma meta para comparar a prescrição"}
+                        </p>
+                    </div>
+                    <div className="rounded-xl border bg-white p-4">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Intercorrências das últimas 24h</p>
+                        <p className="mt-2 text-2xl font-bold text-amber-700">{interruptionCount}</p>
+                        <p className="text-sm text-muted-foreground">itens registrados</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {infusionPercentage < 80 ? "Infusão abaixo de 80% da meta no fechamento do dia anterior." : "Sem alerta crítico automático de infusão no fechamento."}
+                        </p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Fechamento do dia anterior</p>
+                <p className="text-sm text-muted-foreground">
+                    Registrar aqui o que efetivamente aconteceu nas últimas 24h.
+                </p>
+            </div>
+
             {/* Percentual de Infusão */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Percentual de Infusão do Dia Anterior (Últimas 24h)
+                        Execução do Dia Anterior (Últimas 24h)
                     </CardTitle>
                     <CardDescription>
-                        A infusão registrada será contabilizada para o fechamento do dia anterior.
+                        Esta seção consolida o fechamento do dia anterior: percentual de infusão, aporte efetivo e o que realmente entrou por cada via.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -457,7 +515,7 @@ export const PatientMonitoring = ({
                     </div>
                     <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                         <div className="space-y-3 rounded-lg border bg-sky-50/60 p-4">
-                            <p className="font-medium text-sky-700">Resumo efetivo por via — últimas 24h (dia anterior)</p>
+                            <p className="font-medium text-sky-700">Resumo efetivo por via - últimas 24h (dia anterior)</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                 <div className="rounded-md border bg-white p-3">
                                     <p className="font-semibold text-sky-700">NE</p>
@@ -549,6 +607,13 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Intercorrências do dia anterior</p>
+                <p className="text-sm text-muted-foreground">
+                    Documente o que limitou a oferta de terapia nutricional nas últimas 24h.
+                </p>
+            </div>
+
             {/* Motivos de Interrupção */}
             <Card>
                 <CardHeader>
@@ -557,7 +622,7 @@ export const PatientMonitoring = ({
                         Motivos de Interrupção da TNE (últimas 24h)
                     </CardTitle>
                     <CardDescription>
-                        Baseado em revisões sistemáticas (10.7759/cureus.8184 e 10.3389/fnut.2025.1462131)
+                        Use esta seção para justificar interrupções, intolerâncias ou barreiras operacionais observadas no fechamento do dia anterior.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -804,6 +869,13 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Registro clínico</p>
+                <p className="text-sm text-muted-foreground">
+                    Use este campo para resumir a evolução clínica e o raciocínio nutricional.
+                </p>
+            </div>
+
             <Card>
                 <CardHeader>
                     <CardTitle>Observações do Acompanhamento</CardTitle>
@@ -821,15 +893,22 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Prescrição atual</p>
+                <p className="text-sm text-muted-foreground">
+                    Esta parte projeta o aporte da prescrição nova, separada do fechamento efetivo do dia anterior.
+                </p>
+            </div>
+
             {/* Aporte Nutricional Total */}
             <Card className="border-2 border-green-300 bg-gradient-to-r from-green-50 to-emerald-50">
                 <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-green-700">
                         <Calculator className="h-5 w-5" />
-                        Aporte Nutricional Total (previsão da prescrição nova)
+                        Aporte Nutricional Total da Prescrição Atual
                     </CardTitle>
                     <CardDescription>
-                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico. Exibe a previsão com base na prescrição atual.
+                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico. Aqui fica somente a previsão da prescrição atual.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -898,14 +977,21 @@ export const PatientMonitoring = ({
                 </CardContent>
             </Card>
 
+            <div className="space-y-1">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Tendência recente</p>
+                <p className="text-sm text-muted-foreground">
+                    Histórico visual dos últimos 7 dias em relação à meta energética.
+                </p>
+            </div>
+
             {/* Botão Salvar */}
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Somatório proporcional de NE infundida, NP infundida e calorias não intencionais em relação à meta
+                        Tendência de oferta nutricional em relação à meta
                     </CardTitle>
-                    <CardDescription>Últimos 7 dias</CardDescription>
+                    <CardDescription>Últimos 7 dias, com empilhamento por via efetiva.</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[260px] sm:h-[320px]">
                     <ResponsiveContainer width="100%" height="100%">

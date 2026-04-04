@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Search, Clock, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
@@ -77,7 +78,7 @@ const LINKS_FALLBACK = [
 
 // --- GIDS Types ---
 type GidsMildKey = "absentBowelSounds" | "vomiting" | "residualVolume" | "ileus" | "distension" | "mildDiarrhea" | "giBleedNoTransfusion" | "pia12to20";
-type GidsSevereKey = "severeDiarrhea" | "giBleedWithTransfusion" | "prokinetics" | "piaAbove20";
+type GidsSevereKey = "severeDiarrhea" | "giBleedWithTransfusion" | "prokinetics" | "persistentIleus" | "persistentDistension" | "piaAbove20";
 type GidsThreateningKey = "hemorrhagicShock" | "mesentericIschemia" | "abdominalCompartment";
 
 const GIDS_MILD_OPTIONS: Array<{ key: GidsMildKey; label: string }> = [
@@ -101,6 +102,84 @@ const GIDS_THREAT_OPTIONS: Array<{ key: GidsThreateningKey; label: string }> = [
   { key: "mesentericIschemia", label: "Isquemia mesentérica" },
   { key: "abdominalCompartment", label: "Síndrome compartimental abdominal" },
 ];
+
+const GIDS_SEVERE_DISPLAY_OPTIONS: Array<{ key: GidsSevereKey; label: string }> = [
+  ...GIDS_SEVERE_OPTIONS.map((option) => ({
+    ...option,
+    label: option.key === "prokinetics" ? "Uso de procinéticos para manter tolerância" : option.label,
+  })),
+  { key: "persistentIleus", label: "Íleo paralítico/dinâmico persistente" },
+  { key: "persistentDistension", label: "Distensão abdominal persistente ou em piora" },
+];
+
+const GIDS_RESULT_COPY: Record<number, { title: string; description: string }> = {
+  0: {
+    title: "GIDS 0 - Sem risco imediato",
+    description: "Sem sintomas, ou apenas um sintoma leve com ingestao oral mantida.",
+  },
+  1: {
+    title: "GIDS 1 - Risco aumentado",
+    description: "Acumulo inicial de sinais gastrointestinais ou ausencia de ingestao oral.",
+  },
+  2: {
+    title: "GIDS 2 - Disfuncao gastrointestinal",
+    description: "Tres ou mais criterios leves/de risco ou ate dois criterios maiores.",
+  },
+  3: {
+    title: "GIDS 3 - Falencia gastrointestinal",
+    description: "Tres ou mais criterios maiores, sugerindo perda importante de funcao.",
+  },
+  4: {
+    title: "GIDS 4 - Ameaca a vida",
+    description: "Ha criterio gastrointestinal imediatamente ameacador a vida.",
+  },
+};
+
+const NRS_NUTRITION_OPTIONS = [
+  {
+    value: "0",
+    title: "0 - Ausente",
+    description: "Estado nutricional preservado.",
+  },
+  {
+    value: "1",
+    title: "1 - Leve",
+    description: "Perda de peso > 5% em 3 meses ou ingestao entre 50% e 75% da necessidade na ultima semana.",
+  },
+  {
+    value: "2",
+    title: "2 - Moderado",
+    description: "Perda de peso > 5% em 2 meses, IMC entre 18,5 e 20,5 com condicao geral comprometida, ou ingestao entre 25% e 60%.",
+  },
+  {
+    value: "3",
+    title: "3 - Grave",
+    description: "Perda de peso > 5% em 1 mes ou > 15% em 3 meses, IMC < 18,5 com condicao geral comprometida, ou ingestao entre 0% e 25%.",
+  },
+] as const;
+
+const NRS_DISEASE_OPTIONS = [
+  {
+    value: "0",
+    title: "0 - Ausente",
+    description: "Necessidades nutricionais habituais, sem aumento relevante de demanda.",
+  },
+  {
+    value: "1",
+    title: "1 - Leve",
+    description: "Fratura de quadril ou doenca cronica com complicacao aguda, como cirrose, DPOC, hemodialise, diabetes ou oncologia.",
+  },
+  {
+    value: "2",
+    title: "2 - Moderado",
+    description: "Cirurgia abdominal de grande porte, AVC, pneumonia grave ou malignidade hematologica.",
+  },
+  {
+    value: "3",
+    title: "3 - Grave",
+    description: "TCE, transplante de medula ou paciente critico em UTI com APACHE > 10.",
+  },
+] as const;
 
 const Tools = () => {
   const { tools } = useAppTools();
@@ -239,7 +318,12 @@ const Tools = () => {
     distension: false, mildDiarrhea: false, giBleedNoTransfusion: false, pia12to20: false,
   });
   const [gidsSevere, setGidsSevere] = useState<Record<GidsSevereKey, boolean>>({
-    severeDiarrhea: false, giBleedWithTransfusion: false, prokinetics: false, piaAbove20: false,
+    severeDiarrhea: false,
+    giBleedWithTransfusion: false,
+    prokinetics: false,
+    persistentIleus: false,
+    persistentDistension: false,
+    piaAbove20: false,
   });
   const [gidsThreatening, setGidsThreatening] = useState<Record<GidsThreateningKey, boolean>>({
     hemorrhagicShock: false, mesentericIschemia: false, abdominalCompartment: false,
@@ -247,17 +331,33 @@ const Tools = () => {
 
   const gidsResult = useMemo(() => {
     const mildCount = Object.values(gidsMild).filter(Boolean).length;
+    const scoreOneFeatureCount = mildCount + (gidsOralDiet ? 0 : 1);
     const severeCount = Object.values(gidsSevere).filter(Boolean).length;
     const threateningCount = Object.values(gidsThreatening).filter(Boolean).length;
-    let score = 0; let interpretation = "Sem risco";
+    let score = 0;
 
-    if (threateningCount > 0) { score = 4; interpretation = "Ameaça à vida"; }
-    else if (severeCount >= 3) { score = 3; interpretation = "Falência do trato gastrointestinal"; }
-    else if ((!gidsOralDiet && mildCount >= 2) || (severeCount >= 1 && severeCount <= 2)) { score = 2; interpretation = "Disfunção do trato gastrointestinal"; }
-    else if (!gidsOralDiet && mildCount >= 1 && mildCount <= 2) { score = 1; interpretation = "Risco aumentado"; }
-    else if (gidsOralDiet && mildCount <= 1) { score = 0; interpretation = "Sem risco"; }
+    if (threateningCount > 0) score = 4;
+    else if (severeCount >= 3) score = 3;
+    else if (scoreOneFeatureCount >= 3 || severeCount >= 1) score = 2;
+    else if (!gidsOralDiet || scoreOneFeatureCount >= 2) score = 1;
 
-    return { score, interpretation };
+    const rationale: string[] = [];
+    if (!gidsOralDiet) rationale.push("Sem ingestão oral mantida.");
+    if (mildCount > 0) rationale.push(`${mildCount} critério(s) leves/baixo grau selecionados.`);
+    if (severeCount > 0) rationale.push(`${severeCount} critério(s) maiores selecionados.`);
+    if (threateningCount > 0) rationale.push(`${threateningCount} critério(s) ameaçadores à vida selecionados.`);
+    if (rationale.length === 0) rationale.push("Nenhum critério gastrointestinal selecionado.");
+
+    return {
+      score,
+      interpretation: GIDS_RESULT_COPY[score].title,
+      description: GIDS_RESULT_COPY[score].description,
+      mildCount,
+      scoreOneFeatureCount,
+      severeCount,
+      threateningCount,
+      rationale,
+    };
   }, [gidsMild, gidsOralDiet, gidsSevere, gidsThreatening]);
 
   // --- DVA STATE ---
@@ -290,10 +390,35 @@ const Tools = () => {
   const [nrsDiseaseScore, setNrsDiseaseScore] = useState("0");
 
   const nrsResult = useMemo(() => {
-    if (!(nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4)) return { score: 0, message: "Sem risco nutricional." };
+    const prescreenPositive = nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4;
+    const nutritionOption = NRS_NUTRITION_OPTIONS.find((option) => option.value === nrsNutritionScore) ?? NRS_NUTRITION_OPTIONS[0];
+    const diseaseOption = NRS_DISEASE_OPTIONS.find((option) => option.value === nrsDiseaseScore) ?? NRS_DISEASE_OPTIONS[0];
     const ageScore = numberOrZero(nrsAge) >= 70 ? 1 : 0;
     const total = numberOrZero(nrsNutritionScore) + numberOrZero(nrsDiseaseScore) + ageScore;
-    return { score: total, message: total >= 3 ? "RISCO NUTRICIONAL." : "Sem risco nutricional." };
+
+    if (!prescreenPositive) {
+      return {
+        score: 0,
+        message: "Sem risco nutricional pela triagem inicial.",
+        needsFinalScreening: false,
+        ageScore,
+        nutritionOption,
+        diseaseOption,
+        recommendation: "Se todas as respostas forem negativas, repetir a triagem semanalmente.",
+      };
+    }
+
+    return {
+      score: total,
+      message: total >= 3 ? "Risco nutricional identificado." : "Acompanhar e repetir triagem semanalmente.",
+      needsFinalScreening: true,
+      ageScore,
+      nutritionOption,
+      diseaseOption,
+      recommendation: total >= 3
+        ? "Escore >= 3: indicar plano de cuidado nutricional."
+        : "Escore < 3: manter vigilância e repetir a triagem semanalmente.",
+    };
   }, [nrsQ1, nrsQ2, nrsQ3, nrsQ4, nrsAge, nrsNutritionScore, nrsDiseaseScore]);
 
   const toolsCatalog = tools.length > 0 ? tools : TOOLS_FALLBACK;
@@ -509,16 +634,37 @@ const Tools = () => {
             <Card>
               <CardHeader>
                 <CardTitle>GIDS - Escore de Disfunção Gastrointestinal</CardTitle>
+                <CardDescription>
+                  Calculadora guiada pela lógica publicada do GIDS: um único sintoma leve com ingestão oral mantida permanece em GIDS 0.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-2 mb-4">
                   <Checkbox checked={gidsOralDiet} onCheckedChange={(v) => setGidsOralDiet(Boolean(v))} />
-                  <Label className="font-semibold">Paciente recebe dieta oral?</Label>
+                  <Label className="font-semibold">Paciente mantém ingestão oral?</Label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Critérios leves</p>
+                    <p className="mt-1 text-2xl font-bold">{gidsResult.mildCount}</p>
+                    <p className="text-xs text-muted-foreground">Sintomas de menor gravidade marcados</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Critérios maiores</p>
+                    <p className="mt-1 text-2xl font-bold">{gidsResult.severeCount}</p>
+                    <p className="text-xs text-muted-foreground">Critérios de disfunção/falência</p>
+                  </div>
+                  <div className="rounded-lg border bg-muted/30 p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Ameaça à vida</p>
+                    <p className="mt-1 text-2xl font-bold">{gidsResult.threateningCount}</p>
+                    <p className="text-xs text-muted-foreground">Critérios críticos selecionados</p>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div>
-                    <h4 className="font-medium mb-3 text-yellow-600">Sintomas Leves (1 ponto)</h4>
+                    <h4 className="font-medium mb-3 text-yellow-600">Critérios de baixo grau / risco</h4>
                     <div className="space-y-2">
                       {GIDS_MILD_OPTIONS.map(({ key, label }) => (
                         <div key={key} className="flex items-center gap-2">
@@ -530,9 +676,9 @@ const Tools = () => {
                   </div>
 
                   <div>
-                    <h4 className="font-medium mb-3 text-orange-600">Sintomas Graves (3 pontos)</h4>
+                    <h4 className="font-medium mb-3 text-orange-600">Critérios maiores</h4>
                     <div className="space-y-2">
-                      {GIDS_SEVERE_OPTIONS.map(({ key, label }) => (
+                      {GIDS_SEVERE_DISPLAY_OPTIONS.map(({ key, label }) => (
                         <div key={key} className="flex items-center gap-2">
                           <Checkbox id={key} checked={gidsSevere[key]} onCheckedChange={(v) => setGidsSevere(p => ({ ...p, [key]: !!v }))} />
                           <Label htmlFor={key}>{label}</Label>
@@ -540,7 +686,7 @@ const Tools = () => {
                       ))}
                     </div>
 
-                    <h4 className="font-medium mt-6 mb-3 text-red-600">Ameaça à Vida (4 pontos)</h4>
+                    <h4 className="font-medium mt-6 mb-3 text-red-600">Ameaça à vida</h4>
                     <div className="space-y-2">
                       {GIDS_THREAT_OPTIONS.map(({ key, label }) => (
                         <div key={key} className="flex items-center gap-2">
@@ -552,9 +698,19 @@ const Tools = () => {
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-muted rounded-md text-center">
-                  <div className="text-3xl font-bold">{gidsResult.score}</div>
-                  <div className="uppercase tracking-wide text-sm font-semibold text-muted-foreground">{gidsResult.interpretation}</div>
+                <div className="mt-6 rounded-xl border bg-muted/40 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-3xl font-bold">{gidsResult.score}</div>
+                      <div className="text-sm font-semibold text-foreground">{gidsResult.interpretation}</div>
+                      <p className="mt-1 text-sm text-muted-foreground">{gidsResult.description}</p>
+                    </div>
+                    <div className="space-y-1 text-sm text-muted-foreground md:max-w-sm">
+                      {gidsResult.rationale.map((item) => (
+                        <p key={item}>{item}</p>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -610,7 +766,12 @@ const Tools = () => {
           {/* === NRS TAB === */}
           <TabsContent value="nrs">
             <Card>
-              <CardHeader><CardTitle>NRS 2002</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle>NRS 2002</CardTitle>
+                <CardDescription>
+                  A triagem inicial define se o rastreio final precisa ser preenchido. Se todas as respostas forem negativas, repetir semanalmente.
+                </CardDescription>
+              </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 border p-3 rounded">
@@ -619,20 +780,73 @@ const Tools = () => {
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ2} onCheckedChange={v => setNrsQ2(!!v)} /> Perda de peso nos últimos 3 meses?</label>
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ3} onCheckedChange={v => setNrsQ3(!!v)} /> Redução da ingestão na última semana?</label>
                     <label className="flex items-center gap-2 text-sm"><Checkbox checked={nrsQ4} onCheckedChange={v => setNrsQ4(!!v)} /> Paciente gravemente doente?</label>
+                    <p className="pt-2 text-xs text-muted-foreground">
+                      {nrsResult.needsFinalScreening
+                        ? "Há pelo menos uma resposta positiva: preencher a pontuação final."
+                        : "Sem respostas positivas: manter rastreio semanal."}
+                    </p>
                   </div>
                   <div className="space-y-2 border p-3 rounded">
                     <p className="font-semibold text-sm">Pontuação Final</p>
                     <Label>Idade</Label>
                     <Input type="number" value={nrsAge} onChange={e => setNrsAge(e.target.value)} />
-                    <Label>Escore Nutricional (0-3)</Label>
-                    <Input type="number" value={nrsNutritionScore} onChange={e => setNrsNutritionScore(e.target.value)} />
-                    <Label>Escore Gravidade (0-3)</Label>
-                    <Input type="number" value={nrsDiseaseScore} onChange={e => setNrsDiseaseScore(e.target.value)} />
+                    <p className="text-xs text-muted-foreground">
+                      Idade &gt;= 70 anos soma {nrsResult.ageScore} ponto(s).
+                    </p>
                   </div>
                 </div>
-                <div className="p-4 bg-muted text-center rounded">
-                  <div className="text-xl font-bold">{nrsResult.score} pontos</div>
-                  <div>{nrsResult.message}</div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <div className="space-y-3 border rounded p-4">
+                    <div>
+                      <p className="font-semibold text-sm">Estado nutricional</p>
+                      <p className="text-xs text-muted-foreground">Escolha a descrição que melhor representa o paciente.</p>
+                    </div>
+                    <RadioGroup value={nrsNutritionScore} onValueChange={setNrsNutritionScore}>
+                      {NRS_NUTRITION_OPTIONS.map((option) => (
+                        <label key={option.value} className="flex gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+                          <RadioGroupItem value={option.value} id={`nrs-nutrition-${option.value}`} className="mt-1" />
+                          <div>
+                            <p className="font-medium">{option.title}</p>
+                            <p className="text-sm text-muted-foreground">{option.description}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                  </div>
+
+                  <div className="space-y-3 border rounded p-4">
+                    <div>
+                      <p className="font-semibold text-sm">Gravidade da doença</p>
+                      <p className="text-xs text-muted-foreground">Usar os protótipos do NRS 2002 para enquadrar o caso.</p>
+                    </div>
+                    <RadioGroup value={nrsDiseaseScore} onValueChange={setNrsDiseaseScore}>
+                      {NRS_DISEASE_OPTIONS.map((option) => (
+                        <label key={option.value} className="flex gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+                          <RadioGroupItem value={option.value} id={`nrs-disease-${option.value}`} className="mt-1" />
+                          <div>
+                            <p className="font-medium">{option.title}</p>
+                            <p className="text-sm text-muted-foreground">{option.description}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border bg-muted/40 p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 md:items-start">
+                    <div>
+                      <div className="text-xl font-bold">{nrsResult.score} pontos</div>
+                      <div className="font-medium">{nrsResult.message}</div>
+                      <p className="mt-2 text-sm text-muted-foreground">{nrsResult.recommendation}</p>
+                    </div>
+                    <div className="space-y-1 text-sm text-muted-foreground">
+                      <p>Estado nutricional: {nrsResult.nutritionOption.title}</p>
+                      <p>Gravidade da doença: {nrsResult.diseaseOption.title}</p>
+                      <p>Idade &gt;= 70 anos: {nrsResult.ageScore} ponto(s)</p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>

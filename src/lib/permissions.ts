@@ -193,12 +193,26 @@ export const getCurrentHospitalId = (): string | null => {
   return localStorage.getItem("userHospitalId");
 };
 
+export const hasStoredAccessToken = (): boolean => {
+  if (typeof window === "undefined") return false;
+
+  const raw = localStorage.getItem("local_session");
+  if (!raw) return false;
+
+  try {
+    const parsed = JSON.parse(raw) as { access_token?: string };
+    return typeof parsed.access_token === "string" && parsed.access_token.trim().length > 0;
+  } catch {
+    return false;
+  }
+};
+
 export const hasActiveSession = (): boolean => {
   if (typeof window === "undefined") return false;
   const role = localStorage.getItem("userRole");
   const name = localStorage.getItem("userName");
   const hospitalId = localStorage.getItem("userHospitalId");
-  return Boolean(role && name && hospitalId);
+  return Boolean(role && name && hospitalId && hasStoredAccessToken());
 };
 
 const getStoredPermissionMatrix = (): PermissionMatrix | null => {

@@ -16,6 +16,16 @@ const toOptionalDate = (value: unknown) => {
     return toDate(value) ?? null;
 };
 
+const toScheduleArray = (value: unknown): string[] | undefined => {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value)) return undefined;
+
+    return value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+};
+
 const mapPatientToClient = (patient: any) => {
     const latestEvolution = patient.evolutions?.[0];
     const weight = typeof patient.weight === 'number' ? patient.weight : undefined;
@@ -92,6 +102,7 @@ const buildPatientData = async (payload: any, hospitalId: string) => {
         consistency: payload.consistency || undefined,
         safeConsistency: payload.safeConsistency || undefined,
         mealCount: typeof payload.mealCount === 'number' ? payload.mealCount : undefined,
+        defaultSchedules: toScheduleArray(payload.defaultSchedules) ?? [],
         hospitalId,
         wardId,
     };
@@ -129,6 +140,7 @@ const buildPatientUpdateData = async (payload: Record<string, unknown>, hospital
     if (hasOwn(payload, 'consistency')) data.consistency = toOptionalString(payload.consistency);
     if (hasOwn(payload, 'safeConsistency')) data.safeConsistency = toOptionalString(payload.safeConsistency);
     if (hasOwn(payload, 'mealCount')) data.mealCount = toOptionalNumber(payload.mealCount);
+    if (hasOwn(payload, 'defaultSchedules')) data.defaultSchedules = toScheduleArray(payload.defaultSchedules) ?? [];
     if (hasOwn(payload, 'targetVolume')) data.targetVolume = toOptionalNumber(payload.targetVolume);
 
     if (hasOwn(payload, 'targetKcal')) {

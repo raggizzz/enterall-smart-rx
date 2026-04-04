@@ -160,7 +160,7 @@ export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, on
             <div className="space-y-2">
               <Label>TIG (mg/kg/min)</Label>
               <Input type="number" value={selectedPatient?.weight ? values.perKg.tig.toFixed(2) : ''} readOnly placeholder="Informe o peso do paciente" />
-              <p className="text-xs text-muted-foreground">Cálculo: glicose (g/dia) x 1000 / peso / 1440</p>
+              <p className="text-xs text-muted-foreground">Calculo: glicose (g/dia) x 1000 / peso / 60 / horas de infusao</p>
             </div>
           </div>
         </CardContent>

@@ -3,7 +3,7 @@
  * Substitui os 22+ acessos diretos espalhados pelos componentes.
  *
  * Chaves do localStorage:
- *   local_session      – token JWT serializado como JSON { access_token }
+ *   local_session      – token JWT serializado como JSON { access_token, refresh_token? }
  *   userRole           – role do profissional logado
  *   userName           – nome do profissional
  *   userProfessionalId – UUID do profissional
@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
+import { hasStoredAccessToken } from '@/lib/permissions';
 
 const KEYS = {
   session: 'local_session',
@@ -55,7 +56,7 @@ function readSession(): SessionData {
     hospitalId,
     hospitalName: localStorage.getItem(KEYS.hospitalName),
     ward: localStorage.getItem(KEYS.ward),
-    isAuthenticated: Boolean(role && name && hospitalId),
+    isAuthenticated: Boolean(role && name && hospitalId && hasStoredAccessToken()),
   };
 }
 
@@ -71,6 +72,7 @@ export function useSession() {
 
   const saveSession = useCallback((data: {
     token: string;
+    refreshToken?: string;
     role: string;
     name: string;
     professionalId: string;
@@ -78,7 +80,20 @@ export function useSession() {
     hospitalName: string;
     ward?: string;
   }) => {
-    localStorage.setItem(KEYS.session, JSON.stringify({ access_token: data.token }));
+    let existingRefreshToken: string | undefined;
+    try {
+      const raw = localStorage.getItem(KEYS.session);
+      if (raw) {
+        existingRefreshToken = (JSON.parse(raw) as { refresh_token?: string }).refresh_token;
+      }
+    } catch {
+      existingRefreshToken = undefined;
+    }
+
+    localStorage.setItem(KEYS.session, JSON.stringify({
+      access_token: data.token,
+      refresh_token: data.refreshToken ?? existingRefreshToken,
+    }));
     localStorage.setItem(KEYS.role, data.role);
     localStorage.setItem(KEYS.name, data.name);
     localStorage.setItem(KEYS.professionalId, data.professionalId);

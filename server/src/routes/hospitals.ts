@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
-import { ensureScopedEntity, getScopedHospitalId, requireScopedHospitalId } from '../lib/hospital-scope';
 import { assertExpectedVersion, resolveExpectedVersion, VersionConflictError, withIdempotency } from '../lib/request-guards';
-import { requireRole } from '../lib/auth-middleware';
+import { requireAuth, requireRole } from '../lib/auth-middleware';
 
 const router = Router();
 
 router.get('/', async (req, res) => {
   try {
-    const scopedHospitalId = getScopedHospitalId(req, req.query.hospitalId);
+    const scopedHospitalId = typeof req.query.hospitalId === 'string' ? req.query.hospitalId : undefined;
     const hospitals = await prisma.hospital.findMany({
       where: scopedHospitalId ? { id: scopedHospitalId } : undefined,
       orderBy: { name: 'asc' },
@@ -19,7 +18,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', requireRole('general_manager'), async (req, res) => {
+router.post('/', requireAuth, requireRole('general_manager'), async (req, res) => {
   try {
     await withIdempotency(prisma, req, res, async () => {
       const created = await prisma.hospital.create({
@@ -32,18 +31,15 @@ router.post('/', requireRole('general_manager'), async (req, res) => {
   }
 });
 
-router.put('/:id', requireRole('general_manager'), async (req, res) => {
+router.put('/:id', requireAuth, requireRole('general_manager'), async (req, res) => {
   try {
-    const hospitalId = requireScopedHospitalId(req, res, req.params.id);
-    if (!hospitalId) return;
-
     await withIdempotency(prisma, req, res, async () => {
       const current = await prisma.hospital.findUnique({
         where: { id: req.params.id },
         select: { id: true, version: true },
       });
 
-      if (!current || current.id !== hospitalId) {
+      if (!current) {
         return { statusCode: 404, body: { error: 'Hospital not found' } };
       }
 
@@ -68,18 +64,15 @@ router.put('/:id', requireRole('general_manager'), async (req, res) => {
   }
 });
 
-router.delete('/:id', requireRole('general_manager'), async (req, res) => {
+router.delete('/:id', requireAuth, requireRole('general_manager'), async (req, res) => {
   try {
-    const hospitalId = requireScopedHospitalId(req, res, req.params.id);
-    if (!hospitalId) return;
-
     await withIdempotency(prisma, req, res, async () => {
       const current = await prisma.hospital.findUnique({
         where: { id: req.params.id },
         select: { id: true },
       });
 
-      if (!current || current.id !== hospitalId) {
+      if (!current) {
         return { statusCode: 404, body: { error: 'Hospital not found' } };
       }
 

@@ -218,7 +218,6 @@ export const generateRequisitionData = ({
                     ? totalVol + (extraPowderPerAdministration * matchingTimes.length * dayDiff)
                     : totalVol + totalExtraVolume;
 
-                // Módulo 10: Sistema Fechado - Método Quantitativo (Qtd Bolsas × Preço)
                 if (p.systemType === 'closed') {
                     const bagSize = formulaObj?.presentations?.[0] || 1000;
                     const bagQuantities = p.enteralDetails?.closedFormula?.bagQuantities || {};
@@ -231,15 +230,13 @@ export const generateRequisitionData = ({
                     const pricePerBag = billingUnit === 'ml' ? price * bagSize : price;
                     rowUnitPrice = pricePerBag;
                     rowSubtotal = totalBags * pricePerBag;
+
                     addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
                 } else if (billingUnit === 'ml' && formulaObj?.presentations && formulaObj.presentations.length > 0) {
-                    // Calculate Bags for open system with ml billing
-                    // User Rule: "quantidade de bolsas deve ser calculada utilizando arredondamento para cima"
                     const bagSize = formulaObj.presentations[0];
                     const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
                     const dailyBags = Math.ceil(dailyVolume / bagSize);
                     const totalBags = dailyBags * dayDiff;
-
                     const pricePerBag = price * bagSize;
                     rowUnitPrice = pricePerBag;
                     rowSubtotal = totalBags * pricePerBag;
@@ -440,7 +437,7 @@ export const generateRequisitionData = ({
 
     });
 
-    const typeOrder = { formula: 1, water: 2, module: 3, supplement: 4 };
+    const typeOrder: Record<DietMapItem['type'], number> = { formula: 1, water: 2, module: 3, supplement: 4 };
     dietMap.sort((a, b) => {
         if (a.ward !== b.ward) return a.ward.localeCompare(b.ward);
         if (a.bed !== b.bed) return a.bed.localeCompare(b.bed);
@@ -448,7 +445,6 @@ export const generateRequisitionData = ({
         const leftTime = a.times[0] || '';
         const rightTime = b.times[0] || '';
         if (leftTime !== rightTime) return leftTime.localeCompare(rightTime);
-        // @ts-ignore
         if ((typeOrder[a.type] || 99) !== (typeOrder[b.type] || 99)) return (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
         return a.productName.localeCompare(b.productName);
     });

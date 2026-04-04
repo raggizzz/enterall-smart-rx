@@ -104,6 +104,7 @@ model Patient {
   consistency      String?
   safeConsistency  String?
   mealCount        Int?
+  defaultSchedules String[]
   isActive         Boolean   @default(true)
   version          Int       @default(1)
   createdAt        DateTime  @default(now())

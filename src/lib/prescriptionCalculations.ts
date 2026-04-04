@@ -199,21 +199,38 @@ export const addNutritionAccumulators = (
 const normalizeHeightCm = (heightCm: number): number =>
   heightCm < 3 ? heightCm * 100 : heightCm;
 
-export const calculateBmi = (weight?: number | null, heightCm?: number | null): number | null => {
+const getPatientAgeYears = (dob?: string | null): number | null => {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return age;
+};
+
+export const calculateBmi = (weight?: number | null, heightCm?: number | null, dob?: string | null): number | null => {
+  const age = getPatientAgeYears(dob);
+  if (age !== null && age < 2) return null;
   if (!hasNumber(weight) || !hasNumber(heightCm) || heightCm <= 0) return null;
   const heightMeters = normalizeHeightCm(heightCm) / 100;
   return weight / (heightMeters * heightMeters);
 };
 
-export const calculateIdealWeight = (heightCm?: number | null): number | null => {
+export const calculateIdealWeight = (heightCm?: number | null, dob?: string | null): number | null => {
+  const age = getPatientAgeYears(dob);
+  if (age !== null && age < 18) return null;
   if (!hasNumber(heightCm) || heightCm <= 0) return null;
   const heightMeters = normalizeHeightCm(heightCm) / 100;
   return 25 * heightMeters * heightMeters;
 };
 
-export const getWeightMetrics = (patient?: Pick<Patient, "weight" | "height"> | null): WeightMetrics => {
-  const bmi = calculateBmi(patient?.weight, patient?.height);
-  const idealWeight = calculateIdealWeight(patient?.height);
+export const getWeightMetrics = (patient?: Pick<Patient, "weight" | "height" | "dob"> | null): WeightMetrics => {
+  const bmi = calculateBmi(patient?.weight, patient?.height, patient?.dob);
+  const idealWeight = calculateIdealWeight(patient?.height, patient?.dob);
   const actualWeight = hasNumber(patient?.weight) ? patient.weight : null;
   const isObese = bmi !== null && bmi > 30 && idealWeight !== null;
 
@@ -228,6 +245,9 @@ export const getWeightMetrics = (patient?: Pick<Patient, "weight" | "height"> | 
 export const calculateFormulaNutrition = (
   formula: FormulaLike | undefined,
   totalAmount: number,
+  options?: {
+    dilutedAmount?: number;
+  },
 ): NutritionAccumulator => {
   const totals = createNutritionAccumulator();
 
@@ -260,7 +280,7 @@ export const calculateFormulaNutrition = (
     : nutrientFactor * (toNumber(formula.fatPerUnit) || 0);
 
   totals.fiber += nutrientFactor * (toNumber(formula.fiberPerUnit) || 0);
-  totals.freeWater += totalAmount * ((toNumber(formula.waterContent) || 0) / 100);
+  totals.freeWater += calculateFormulaFreeWater(formula, totalAmount, options?.dilutedAmount);
   totals.sodium += nutrientFactor * (toNumber(formula.sodiumPerUnit) || 0);
   totals.potassium += nutrientFactor * (toNumber(formula.potassiumPerUnit) || 0);
   totals.calcium += nutrientFactor * (toNumber(formula.calciumPerUnit) || 0);
@@ -278,6 +298,25 @@ export const calculateFormulaNutrition = (
   addSource(totals.fiberSources, formula.name, formula.fiberSources);
 
   return totals;
+};
+
+export const calculateFormulaFreeWater = (
+  formula: FormulaLike | undefined,
+  totalAmount: number,
+  dilutedAmount?: number,
+): number => {
+  if (!formula || !hasNumber(totalAmount) || totalAmount <= 0) return 0;
+
+  const baseFreeWater = totalAmount * ((toNumber(formula.waterContent) || 0) / 100);
+  if (!hasNumber(dilutedAmount) || dilutedAmount <= 0 || dilutedAmount <= totalAmount) {
+    return baseFreeWater;
+  }
+
+  if (formula.presentationForm === "po") {
+    return dilutedAmount - totalAmount;
+  }
+
+  return baseFreeWater + (dilutedAmount - totalAmount);
 };
 
 export const calculateModuleNutrition = (
@@ -316,7 +355,7 @@ export const calculateModuleNutrition = (
 
 export const finalizeNutritionTotals = (
   totals: NutritionAccumulator,
-  patient?: Pick<Patient, "weight" | "height"> | null,
+  patient?: Pick<Patient, "weight" | "height" | "dob"> | null,
 ): FinalNutritionTotals => {
   const weightMetrics = getWeightMetrics(patient);
   const actualWeight = weightMetrics.actualWeight;
@@ -458,7 +497,16 @@ export const calculateStoredPrescriptionNutrition = ({
     prescription.enteralDetails.openFormulas.forEach((formulaRow) => {
       const formula = formulas.find((item) => item.id === formulaRow.formulaId);
       const totalAmount = (toNumber(formulaRow.volume) || 0) * (formulaRow.times?.length || 0);
-      addNutritionAccumulators(totals, calculateFormulaNutrition(formula, totalAmount));
+      const dilutedAmountPerStage = toNumber(formulaRow.diluteTo);
+      const timesPerDay = formulaRow.times?.length || 0;
+      addNutritionAccumulators(
+        totals,
+        calculateFormulaNutrition(formula, totalAmount, {
+          dilutedAmount: dilutedAmountPerStage && timesPerDay > 0
+            ? dilutedAmountPerStage * timesPerDay
+            : undefined,
+        }),
+      );
     });
   } else {
     prescription.formulas.forEach((formulaRow) => {

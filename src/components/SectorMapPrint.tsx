@@ -27,7 +27,22 @@ const getActivePrescriptionsForPatient = (prescriptionList: Prescription[], pati
 const normalizeHeightCm = (heightCm: number): number =>
   heightCm < 3 ? heightCm * 100 : heightCm;
 
+const getPatientAgeYears = (patient: Patient): number | null => {
+  if (!patient.dob) return null;
+  const birth = new Date(patient.dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+  return age;
+};
+
 const calculateBmi = (patient: Patient): number | null => {
+  const age = getPatientAgeYears(patient);
+  if (age !== null && age < 2) return null;
   if (!patient.weight || !patient.height) return null;
   const heightMeters = normalizeHeightCm(patient.height) / 100;
   if (!heightMeters) return null;
@@ -35,6 +50,8 @@ const calculateBmi = (patient: Patient): number | null => {
 };
 
 const calculateIdealWeight = (patient: Patient): number | null => {
+  const age = getPatientAgeYears(patient);
+  if (age !== null && age < 18) return null;
   const bmi = calculateBmi(patient);
   if (!bmi || bmi < 30 || !patient.height) return null;
   const heightMeters = normalizeHeightCm(patient.height) / 100;

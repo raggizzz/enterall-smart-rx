@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { getRequiredEnv } from './env';
 
 type AuthPayload = jwt.JwtPayload & {
   hospitalId?: string;
@@ -8,11 +9,7 @@ type AuthPayload = jwt.JwtPayload & {
 };
 
 const getJwtSecret = (): string => {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error('[security] JWT_SECRET environment variable is required. Set it in your .env file.');
-  }
-  return secret;
+  return getRequiredEnv('JWT_SECRET', '[security] JWT_SECRET environment variable is required. Set it in your .env file.');
 };
 
 const normalizeHospitalId = (value: unknown): string | undefined => {

@@ -32,7 +32,7 @@ import {
     initializeDatabase,
     supabase
 } from '@/lib/database';
-import { hasActiveSession } from '@/lib/permissions';
+import { hasActiveSession, normalizeRole } from '@/lib/permissions';
 
 /** Dados clínicos ativos (pacientes, prescrições, evoluções): 60 segundos */
 const CLINICAL_REFRESH_MS = 60_000;
@@ -666,7 +666,12 @@ export function useHospitals() {
             const data = await hospitalsService.getAll();
             if (typeof window !== 'undefined' && hasActiveSession()) {
                 const currentHospitalId = localStorage.getItem('userHospitalId');
-                setHospitals(currentHospitalId ? data.filter((hospital) => hospital.id === currentHospitalId) : data);
+                const currentRole = normalizeRole(localStorage.getItem('userRole'));
+                if (currentRole === 'general_manager') {
+                    setHospitals(data);
+                } else {
+                    setHospitals(currentHospitalId ? data.filter((hospital) => hospital.id === currentHospitalId) : data);
+                }
             } else {
                 setHospitals(data);
             }

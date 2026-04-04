@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { writeFileSync } from 'fs';
 
 const prisma = new PrismaClient();
 
@@ -188,7 +189,7 @@ main()
   })
   .catch(async (e) => {
     console.error(e);
-    require('fs').writeFileSync('seed-error.log', e.stack || e.toString());
+    writeFileSync('seed-error.log', e.stack || e.toString());
     await prisma.$disconnect();
     process.exit(1);
   });

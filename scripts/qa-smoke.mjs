@@ -11,16 +11,6 @@ const USERS = {
     password: "12345678",
     role: "general_manager",
   },
-  nutritionist: {
-    identifier: "100003",
-    password: "12345678",
-    role: "nutritionist",
-  },
-  technician: {
-    identifier: "100004",
-    password: "12345678",
-    role: "technician",
-  },
 };
 
 const ROUTES = [
@@ -128,13 +118,9 @@ const run = async () => {
   };
 
   const gmSession = await loginByApi(USERS.generalManager);
-  const nutritionistSession = await loginByApi(USERS.nutritionist);
-  const technicianSession = await loginByApi(USERS.technician);
 
   report.api.logins = {
     generalManager: gmSession.user.name,
-    nutritionist: nutritionistSession.user.name,
-    technician: technicianSession.user.name,
   };
 
   const token = gmSession.session.access_token;
@@ -225,16 +211,23 @@ const run = async () => {
     });
   });
 
-  await page.goto(FRONTEND_URL, { waitUntil: "domcontentloaded" });
-  await ensureBodyReady(page);
+  await page.addInitScript(({ session, user, hospitalId, hospitalName }) => {
+    window.localStorage.setItem("local_session", JSON.stringify(session));
+    window.localStorage.setItem("userRole", user.role);
+    window.localStorage.setItem("userName", user.name);
+    window.localStorage.setItem("userHospitalId", hospitalId);
+    window.localStorage.setItem("userHospitalName", hospitalName);
+    if (user.id) {
+      window.localStorage.setItem("userProfessionalId", user.id);
+    }
+  }, {
+    session: gmSession.session,
+    user: gmSession.user,
+    hospitalId: HOSPITAL_ID,
+    hospitalName: HOSPITAL_NAME,
+  });
 
-  const selects = page.locator("select");
-  await selects.nth(0).selectOption(HOSPITAL_ID);
-  await selects.nth(1).selectOption("general_manager");
-  await page.locator("#identifier").fill(USERS.generalManager.identifier);
-  await page.locator("#password").fill(USERS.generalManager.password);
-  await page.getByRole("button", { name: "Entrar" }).click();
-  await page.waitForURL("**/dashboard", { timeout: 15000 });
+  await page.goto(`${FRONTEND_URL}/dashboard`, { waitUntil: "domcontentloaded" });
   await ensureBodyReady(page);
 
   report.ui.login = {
@@ -263,14 +256,25 @@ const run = async () => {
     await page.getByPlaceholder("Buscar por nome, codigo, fabricante...").fill(report.api.qaFormula.code);
     await sleep(800);
     const formulasBody = await page.locator("body").innerText();
+    const normalizedFormulasBody = formulasBody.toLowerCase();
     report.ui.qaFormulaVisible = {
       code: report.api.qaFormula.code,
-      visible: formulasBody.includes(report.api.qaFormula.code) && formulasBody.includes("enteral") && formulasBody.includes("oral"),
+      visible:
+        normalizedFormulasBody.includes(report.api.qaFormula.code.toLowerCase())
+        && normalizedFormulasBody.includes("enteral")
+        && normalizedFormulasBody.includes("oral"),
       bodySnippet: formulasBody.slice(0, 400),
     };
   }
 
   await browser.close();
+
+  if (report.api.qaFormula?.id) {
+    await jsonFetch(`${API_URL}/formulas/${report.api.qaFormula.id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  }
 
   console.log(JSON.stringify(report, null, 2));
 };

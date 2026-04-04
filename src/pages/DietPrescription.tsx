@@ -14,8 +14,9 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { getAllFormulas, getAllModules } from "@/lib/formulasDatabase";
-import { usePatients, useWards } from "@/hooks/useDatabase";
+import { usePatients, useSettings, useWards } from "@/hooks/useDatabase";
 import { Patient } from "@/lib/database";
+import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes } from "@/lib/scheduleTimes";
 
 interface FormulaEntry {
     id: string;
@@ -39,7 +40,7 @@ interface HydrationEntry {
 }
 
 // Horários disponíveis
-const SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
+const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
 
 const DietPrescription = () => {
     const navigate = useNavigate();
@@ -49,6 +50,7 @@ const DietPrescription = () => {
     // Usar pacientes do banco de dados
     const { patients, isLoading: patientsLoading } = usePatients();
     const { wards: wardObjects } = useWards();
+    const { settings } = useSettings();
 
     const availableFormulas = getAllFormulas();
     const availableModules = getAllModules();
@@ -196,15 +198,10 @@ const DietPrescription = () => {
     }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules]);
 
     const wardScheduleTimes = useMemo(() => {
-        if (!selectedPatient) return SCHEDULE_TIMES;
-        const ward = wardObjects.find(w =>
-            (selectedPatient.wardId && w.id === selectedPatient.wardId) ||
-            (selectedPatient.ward && w.name === selectedPatient.ward)
-        );
-        return (ward?.defaultSchedules && ward.defaultSchedules.length > 0)
-            ? ward.defaultSchedules
-            : SCHEDULE_TIMES;
-    }, [selectedPatient, wardObjects]);
+        if (!selectedPatient) return resolveConfiguredScheduleTimes({ settings });
+        const ward = findWardByReference(wardObjects, selectedPatient.wardId, selectedPatient.ward);
+        return resolveConfiguredScheduleTimes({ settings, ward });
+    }, [selectedPatient, settings, wardObjects]);
 
     // Cálculo de bolsas (sistema fechado)
     const bagCalculation = useMemo(() => {

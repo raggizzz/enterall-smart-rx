@@ -53,6 +53,7 @@ export const createPatientSchema = z.object({
   consistency: z.string().nullish(),
   safeConsistency: z.string().nullish(),
   mealCount: z.coerce.number().int().nonnegative().nullish(),
+  defaultSchedules: z.array(z.string()).nullish(),
   ward: z.string().nullish(),
   wardId: z.string().nullish(),
   tneGoals: z.record(z.string(), z.unknown()).nullish(),

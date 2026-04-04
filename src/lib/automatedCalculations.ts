@@ -299,7 +299,7 @@ export function calculateBMI(weight: number, height: number, age?: number): {
  */
 export function calculateIdealWeight(height: number, gender: 'male' | 'female', age?: number): number {
   if (age !== undefined && age < 18) {
-    return 0; // Não calcular peso ideal para < 18 anos
+    return 0;
   }
 
   const heightInInches = height / 2.54;
@@ -311,9 +311,6 @@ export function calculateIdealWeight(height: number, gender: 'male' | 'female', 
   }
 }
 
-/**
- * Calculos Clínicos de Nutrição (Água Livre e TIG)
- */
 export function calculateFreeWaterPowder(totalVolume: number, grammage: number): number {
   return totalVolume - grammage;
 }
@@ -436,9 +433,11 @@ export function generateCalculationReport(
   summary: string;
 } {
   // Anthropometric calculations
-  const bmiData = calculateBMI(patientData.weight, patientData.height);
-  const idealWeight = calculateIdealWeight(patientData.height, patientData.gender);
-  const adjustedWeight = calculateAdjustedWeight(patientData.weight, idealWeight);
+  const bmiData = calculateBMI(patientData.weight, patientData.height, patientData.age);
+  const idealWeight = calculateIdealWeight(patientData.height, patientData.gender, patientData.age);
+  const adjustedWeight = idealWeight > 0
+    ? calculateAdjustedWeight(patientData.weight, idealWeight)
+    : patientData.weight;
   const fluidReq = calculateFluidRequirements(patientData.weight, patientData.age);
 
   // Nutritional calculations
@@ -523,13 +522,11 @@ export function validateCalculations(calculations: any): {
   if (calculations.volume?.totalVolume > 3000) {
     warnings.push('Volume muito alto (>3000ml/dia)');
   }
-  
-  // Check Fibras Parenteral
+
   if (calculations.therapyType === 'parenteral' && calculations.nutritional?.fiber && calculations.nutritional.fiber > 0) {
     errors.push('Fibras não devem ser administradas por via parenteral (Fibras = 0)');
   }
 
-  // Módulo 7: Alertas de velocidade de infusão
   if (calculations.volume?.infusionRate) {
     const rate = calculations.volume.infusionRate;
     const mode = calculations.infusionMode || 'pump';
@@ -541,7 +538,6 @@ export function validateCalculations(calculations: any): {
     }
   }
 
-  // Módulo 7: Alerta de volumes divergentes por etapa
   if (Array.isArray(calculations.stageVolumes) && calculations.stageVolumes.length > 1) {
     const uniqueVolumes = Array.from(new Set(calculations.stageVolumes.map((v: number) => Number(v.toFixed(1)))));
     if (uniqueVolumes.length > 1) {
