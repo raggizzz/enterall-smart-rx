@@ -33,6 +33,7 @@ import {
     supabase
 } from '@/lib/database';
 import { hasActiveSession, normalizeRole } from '@/lib/permissions';
+import { FORCE_REFRESH_EVENT } from '@/lib/syncEvents';
 
 /** Dados clínicos ativos (pacientes, prescrições, evoluções): 60 segundos */
 const CLINICAL_REFRESH_MS = 60_000;
@@ -62,9 +63,11 @@ const useAutoRefresh = (refresh: () => Promise<void>, intervalMs: number, deps: 
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') void runRefresh();
         };
+        const handleForcedRefresh = () => void runRefresh();
 
         window.addEventListener('focus', handleFocus);
         document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener(FORCE_REFRESH_EVENT, handleForcedRefresh);
 
         const intervalId = window.setInterval(() => {
             if (document.visibilityState === 'visible') void runRefresh();
@@ -74,6 +77,7 @@ const useAutoRefresh = (refresh: () => Promise<void>, intervalMs: number, deps: 
             cancelled = true;
             window.removeEventListener('focus', handleFocus);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener(FORCE_REFRESH_EVENT, handleForcedRefresh);
             window.clearInterval(intervalId);
         };
     }, [refresh, intervalMs, ...deps]);

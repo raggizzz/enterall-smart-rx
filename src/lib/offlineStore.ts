@@ -132,6 +132,19 @@ const getCurrentSessionHospitalId = () => {
   return localStorage.getItem(HOSPITAL_STORAGE_KEY) || undefined;
 };
 
+const getEntityDisplayName = (entityType: OfflineEntityType) => ({
+  patients: "o cadastro do paciente",
+  formulas: "o cadastro da formula",
+  modules: "o cadastro do modulo",
+  supplies: "o cadastro do insumo",
+  professionals: "o cadastro do profissional",
+  prescriptions: "a prescricao",
+  evolutions: "a evolucao",
+  hospitals: "o cadastro da unidade",
+  wards: "o cadastro da ala",
+  settings: "as configuracoes",
+}[entityType] || "este cadastro");
+
 const resolveOperationHospitalId = (params: {
   endpoint: string;
   payload?: Record<string, unknown>;
@@ -756,7 +769,9 @@ export const flushPendingOperations = async () => {
       const status = isClientError ? "failed" : "pending";
       const message =
         error instanceof ApiError
-          ? `${error.message}${error.status === 409 ? " (conflito de versao)" : ""}${typeof errorBody?.error === "string" ? ` - ${errorBody.error}` : errorText ? ` - ${errorText}` : ""}`
+          ? error.status === 409
+            ? `Conflito de versao: ${getEntityDisplayName(operation.entityType)} foi alterado em outro aparelho antes desta tentativa. Use "Usar dados atuais" na Central Sync para descartar esta alteracao local e recarregar a versao mais recente da unidade.`
+            : `${error.message}${typeof errorBody?.error === "string" ? ` - ${errorBody.error}` : errorText ? ` - ${errorText}` : ""}`
           : error instanceof Error
             ? error.message
             : "Falha desconhecida";

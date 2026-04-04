@@ -11,82 +11,124 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { discardAllOperations, discardPendingOperation, getPendingOperations, retryPendingOperation, type PendingOperation } from "@/lib/offlineStore";
+import {
+  discardAllOperations,
+  discardPendingOperation,
+  getPendingOperations,
+  retryPendingOperation,
+  type PendingOperation,
+} from "@/lib/offlineStore";
 import { useSyncQueue } from "@/components/SyncQueueProvider";
+import { dispatchForceRefresh } from "@/lib/syncEvents";
 import { toast } from "sonner";
+
+const getOperationLabel = (operation: PendingOperation) => {
+  const actionLabel = {
+    create: "Criacao",
+    update: "Atualizacao",
+    delete: "Remocao",
+  }[operation.action];
+
+  const entityLabel = {
+    patients: "paciente",
+    formulas: "formula",
+    modules: "modulo",
+    supplies: "insumo",
+    professionals: "profissional",
+    prescriptions: "prescricao",
+    evolutions: "evolucao",
+    hospitals: "unidade",
+    wards: "ala",
+    settings: "configuracao",
+  }[operation.entityType];
+
+  return `${actionLabel} de ${entityLabel}`;
+};
+
+const classifyOperationError = (operation: PendingOperation) => {
+  const errorText = (operation.lastError || "").toLowerCase();
+
+  if (/token|sess[aã]o expirada|autentica/i.test(errorText)) {
+    return {
+      kind: "auth",
+      canRetry: true,
+      hint: "Refaca o login e sincronize novamente.",
+    } as const;
+  }
+
+  if (/formula not found|module not found|supply not found|patient not found|professional not found|prescription not found|hospital not found|ward not found/.test(errorText)) {
+    return {
+      kind: "missing_reference",
+      canRetry: false,
+      hint: "A referencia original nao existe mais. Descarte esta operacao e refaca com os dados atuais.",
+    } as const;
+  }
+
+  if (/version conflict|conflito de versao/.test(errorText)) {
+    return {
+      kind: "version_conflict",
+      canRetry: false,
+      hint: "Outro aparelho salvou uma versao mais nova deste cadastro. Clique em 'Usar dados atuais' para descartar a copia local e recarregar a versao da unidade.",
+    } as const;
+  }
+
+  if (/doctype|is not valid json|unexpected token/.test(errorText)) {
+    return {
+      kind: "invalid_payload",
+      canRetry: false,
+      hint: "Falha antiga de resposta invalida. Se a operacao ainda for necessaria, refaca no cadastro atual; senao, descarte.",
+    } as const;
+  }
+
+  return {
+    kind: "generic",
+    canRetry: true,
+    hint: undefined,
+  } as const;
+};
 
 const SyncCenterDialog = () => {
   const { pendingCount, failedCount, isSyncing, lastSyncAt, syncNow } = useSyncQueue();
   const [isDiscarding, setIsDiscarding] = useState(false);
   const totalCount = (pendingCount ?? 0) + (failedCount ?? 0);
 
-  const handleDiscardAll = async () => {
-    if (!window.confirm(`Descartar todas as ${totalCount} operacao(oes) da fila? Esta acao nao pode ser desfeita.`)) return;
-    setIsDiscarding(true);
-    try {
-      const removed = await discardAllOperations();
-      toast.success(`${removed} operacao(oes) descartada(s) da fila.`);
-    } finally {
-      setIsDiscarding(false);
-    }
-  };
   const operations = useLiveQuery(
     async () => (await getPendingOperations()).slice().reverse(),
     [],
     [],
   );
 
+  const versionConflictCount = useMemo(
+    () => operations.filter((operation) => classifyOperationError(operation).kind === "version_conflict").length,
+    [operations],
+  );
+
   const summary = useMemo(() => {
+    if (versionConflictCount > 0) {
+      return "Conflito de versao nao significa servidor off. Este aparelho ficou com alteracoes locais antigas e pode recarregar a versao mais nova da unidade.";
+    }
     if (failedCount > 0) return "Conflitos ou falhas exigem revisao manual.";
     if (pendingCount > 0) return "Ha operacoes aguardando sincronizacao com a unidade.";
     return "Tudo sincronizado neste aparelho.";
-  }, [failedCount, pendingCount]);
+  }, [failedCount, pendingCount, versionConflictCount]);
 
-  const getOperationLabel = (operation: PendingOperation) => {
-    const actionLabel = {
-      create: "Criacao",
-      update: "Atualizacao",
-      delete: "Remocao",
-    }[operation.action];
-
-    return `${actionLabel} de ${operation.entityType}`;
+  const handleDiscardAll = async () => {
+    if (!window.confirm(`Descartar todas as ${totalCount} operacao(oes) da fila? Esta acao nao pode ser desfeita.`)) return;
+    setIsDiscarding(true);
+    try {
+      const removed = await discardAllOperations();
+      dispatchForceRefresh();
+      toast.success(`${removed} operacao(oes) descartada(s) da fila.`);
+    } finally {
+      setIsDiscarding(false);
+    }
   };
 
-  const classifyOperationError = (operation: PendingOperation) => {
-    const errorText = (operation.lastError || "").toLowerCase();
-
-    if (/token|sess[aã]o expirada|autentica/i.test(errorText)) {
-      return {
-        canRetry: true,
-        hint: "Refaca o login e sincronize novamente.",
-      };
-    }
-
-    if (/formula not found|module not found|supply not found|patient not found|professional not found|prescription not found|hospital not found|ward not found/.test(errorText)) {
-      return {
-        canRetry: false,
-        hint: "A referencia original nao existe mais. Descarte esta operacao e refaca com os dados atuais.",
-      };
-    }
-
-    if (/version conflict|conflito de versao/.test(errorText)) {
-      return {
-        canRetry: false,
-        hint: "Os dados mudaram em outro aparelho. Atualize a tela e refaca a alteracao na versao atual.",
-      };
-    }
-
-    if (/doctype|is not valid json|unexpected token/.test(errorText)) {
-      return {
-        canRetry: false,
-        hint: "Falha antiga de resposta invalida. Se a operacao ainda for necessaria, refaca no cadastro atual; senao, descarte.",
-      };
-    }
-
-    return {
-      canRetry: true,
-      hint: undefined,
-    };
+  const handleUseCurrentVersion = async (operation: PendingOperation) => {
+    await discardPendingOperation(operation.queueId);
+    dispatchForceRefresh();
+    toast.success("Alteracao local descartada. Atualizando os dados mais recentes da unidade.");
+    void syncNow();
   };
 
   return (
@@ -137,64 +179,84 @@ const SyncCenterDialog = () => {
           )}
         </div>
 
+        {versionConflictCount > 0 && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium">Conflito de versao nao significa servidor indisponivel.</p>
+              <p>
+                Outro aparelho salvou uma versao mais nova antes deste notebook sincronizar. Se quiser continuar com os dados atuais da unidade, use o botao <strong>Usar dados atuais</strong> nas falhas abaixo.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
           {operations.length === 0 ? (
             <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               Nenhuma operacao pendente.
             </div>
           ) : (
-            operations.map((operation) => (
-              (() => {
-                const resolution = classifyOperationError(operation);
-                return (
-              <div key={operation.queueId} className="rounded-xl border p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium">{getOperationLabel(operation)}</p>
-                      <Badge variant={operation.status === "failed" ? "destructive" : "secondary"}>
-                        {operation.status === "failed" ? "Falhou" : operation.status === "processing" ? "Processando" : "Pendente"}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {operation.endpoint} | Tentativas: {operation.attemptCount}
-                    </p>
-                    {operation.lastError && (
-                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-                        {operation.lastError.includes("conflito") ? (
-                          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                        ) : (
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                        )}
-                        <span>{operation.lastError}</span>
-                      </div>
-                    )}
-                    {resolution.hint && (
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {resolution.hint}
-                      </p>
-                    )}
-                  </div>
+            operations.map((operation) => {
+              const resolution = classifyOperationError(operation);
 
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void retryPendingOperation(operation.queueId)}
-                      disabled={!resolution.canRetry}
-                    >
-                      Reenfileirar
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => void discardPendingOperation(operation.queueId)}>
-                      <Trash2 className="h-4 w-4" />
-                      Descartar
-                    </Button>
+              return (
+                <div key={operation.queueId} className="rounded-xl border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{getOperationLabel(operation)}</p>
+                        <Badge variant={operation.status === "failed" ? "destructive" : "secondary"}>
+                          {operation.status === "failed" ? "Falhou" : operation.status === "processing" ? "Processando" : "Pendente"}
+                        </Badge>
+                        {resolution.kind === "version_conflict" && (
+                          <Badge variant="secondary">Conflito de versao</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {operation.endpoint} | Tentativas: {operation.attemptCount}
+                      </p>
+                      {operation.lastError && (
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                          {resolution.kind === "version_conflict" ? (
+                            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                          )}
+                          <span>{operation.lastError}</span>
+                        </div>
+                      )}
+                      {resolution.hint && (
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {resolution.hint}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {resolution.kind === "version_conflict" && (
+                        <Button size="sm" onClick={() => void handleUseCurrentVersion(operation)}>
+                          <RefreshCw className="h-4 w-4" />
+                          Usar dados atuais
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void retryPendingOperation(operation.queueId)}
+                        disabled={!resolution.canRetry}
+                      >
+                        Reenfileirar
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => void discardPendingOperation(operation.queueId)}>
+                        <Trash2 className="h-4 w-4" />
+                        Descartar
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-                );
-              })()
-            ))
+              );
+            })
           )}
         </div>
       </DialogContent>
