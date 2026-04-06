@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://clone-processes-expert-net.trycloudflare.com/health"
+      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://clone-processes-expert-net.trycloudflare.com/health/:path*"
+      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://clone-processes-expert-net.trycloudflare.com/api/:path*"
+      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
