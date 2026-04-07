@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/health"
+      "destination": "https://partners-oasis-unnecessary-upon.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/health/:path*"
+      "destination": "https://partners-oasis-unnecessary-upon.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://strict-politicians-demonstrate-morgan.trycloudflare.com/api/:path*"
+      "destination": "https://partners-oasis-unnecessary-upon.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
