@@ -384,9 +384,7 @@ export default function PatientMonitoringPage() {
                         <p className="text-muted-foreground">
                             {selectedPatient.name} - Prontuário: {selectedPatient.record}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                            Fechamento do dia anterior separado da prescrição atual para facilitar a leitura assistencial.
-                        </p>
+
                     </div>
                 </div>
 

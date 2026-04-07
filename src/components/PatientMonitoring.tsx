@@ -118,12 +118,16 @@ export const PatientMonitoring = ({
     const [oralActualProtein, setOralActualProtein] = useState(savedEvolution?.oralProtein ?? oralProtein);
     const [parenteralActualKcal, setParenteralActualKcal] = useState(savedEvolution?.parenteralKcal ?? parenteralKcal);
     const [parenteralActualProtein, setParenteralActualProtein] = useState(savedEvolution?.parenteralProtein ?? parenteralProtein);
+    const [oralVetPct, setOralVetPct] = useState(0);
+    const [parenteralVetPct, setParenteralVetPct] = useState(0);
+    const [doiReference, setDoiReference] = useState("");
     const [isSaving, setIsSaving] = useState(false);
 
     // Seções collapse
     const [proceduresOpen, setProceduresOpen] = useState(false);
     const [giOpen, setGiOpen] = useState(false);
     const [devicesOpen, setDevicesOpen] = useState(false);
+    const [interruptionReasonsOpen, setInterruptionReasonsOpen] = useState(false);
 
     useEffect(() => {
         setGoals(patient.tneGoals || {});
@@ -421,13 +425,7 @@ export const PatientMonitoring = ({
             </Card>
 
             <Card className="border-dashed border-primary/30 bg-gradient-to-r from-white to-sky-50/70">
-                <CardHeader>
-                    <CardTitle>Leitura Rápida</CardTitle>
-                    <CardDescription>
-                        Separação direta entre o fechamento do dia anterior e a previsão da prescrição atual.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-6">
                     <div className="rounded-xl border bg-white p-4">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Ontem executado</p>
                         <p className="mt-2 text-2xl font-bold text-sky-700">{actualNutrition.totalKcal.toFixed(0)} kcal</p>
@@ -467,11 +465,8 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Execução do Dia Anterior (Últimas 24h)
+                        Infusão de dieta enteral em relação ao volume prescrito no dia anterior
                     </CardTitle>
-                    <CardDescription>
-                        Esta seção consolida o fechamento do dia anterior: percentual de infusão, aporte efetivo e o que realmente entrou por cada via.
-                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
@@ -483,7 +478,6 @@ export const PatientMonitoring = ({
                             className="w-full sm:w-24"
                         />
                         <span className="text-lg">%</span>
-                        <Progress value={infusionPercentage} className="flex-1 h-4" />
                     </div>
                     <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div className="rounded-lg border bg-sky-50 p-4">
@@ -555,46 +549,58 @@ export const PatientMonitoring = ({
                             </p>
                         </div>
                         <div className="space-y-3 rounded-lg border p-4">
-                            <p className="font-medium text-green-700">Via oral efetiva</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>kcal VO</Label>
-                                    <Input
-                                        type="number"
-                                        value={oralActualKcal}
-                                        onChange={(e) => setOralActualKcal(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Proteína VO (g)</Label>
+                            <p className="font-medium text-green-700">Via oral efetiva (% em relação ao VET)</p>
+                            <div className="space-y-2">
+                                <Label>% do VET (VO)</Label>
+                                <div className="flex items-center gap-2">
                                     <Input
                                         type="number"
                                         step="0.1"
-                                        value={oralActualProtein}
-                                        onChange={(e) => setOralActualProtein(parseFloat(e.target.value) || 0)}
+                                        max="100"
+                                        value={oralVetPct}
+                                        onChange={(e) => {
+                                            const pct = parseFloat(e.target.value) || 0;
+                                            setOralVetPct(pct);
+                                            if (targetKcal > 0) {
+                                                setOralActualKcal(Number(((pct / 100) * targetKcal).toFixed(1)));
+                                            }
+                                        }}
+                                        className="w-24"
                                     />
+                                    <span className="text-lg">%</span>
+                                    {targetKcal > 0 && (
+                                        <span className="text-sm text-muted-foreground">
+                                            = {oralActualKcal.toFixed(0)} kcal
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
                         <div className="space-y-3 rounded-lg border p-4 lg:col-span-2">
-                            <p className="font-medium text-orange-700">Parenteral efetiva</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>kcal NP</Label>
-                                    <Input
-                                        type="number"
-                                        value={parenteralActualKcal}
-                                        onChange={(e) => setParenteralActualKcal(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Proteína NP (g)</Label>
+                            <p className="font-medium text-orange-700">Parenteral efetiva (% em relação ao VET)</p>
+                            <div className="space-y-2">
+                                <Label>% do VET (NP)</Label>
+                                <div className="flex items-center gap-2">
                                     <Input
                                         type="number"
                                         step="0.1"
-                                        value={parenteralActualProtein}
-                                        onChange={(e) => setParenteralActualProtein(parseFloat(e.target.value) || 0)}
+                                        max="100"
+                                        value={parenteralVetPct}
+                                        onChange={(e) => {
+                                            const pct = parseFloat(e.target.value) || 0;
+                                            setParenteralVetPct(pct);
+                                            if (targetKcal > 0) {
+                                                setParenteralActualKcal(Number(((pct / 100) * targetKcal).toFixed(1)));
+                                            }
+                                        }}
+                                        className="w-24"
                                     />
+                                    <span className="text-lg">%</span>
+                                    {targetKcal > 0 && (
+                                        <span className="text-sm text-muted-foreground">
+                                            = {parenteralActualKcal.toFixed(0)} kcal
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -621,181 +627,201 @@ export const PatientMonitoring = ({
                         <AlertCircle className="h-5 w-5" />
                         Motivos de Interrupção da TNE (últimas 24h)
                     </CardTitle>
-                    <CardDescription>
-                        Use esta seção para justificar interrupções, intolerâncias ou barreiras operacionais observadas no fechamento do dia anterior.
-                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {/* Procedimentos */}
-                    <Collapsible open={proceduresOpen} onOpenChange={setProceduresOpen}>
-                        <CollapsibleTrigger asChild>
-                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
-                            <Checkbox
-                                checked={!!interruptions.procedures}
-                                onCheckedChange={(checked) => {
-                                    if (checked) {
-                                        setProceduresOpen(true);
-                                    }
-                                    setInterruptions({
-                                        ...interruptions,
-                                        procedures: checked ? {} : undefined
-                                    });
-                                }}
-                            />
-                            <span className="font-medium">Procedimentos</span>
-                            <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${proceduresOpen ? 'rotate-180' : ''}`} />
-                        </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="pl-8 pt-2 space-y-2">
-                            {[
-                                { key: 'airways', label: 'Relacionados às vias aéreas (IOT, extubação, traqueostomia)' },
-                                { key: 'therapeutic', label: 'Terapêuticos (cirurgias, diálise, drenagens, jejum medicações)' },
-                                { key: 'diagnostic', label: 'Diagnósticos (exames imagem, endoscópicos)' },
-                                { key: 'nursing', label: 'Enfermagem (banho, mudança decúbito, curativos)' },
-                            ].map(({ key, label }) => (
-                                <div key={key} className="flex items-center gap-2">
-                                    <Checkbox
-                                        checked={interruptions.procedures?.[key as keyof typeof interruptions.procedures] || false}
-                                        onCheckedChange={(checked) => setInterruptions({
-                                            ...interruptions,
-                                            procedures: {
-                                                ...interruptions.procedures,
-                                                [key]: !!checked
-                                            }
-                                        })}
-                                    />
-                                    <span className="text-sm">{label}</span>
-                                </div>
-                            ))}
-                        </CollapsibleContent>
-                    </Collapsible>
-
-                    {/* Eventos Gastrointestinais */}
-                    <Collapsible open={giOpen} onOpenChange={setGiOpen}>
-                        <CollapsibleTrigger asChild>
-                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
-                            <Checkbox
-                                checked={!!interruptions.gastrointestinal}
-                                onCheckedChange={(checked) => {
-                                    if (checked) {
-                                        setGiOpen(true);
-                                    }
-                                    setInterruptions({
-                                        ...interruptions,
-                                        gastrointestinal: checked ? {} : undefined
-                                    });
-                                }}
-                            />
-                            <span className="font-medium">Eventos Gastrointestinais</span>
-                            <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${giOpen ? 'rotate-180' : ''}`} />
-                        </div>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="pl-8 pt-2 space-y-2">
-                            {[
-                                { key: 'residualVolume', label: 'Aumento do volume residual gástrico' },
-                                { key: 'abdominalDistension', label: 'Distensão abdominal' },
-                                { key: 'diarrhea', label: 'Diarreia' },
-                                { key: 'abdominalPain', label: 'Dor abdominal' },
-                                { key: 'nausea', label: 'Náusea' },
-                                { key: 'vomiting', label: 'Vômitos' },
-                                { key: 'aspiration', label: 'Broncoaspiração' },
-                                { key: 'giBleed', label: 'Sangramento gastrointestinal' },
-                                { key: 'ileus', label: 'Íleo Adinâmico' },
-                            ].map(({ key, label }) => (
-                                <div key={key} className="flex items-center gap-2">
-                                    <Checkbox
-                                        checked={interruptions.gastrointestinal?.[key as keyof typeof interruptions.gastrointestinal] || false}
-                                        onCheckedChange={(checked) => setInterruptions({
-                                            ...interruptions,
-                                            gastrointestinal: {
-                                                ...interruptions.gastrointestinal,
-                                                [key]: !!checked
-                                            }
-                                        })}
-                                    />
-                                    <span className="text-sm">{label}</span>
-                                </div>
-                            ))}
-                        </CollapsibleContent>
-                    </Collapsible>
-
-                    {/* Instabilidade Hemodinâmica */}
-                    <div className="flex items-center gap-2 p-2">
-                        <Checkbox
-                            checked={interruptions.hemodynamicInstability || false}
-                            onCheckedChange={(checked) => setInterruptions({
-                                ...interruptions,
-                                hemodynamicInstability: !!checked
-                            })}
+                    {/* DOI de referência */}
+                    <div className="space-y-2 rounded-lg border p-4 bg-slate-50">
+                        <Label className="font-medium">DOI de referência</Label>
+                        <Input
+                            value={doiReference}
+                            onChange={(e) => setDoiReference(e.target.value)}
+                            placeholder="Ex: 10.1016/j.clnu.2023.01.001"
                         />
-                        <span className="font-medium">Instabilidade hemodinâmica</span>
                     </div>
 
-                    {/* Problemas com dispositivos */}
-                    <Collapsible open={devicesOpen} onOpenChange={setDevicesOpen}>
+                    {/* Motivos colapsáveis */}
+                    <Collapsible open={interruptionReasonsOpen} onOpenChange={setInterruptionReasonsOpen}>
                         <CollapsibleTrigger asChild>
-                        <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
-                            <Checkbox
-                                checked={!!interruptions.deviceProblems}
-                                onCheckedChange={(checked) => {
-                                    if (checked) {
-                                        setDevicesOpen(true);
-                                    }
-                                    setInterruptions({
-                                        ...interruptions,
-                                        deviceProblems: checked ? {} : undefined
-                                    });
-                                }}
-                            />
-                            <span className="font-medium">Problemas com dispositivos (sondas/ostomias)</span>
-                            <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${devicesOpen ? 'rotate-180' : ''}`} />
-                        </div>
+                            <div className="flex items-center gap-2 w-full p-3 hover:bg-gray-50 rounded-lg cursor-pointer border">
+                                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">Motivos de interrupção</span>
+                                <Badge variant="secondary" className="ml-2">{interruptionCount}</Badge>
+                                <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${interruptionReasonsOpen ? 'rotate-180' : ''}`} />
+                            </div>
                         </CollapsibleTrigger>
-                        <CollapsibleContent className="pl-8 pt-2 space-y-2">
-                            {[
-                                { key: 'obstruction', label: 'Obstrução' },
-                                { key: 'displacement', label: 'Deslocamento' },
-                                { key: 'unplannedRemoval', label: 'Remoção não planejada' },
-                            ].map(({ key, label }) => (
-                                <div key={key} className="flex items-center gap-2">
+                        <CollapsibleContent className="pt-4 space-y-4">
+                            {/* Procedimentos */}
+                            <Collapsible open={proceduresOpen} onOpenChange={setProceduresOpen}>
+                                <CollapsibleTrigger asChild>
+                                <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
                                     <Checkbox
-                                        checked={interruptions.deviceProblems?.[key as keyof typeof interruptions.deviceProblems] || false}
-                                        onCheckedChange={(checked) => setInterruptions({
-                                            ...interruptions,
-                                            deviceProblems: {
-                                                ...interruptions.deviceProblems,
-                                                [key]: !!checked
+                                        checked={!!interruptions.procedures}
+                                        onCheckedChange={(checked) => {
+                                            if (checked) {
+                                                setProceduresOpen(true);
                                             }
-                                        })}
+                                            setInterruptions({
+                                                ...interruptions,
+                                                procedures: checked ? {} : undefined
+                                            });
+                                        }}
                                     />
-                                    <span className="text-sm">{label}</span>
+                                    <span className="font-medium">Procedimentos</span>
+                                    <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${proceduresOpen ? 'rotate-180' : ''}`} />
                                 </div>
-                            ))}
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="pl-8 pt-2 space-y-2">
+                                    {[
+                                        { key: 'airways', label: 'Relacionados às vias aéreas (IOT, extubação, traqueostomia)' },
+                                        { key: 'therapeutic', label: 'Terapêuticos (cirurgias, diálise, drenagens, jejum medicações)' },
+                                        { key: 'diagnostic', label: 'Diagnósticos (exames imagem, endoscópicos)' },
+                                        { key: 'nursing', label: 'Enfermagem (banho, mudança decúbito, curativos)' },
+                                    ].map(({ key, label }) => (
+                                        <div key={key} className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={interruptions.procedures?.[key as keyof typeof interruptions.procedures] || false}
+                                                onCheckedChange={(checked) => setInterruptions({
+                                                    ...interruptions,
+                                                    procedures: {
+                                                        ...interruptions.procedures,
+                                                        [key]: !!checked
+                                                    }
+                                                })}
+                                            />
+                                            <span className="text-sm">{label}</span>
+                                        </div>
+                                    ))}
+                                </CollapsibleContent>
+                            </Collapsible>
+
+                            {/* Eventos Gastrointestinais */}
+                            <Collapsible open={giOpen} onOpenChange={setGiOpen}>
+                                <CollapsibleTrigger asChild>
+                                <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                    <Checkbox
+                                        checked={!!interruptions.gastrointestinal}
+                                        onCheckedChange={(checked) => {
+                                            if (checked) {
+                                                setGiOpen(true);
+                                            }
+                                            setInterruptions({
+                                                ...interruptions,
+                                                gastrointestinal: checked ? {} : undefined
+                                            });
+                                        }}
+                                    />
+                                    <span className="font-medium">Eventos Gastrointestinais</span>
+                                    <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${giOpen ? 'rotate-180' : ''}`} />
+                                </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="pl-8 pt-2 space-y-2">
+                                    {[
+                                        { key: 'residualVolume', label: 'Aumento do volume residual gástrico' },
+                                        { key: 'abdominalDistension', label: 'Distensão abdominal' },
+                                        { key: 'diarrhea', label: 'Diarreia' },
+                                        { key: 'abdominalPain', label: 'Dor abdominal' },
+                                        { key: 'nausea', label: 'Náusea' },
+                                        { key: 'vomiting', label: 'Vômitos' },
+                                        { key: 'aspiration', label: 'Broncoaspiração' },
+                                        { key: 'giBleed', label: 'Sangramento gastrointestinal' },
+                                        { key: 'ileus', label: 'Íleo Adinâmico' },
+                                    ].map(({ key, label }) => (
+                                        <div key={key} className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={interruptions.gastrointestinal?.[key as keyof typeof interruptions.gastrointestinal] || false}
+                                                onCheckedChange={(checked) => setInterruptions({
+                                                    ...interruptions,
+                                                    gastrointestinal: {
+                                                        ...interruptions.gastrointestinal,
+                                                        [key]: !!checked
+                                                    }
+                                                })}
+                                            />
+                                            <span className="text-sm">{label}</span>
+                                        </div>
+                                    ))}
+                                </CollapsibleContent>
+                            </Collapsible>
+
+                            {/* Instabilidade Hemodinâmica */}
+                            <div className="flex items-center gap-2 p-2">
+                                <Checkbox
+                                    checked={interruptions.hemodynamicInstability || false}
+                                    onCheckedChange={(checked) => setInterruptions({
+                                        ...interruptions,
+                                        hemodynamicInstability: !!checked
+                                    })}
+                                />
+                                <span className="font-medium">Instabilidade hemodinâmica</span>
+                            </div>
+
+                            {/* Problemas com dispositivos */}
+                            <Collapsible open={devicesOpen} onOpenChange={setDevicesOpen}>
+                                <CollapsibleTrigger asChild>
+                                <div className="flex items-center gap-2 w-full p-2 hover:bg-gray-50 rounded cursor-pointer">
+                                    <Checkbox
+                                        checked={!!interruptions.deviceProblems}
+                                        onCheckedChange={(checked) => {
+                                            if (checked) {
+                                                setDevicesOpen(true);
+                                            }
+                                            setInterruptions({
+                                                ...interruptions,
+                                                deviceProblems: checked ? {} : undefined
+                                            });
+                                        }}
+                                    />
+                                    <span className="font-medium">Problemas com dispositivos (sondas/ostomias)</span>
+                                    <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${devicesOpen ? 'rotate-180' : ''}`} />
+                                </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="pl-8 pt-2 space-y-2">
+                                    {[
+                                        { key: 'obstruction', label: 'Obstrução' },
+                                        { key: 'displacement', label: 'Deslocamento' },
+                                        { key: 'unplannedRemoval', label: 'Remoção não planejada' },
+                                    ].map(({ key, label }) => (
+                                        <div key={key} className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={interruptions.deviceProblems?.[key as keyof typeof interruptions.deviceProblems] || false}
+                                                onCheckedChange={(checked) => setInterruptions({
+                                                    ...interruptions,
+                                                    deviceProblems: {
+                                                        ...interruptions.deviceProblems,
+                                                        [key]: !!checked
+                                                    }
+                                                })}
+                                            />
+                                            <span className="text-sm">{label}</span>
+                                        </div>
+                                    ))}
+                                </CollapsibleContent>
+                            </Collapsible>
+
+                            {/* Outros */}
+                            <div className="flex items-center gap-2 p-2">
+                                <Checkbox
+                                    checked={!!interruptions.other}
+                                    onCheckedChange={(checked) => setInterruptions({
+                                        ...interruptions,
+                                        other: checked ? '' : undefined
+                                    })}
+                                />
+                                <span className="font-medium">Outros</span>
+                                {interruptions.other !== undefined && (
+                                    <Input
+                                        value={interruptions.other}
+                                        onChange={(e) => setInterruptions({
+                                            ...interruptions,
+                                            other: e.target.value
+                                        })}
+                                        placeholder="Especifique..."
+                                        className="flex-1"
+                                    />
+                                )}
+                            </div>
                         </CollapsibleContent>
                     </Collapsible>
-
-                    {/* Outros */}
-                    <div className="flex items-center gap-2 p-2">
-                        <Checkbox
-                            checked={!!interruptions.other}
-                            onCheckedChange={(checked) => setInterruptions({
-                                ...interruptions,
-                                other: checked ? '' : undefined
-                            })}
-                        />
-                        <span className="font-medium">Outros</span>
-                        {interruptions.other !== undefined && (
-                            <Input
-                                value={interruptions.other}
-                                onChange={(e) => setInterruptions({
-                                    ...interruptions,
-                                    other: e.target.value
-                                })}
-                                placeholder="Especifique..."
-                                className="flex-1"
-                            />
-                        )}
-                    </div>
                 </CardContent>
             </Card>
 
