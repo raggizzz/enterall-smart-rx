@@ -45,12 +45,6 @@ type ChartRow = {
   totalPct: number;
 };
 
-type NeInfusionRow = {
-  date: string;
-  infusedPct: number;
-  count: number;
-};
-
 type ProductCategory = "formula" | "module" | "supply";
 
 type ProductUsageRow = {
@@ -411,24 +405,7 @@ const Reports = () => {
       map.set(prescription.patientId, list);
     });
     return map;
-  }, [enteralPrescriptions]);
-
-  const tneDaysTotal = useMemo(() => {
-    const patientDaysMap = new Map<string, Set<string>>();
-
-    filteredEvolutions.forEach((evolution) => {
-      const volumeInfused = evolution.volumeInfused ?? 0;
-      const enteralKcal = evolution.enteralKcal ?? 0;
-
-      if (volumeInfused <= 0 && enteralKcal <= 0) return;
-
-      const patientDays = patientDaysMap.get(evolution.patientId) || new Set<string>();
-      patientDays.add(evolution.date);
-      patientDaysMap.set(evolution.patientId, patientDays);
-    });
-
-    return [...patientDaysMap.values()].reduce((total, days) => total + days.size, 0);
-  }, [filteredEvolutions]);
+  }, [filteredPrescriptions]);
 
   const daysInPeriod = useMemo(
     () => buildDateRange(startDate, endDate),
@@ -517,76 +494,6 @@ const Reports = () => {
       daysBelow,
     };
   }, [historyData]);
-
-  const neInfusionHistory = useMemo<NeInfusionRow[]>(() => {
-    return daysInPeriod.map((day) => {
-      const dayEvolutions = filteredEvolutions.filter((evolution) => evolution.date === day);
-      if (dayEvolutions.length === 0) {
-        return { date: formatLabelDate(day), infusedPct: 0, count: 0 };
-      }
-
-      let totalPct = 0;
-      let count = 0;
-
-      dayEvolutions.forEach((evolution) => {
-        const pct = evolution.metaReached ?? 0;
-        if (pct > 0) {
-          totalPct += pct;
-          count += 1;
-        }
-      });
-
-      return {
-        date: formatLabelDate(day),
-        infusedPct: count > 0 ? Number((totalPct / count).toFixed(1)) : 0,
-        count,
-      };
-    });
-  }, [daysInPeriod, filteredEvolutions]);
-
-  const interruptionSummary = useMemo(() => {
-    const reasons = new Map<string, number>();
-    const interruptionLabels: Record<string, string> = {
-      procedures: "Procedimentos",
-      gastrointestinal: "Eventos gastrointestinais",
-      hemodynamicInstability: "Instabilidade hemodinâmica",
-      deviceProblems: "Problemas com dispositivo",
-      other: "Outros",
-    };
-
-    filteredEvolutions.forEach((evolution) => {
-      const interruptions = evolution.tneInterruptions;
-      if (!interruptions) return;
-
-      if (interruptions.procedures) reasons.set("procedures", (reasons.get("procedures") || 0) + 1);
-      if (interruptions.gastrointestinal) reasons.set("gastrointestinal", (reasons.get("gastrointestinal") || 0) + 1);
-      if (interruptions.hemodynamicInstability) reasons.set("hemodynamicInstability", (reasons.get("hemodynamicInstability") || 0) + 1);
-      if (interruptions.deviceProblems) reasons.set("deviceProblems", (reasons.get("deviceProblems") || 0) + 1);
-      if (interruptions.other) reasons.set("other", (reasons.get("other") || 0) + 1);
-    });
-
-    const patientsWithEvolutions = new Set(filteredEvolutions.map((evolution) => evolution.patientId));
-    patientsWithEvolutions.forEach((patientId) => {
-      const patient = patientsById.get(patientId);
-      if (!patient?.tneInterruptions) return;
-
-      const hasEvolutionInterruptions = filteredEvolutions.some(
-        (evolution) => evolution.patientId === patientId && evolution.tneInterruptions,
-      );
-      if (hasEvolutionInterruptions) return;
-
-      const interruptions = patient.tneInterruptions;
-      if (interruptions.procedures) reasons.set("procedures", (reasons.get("procedures") || 0) + 1);
-      if (interruptions.gastrointestinal) reasons.set("gastrointestinal", (reasons.get("gastrointestinal") || 0) + 1);
-      if (interruptions.hemodynamicInstability) reasons.set("hemodynamicInstability", (reasons.get("hemodynamicInstability") || 0) + 1);
-      if (interruptions.deviceProblems) reasons.set("deviceProblems", (reasons.get("deviceProblems") || 0) + 1);
-      if (interruptions.other) reasons.set("other", (reasons.get("other") || 0) + 1);
-    });
-
-    return [...reasons.entries()]
-      .map(([key, count]) => ({ label: interruptionLabels[key] || key, count }))
-      .sort((left, right) => right.count - left.count);
-  }, [filteredEvolutions, patientsById]);
 
   const productUsage = useMemo<ProductUsageRow[]>(() => {
     const usageMap = new Map<string, UsageAccumulator>();
@@ -1061,9 +968,9 @@ const Reports = () => {
       <div className="container py-6 space-y-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Relatórios gerenciais</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Relatorios gerenciais</h1>
             <p className="text-muted-foreground">
-              Histórico assistencial, consumo, custos, médias e resíduos do período selecionado.
+              Historico assistencial, consumo, custos, medias e residuos do periodo selecionado.
             </p>
           </div>
 
@@ -1210,11 +1117,11 @@ const Reports = () => {
 
             <Tabs defaultValue="gestao" className="space-y-4">
               <TabsList className="w-full justify-start overflow-x-auto">
-                <TabsTrigger value="gestao">Gestão</TabsTrigger>
-                <TabsTrigger value="historico">Histórico Assistencial</TabsTrigger>
-                <TabsTrigger value="consumo">Consumo no Período</TabsTrigger>
-                <TabsTrigger value="comparativo">Comparação por Produto</TabsTrigger>
-                <TabsTrigger value="residuos">Resíduos Recicláveis</TabsTrigger>
+                <TabsTrigger value="gestao">Gestao</TabsTrigger>
+                <TabsTrigger value="historico">Historico Assistencial</TabsTrigger>
+                <TabsTrigger value="consumo">Consumo no Periodo</TabsTrigger>
+                <TabsTrigger value="comparativo">Comparacao por Produto</TabsTrigger>
+                <TabsTrigger value="residuos">Residuos Reciclaveis</TabsTrigger>
               </TabsList>
 
               <TabsContent value="gestao" className="space-y-4">
@@ -1224,9 +1131,9 @@ const Reports = () => {
                       <CardTitle className="text-base">Prescrições de TNE no período</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{tneDaysTotal}</p>
+                      <p className="text-3xl font-bold">{managementSummary.prescriptionCount}</p>
                       <p className="text-sm text-muted-foreground">
-                        Somatório de dias distintos com dieta enteral efetivamente administrada ({'>'}0) por paciente no período.
+                        Soma dos pacientes em dieta enteral ao longo do período filtrado.
                       </p>
                     </CardContent>
                   </Card>
@@ -1262,21 +1169,21 @@ const Reports = () => {
                 <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Subtotais do período</CardTitle>
-                      <CardDescription>Fechamento por categoria, seguindo fórmulas, módulos e insumos.</CardDescription>
+                      <CardTitle>Subtotais do periodo</CardTitle>
+                      <CardDescription>Fechamento por categoria, seguindo formulas, modulos e insumos.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="grid gap-3">
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
-                            <p className="font-medium">Fórmulas</p>
+                            <p className="font-medium">Formulas</p>
                             <p className="text-sm text-muted-foreground">Produtos nutricionais principais</p>
                           </div>
                           <div className="text-right font-bold">{formatCurrency(managementSummary.formulasCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
-                            <p className="font-medium">Módulos</p>
+                            <p className="font-medium">Modulos</p>
                             <p className="text-sm text-muted-foreground">Ajustes e complementos de macro e micronutrientes</p>
                           </div>
                           <div className="text-right font-bold">{formatCurrency(managementSummary.modulesCost)}</div>
@@ -1284,13 +1191,13 @@ const Reports = () => {
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <p className="font-medium">Insumos</p>
-                            <p className="text-sm text-muted-foreground">Equipos, frascos e demais itens faturáveis</p>
+                            <p className="text-sm text-muted-foreground">Equipos, frascos e demais itens faturaveis</p>
                           </div>
                           <div className="text-right font-bold">{formatCurrency(managementSummary.suppliesCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3">
                           <div>
-                            <p className="font-medium">Total do período</p>
+                            <p className="font-medium">Total do periodo</p>
                             <p className="text-sm text-muted-foreground">{managementSummary.productCount} produto(s) utilizados</p>
                           </div>
                           <div className="text-right text-lg font-bold">{formatCurrency(managementSummary.totalProductCost)}</div>
@@ -1302,13 +1209,13 @@ const Reports = () => {
                   <Card>
                     <CardHeader>
                       <CardTitle>Custos assistenciais registrados</CardTitle>
-                      <CardDescription>Valores salvos na prescrição, quando preenchidos no fluxo assistencial.</CardDescription>
+                      <CardDescription>Valores salvos na prescricao, quando preenchidos no fluxo assistencial.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div>
                           <p className="font-medium">Material</p>
-                          <p className="text-sm text-muted-foreground">Somatório registrado nas prescrições</p>
+                          <p className="text-sm text-muted-foreground">Somatorio registrado nas prescricoes</p>
                         </div>
                         <div className="text-right font-bold">{formatCurrency(managementSummary.materialCostTotal)}</div>
                       </div>
@@ -1322,7 +1229,7 @@ const Reports = () => {
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div>
                           <p className="font-medium">Custo total da terapia</p>
-                          <p className="text-sm text-muted-foreground">Se o campo total da prescrição foi salvo</p>
+                          <p className="text-sm text-muted-foreground">Se o campo total da prescricao foi salvo</p>
                         </div>
                         <div className="text-right font-bold">{formatCurrency(managementSummary.therapyCostTotal)}</div>
                       </div>
@@ -1335,53 +1242,55 @@ const Reports = () => {
               </TabsContent>
 
               <TabsContent value="historico" className="space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>% dieta enteral infundido / prescrito</CardTitle>
-                    <CardDescription>Média diária do percentual de NE efetivamente infundido em relação ao prescrito.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[380px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={neInfusionHistory}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis unit="%" domain={[0, 120]} />
-                        <Tooltip formatter={(value: number) => `${value}%`} />
-                        <Legend />
-                        <ReferenceLine y={100} stroke="#22c55e" strokeDasharray="6 4" label="Prescrito (100%)" />
-                        <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="6 4" label="Meta mínima" />
-                        <Bar dataKey="infusedPct" fill="#0ea5e9" name="% NE infundido" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Media do periodo</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold">{historySummary.avgPercentage}%</p>
+                      <p className="text-sm text-muted-foreground">NE, NP e calorias nao intencionais em relacao a meta.</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Dias em meta</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold text-emerald-600">{historySummary.daysOnGoal}</p>
+                      <p className="text-sm text-muted-foreground">Dias com total proporcional maior ou igual a 80%.</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Dias abaixo da meta</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-3xl font-bold text-amber-600">{historySummary.daysBelow}</p>
+                      <p className="text-sm text-muted-foreground">Dias com total proporcional abaixo de 80%.</p>
+                    </CardContent>
+                  </Card>
+                </div>
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Principais motivos de interrupção de NE</CardTitle>
-                    <CardDescription>Frequência de motivos registrados no período filtrado.</CardDescription>
+                    <CardTitle>Historico assistencial</CardTitle>
+                    <CardDescription>Somatorio proporcional de enteral infundida, parenteral e calorias nao intencionais.</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    {interruptionSummary.length === 0 ? (
-                      <p className="py-8 text-center text-muted-foreground">Nenhum motivo de interrupção registrado no período.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {interruptionSummary.map((item) => (
-                          <div key={item.label} className="flex items-center justify-between rounded-lg border p-3">
-                            <span className="font-medium">{item.label}</span>
-                            <div className="flex items-center gap-3">
-                              <div className="h-2 w-32 overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className="h-full rounded-full bg-amber-500"
-                                  style={{ width: `${Math.min(100, (item.count / Math.max(1, interruptionSummary[0]?.count)) * 100)}%` }}
-                                />
-                              </div>
-                              <Badge variant="secondary">{item.count}x</Badge>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  <CardContent className="h-[380px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={historyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis unit="%" />
+                        <Tooltip formatter={(value: number) => `${value}%`} />
+                        <Legend />
+                        <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="6 4" label="Meta minima" />
+                        <Bar dataKey="enteralPct" stackId="goal" fill="#7c3aed" name="NE infundida" />
+                        <Bar dataKey="parenteralPct" stackId="goal" fill="#f97316" name="NP infundida" />
+                        <Bar dataKey="nonIntentionalPct" stackId="goal" fill="#0ea5e9" name="Calorias nao intencionais" />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -1389,8 +1298,8 @@ const Reports = () => {
               <TabsContent value="consumo" className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Consumo de produtos no período</CardTitle>
-                    <CardDescription>Consolidado com quantidade, custo, pacientes, média por paciente e paciente-dia.</CardDescription>
+                    <CardTitle>Consumo de produtos no periodo</CardTitle>
+                    <CardDescription>Consolidado com quantidade, custo, pacientes, media por paciente e paciente-dia.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="overflow-auto rounded-md border">
@@ -1406,10 +1315,10 @@ const Reports = () => {
                             <th className="p-3 font-medium text-right">Volume (ml)</th>
                             <th className="p-3 font-medium text-right">Unid. estimadas</th>
                             <th className="p-3 font-medium text-right">Pacientes</th>
-                            <th className="p-3 font-medium text-right">Prescrições</th>
+                            <th className="p-3 font-medium text-right">Prescricoes</th>
                             <th className="p-3 font-medium text-right">Paciente-dia</th>
-                            <th className="p-3 font-medium text-right">Média/dia</th>
-                            <th className="p-3 font-medium text-right">Média/paciente</th>
+                            <th className="p-3 font-medium text-right">Media/dia</th>
+                            <th className="p-3 font-medium text-right">Media/paciente</th>
                             <th className="p-3 font-medium text-right">Custo total</th>
                             <th className="p-3 font-medium text-right">Custo/produto-dia</th>
                           </tr>

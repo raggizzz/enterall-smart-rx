@@ -40,8 +40,6 @@ import {
   sanitizeScheduleTimes,
   sortScheduleTimes,
 } from "@/lib/scheduleTimes";
-import { useCurrentRole } from "@/hooks/useCurrentRole";
-import { can } from "@/lib/permissions";
 
 interface FormulaEntry {
   id: string;
@@ -412,8 +410,6 @@ const buildGenericModuleDescriptor = (moduleItem?: ExtendedCatalogModule): strin
 
 const PrescriptionNew = () => {
   const navigate = useNavigate();
-  const role = useCurrentRole();
-  const canManagePrescriptionSchedules = can(role, "manage_wards") || can(role, "manage_units");
   const [searchParams] = useSearchParams();
   const patientId = searchParams.get("patient");
   const prescriptionIdFromUrl = searchParams.get("prescription");
@@ -2003,7 +1999,7 @@ const PrescriptionNew = () => {
 
           {/* Main Content */}
           <div className="xl:col-span-3 space-y-6">
-            {selectedPatient && currentStep > 1 && canManagePrescriptionSchedules && (
+            {selectedPatient && currentStep > 1 && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardHeader className="space-y-2">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2299,7 +2295,7 @@ const PrescriptionNew = () => {
                   <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-2 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: m.v as any })}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
                   {closedFormula.infusionMode && <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Velocidade *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.rate} onChange={e => setClosedFormula({ ...closedFormula, rate: e.target.value })} onBlur={e => checkHighSpeed(e.target.value, closedFormula.infusionMode)} /><span className="text-sm whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span></div></div><div className="space-y-2"><Label>Tempo de Infusão *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.duration} onChange={e => setClosedFormula({ ...closedFormula, duration: e.target.value })} /><span className="text-sm">horas/dia</span></div></div></div>}
                   {bagCalculation && <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><p className="font-semibold text-blue-800">Volume prescrito para 24h: {bagCalculation.totalVolume} ml</p><p className="text-blue-700">A fórmula possui {bagCalculation.bagSize} ml por bolsa</p><p className="font-medium text-blue-800">Enviar para 24h: {bagCalculation.numBags} bolsa(s) necessárias</p></div>}
-                  {bagCalculation && canManagePrescriptionSchedules && <div className="space-y-3">
+                  {bagCalculation && <div className="space-y-3">
                     <Label>Horários de Envio das Bolsas</Label>
                     <p className="text-xs text-muted-foreground">Preencher com o número de bolsas a ser entregue em cada horário</p>
                     <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
@@ -2380,8 +2376,8 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
                         <p className="text-sm text-muted-foreground">Preencher volume total somente se for necessário adicionar água para diluição da fórmula. A velocidade de infusão será baseada no volume total.</p>
-                        {canManagePrescriptionSchedules && <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>}
-                        {f.formulaId && f.volume && (!canManagePrescriptionSchedules || f.times.length > 0) && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const administrationCount = canManagePrescriptionSchedules ? f.times.length : prescriptionScheduleTimes.length; const vol = parseFloat(f.volume) * administrationCount; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
+                        <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
+                        {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
                     ))}
                   </div>
@@ -2404,8 +2400,8 @@ const PrescriptionNew = () => {
                         <div className="space-y-2"><Label>Quantidade</Label><Input type="number" value={m.quantity} onChange={e => updateModule(m.id, "quantity", e.target.value)} /></div>
                         <div className="space-y-2"><Label>Unidade</Label><Select value={m.unit} onValueChange={v => updateModule(m.id, "unit", v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="g">g</SelectItem><SelectItem value="ml">ml</SelectItem></SelectContent></Select></div>
                       </div>
-                      {canManagePrescriptionSchedules && <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>}
-                      {m.moduleId && m.quantity && (!canManagePrescriptionSchedules || m.times.length > 0) && <p className="text-sm text-muted-foreground">Total: {parseFloat(m.quantity) * (canManagePrescriptionSchedules ? m.times.length : prescriptionScheduleTimes.length)} {m.unit}/dia</p>}
+                      <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>
+                      {m.moduleId && m.quantity && m.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(m.quantity) * m.times.length} {m.unit}/dia</p>}
                     </div>
                   ))}
                   {modules.length === 0 && <p className="text-center text-muted-foreground py-4">Nenhum módulo adicionado</p>}
@@ -2420,8 +2416,8 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
-                  {canManagePrescriptionSchedules && <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>}
-                  {hydration.volume && (!canManagePrescriptionSchedules || hydration.times.length > 0) && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * (canManagePrescriptionSchedules ? hydration.times.length : prescriptionScheduleTimes.length)} ml/dia</p>}
+                  <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
+                  {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
