@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://lips-army-presents-backup.trycloudflare.com/health"
+      "destination": "https://nut-theft-some-thinkpad.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://lips-army-presents-backup.trycloudflare.com/health/:path*"
+      "destination": "https://nut-theft-some-thinkpad.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://lips-army-presents-backup.trycloudflare.com/api/:path*"
+      "destination": "https://nut-theft-some-thinkpad.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
