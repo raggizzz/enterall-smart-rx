@@ -2299,7 +2299,7 @@ const PrescriptionNew = () => {
                     <Label>Horários de Envio das Bolsas</Label>
                     <p className="text-xs text-muted-foreground">Preencher com o número de bolsas a ser entregue em cada horário</p>
                     <div className="grid grid-cols-4 md:grid-cols-8 gap-3">
-                      {DEFAULT_SCHEDULE_TIMES.map(t => (
+                      {prescriptionScheduleTimes.map(t => (
                         <div key={t} className="space-y-1">
                           <Label className="text-xs text-center block">{t}</Label>
                           <Input
