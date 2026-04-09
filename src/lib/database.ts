@@ -376,8 +376,11 @@ export interface DailyEvolution {
     prescriptionId?: string;
     professionalId?: string;
     date: string;
+    prescribedVolume?: number;
     volumeInfused: number;
     metaReached: number;
+    proteinPrescribed?: number;
+    proteinInfused?: number;
     oralKcal?: number;
     oralProtein?: number;
     enteralKcal?: number;
@@ -386,8 +389,12 @@ export interface DailyEvolution {
     parenteralProtein?: number;
     nonIntentionalKcal?: number;
     intercurrences?: string[];
+    tneGoals?: TNEGoals;
+    tneInterruptions?: TNEInterruptions;
+    unintentionalCalories?: UnintentionalCalories;
     notes?: string;
     createdAt: string;
+    updatedAt?: string;
 }
 
 export interface OralSupplementSchedule {
@@ -888,8 +895,11 @@ const normalizeEvolution = (raw: any): DailyEvolution => {
         prescriptionId: raw.prescriptionId,
         professionalId: raw.professionalId,
         date: toDateOnly(raw.date),
+        prescribedVolume: toNumber(raw.prescribedVolume),
         volumeInfused,
         metaReached: Number(metaReached.toFixed(2)),
+        proteinPrescribed: toNumber(raw.proteinPrescribed),
+        proteinInfused: toNumber(raw.proteinInfused),
         oralKcal: toNumber(raw.oralKcal),
         oralProtein: toNumber(raw.oralProtein),
         enteralKcal: toNumber(raw.enteralKcal),
@@ -897,9 +907,13 @@ const normalizeEvolution = (raw: any): DailyEvolution => {
         parenteralKcal: toNumber(raw.parenteralKcal),
         parenteralProtein: toNumber(raw.parenteralProtein),
         nonIntentionalKcal: toNumber(raw.nonIntentionalKcal),
-        intercurrences: raw.intercurrences ?? raw.tneInterruptions,
+        intercurrences: ensureArray<string>(raw.intercurrences),
+        tneGoals: raw.tneGoals,
+        tneInterruptions: raw.tneInterruptions,
+        unintentionalCalories: raw.unintentionalCalories,
         notes: raw.notes,
         createdAt: raw.createdAt || new Date().toISOString(),
+        updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
     };
 };
 

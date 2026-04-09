@@ -27,6 +27,7 @@ import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards
 import SectorMapPrint from "@/components/SectorMapPrint";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
+import { compareBedLabels, formatBirthDateForDisplay, formatBirthDateInput } from "@/lib/patientDisplay";
 
 interface WardBed {
   bed: string;
@@ -117,11 +118,17 @@ const Dashboard = () => {
       return acc;
     }, {});
 
-    const activePatients = patients.filter(p =>
-      p.status === 'active' &&
-      p.hospitalId === selectedHospital &&
-      p.ward === selectedWard
-    );
+    const activePatients = patients
+      .filter(p =>
+        p.status === 'active' &&
+        p.hospitalId === selectedHospital &&
+        p.ward === selectedWard
+      )
+      .sort((left, right) => {
+        const bedComparison = compareBedLabels(left.bed, right.bed);
+        if (bedComparison !== 0) return bedComparison;
+        return left.name.localeCompare(right.name);
+      });
 
     // Create beds from patients
     const patientBeds: WardBed[] = activePatients.map((patient, index) => {
@@ -159,7 +166,7 @@ const Dashboard = () => {
       return {
         bed: patient.bed || `Leito ${String(index + 1).padStart(2, '0')}`,
         patient: patient.name,
-        dob: patient.dob ? new Date(patient.dob).toLocaleDateString('pt-BR') : '-',
+        dob: formatBirthDateForDisplay(patient.dob),
         record: patient.record,
         feedingRoute,
         activeRoutes,
@@ -325,7 +332,7 @@ const Dashboard = () => {
         patient.hospitalId === selectedHospital &&
         patient.ward === selectedWard,
       )
-      .sort((left, right) => (left.bed || "").localeCompare(right.bed || ""));
+      .sort((left, right) => compareBedLabels(left.bed, right.bed) || left.name.localeCompare(right.name));
   }, [patients, selectedHospital, selectedWard]);
 
   const currentHospitalName = hospitals.find((hospital) => hospital.id === selectedHospital)?.name;
@@ -415,9 +422,12 @@ const Dashboard = () => {
                       <Label htmlFor="search-dob">Data de Nascimento</Label>
                       <Input
                         id="search-dob"
-                        type="date"
+                        type="text"
                         value={patientSearch.dob}
-                        onChange={(e) => setPatientSearch({ ...patientSearch, dob: e.target.value })}
+                        inputMode="numeric"
+                        maxLength={10}
+                        placeholder="DD/MM/AAAA"
+                        onChange={(e) => setPatientSearch({ ...patientSearch, dob: formatBirthDateInput(e.target.value) })}
                       />
                     </div>
                     <div className="space-y-2">

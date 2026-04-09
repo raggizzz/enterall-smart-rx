@@ -7,6 +7,7 @@ import { Printer, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import { usePatients, usePrescriptions } from "@/hooks/useDatabase";
+import { compareBedLabels, formatBirthDateForDisplay } from "@/lib/patientDisplay";
 
 const OralMap = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
@@ -44,9 +45,8 @@ const OralMap = () => {
         }
 
         return [...filtered].sort((a, b) => {
-            const bedA = (a.bed || "").toLowerCase();
-            const bedB = (b.bed || "").toLowerCase();
-            if (bedA !== bedB) return bedA.localeCompare(bedB);
+            const bedComparison = compareBedLabels(a.bed, b.bed);
+            if (bedComparison !== 0) return bedComparison;
             return a.name.localeCompare(b.name);
         });
     }, [activeOralPrescriptionsByPatientId, patients, selectedClinic]);
@@ -138,7 +138,7 @@ const OralMap = () => {
                                         </div>
 
                                         <div className="text-sm">
-                                            <span className="text-muted-foreground">Nascimento:</span> {patient.dob ? new Date(patient.dob).toLocaleDateString("pt-BR") : "-"}
+                                            <span className="text-muted-foreground">Nascimento:</span> {formatBirthDateForDisplay(patient.dob)}
                                         </div>
 
                                         <div className="flex flex-col gap-1 text-sm bg-slate-50 p-2 rounded border border-slate-100">

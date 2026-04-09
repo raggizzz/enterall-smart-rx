@@ -464,11 +464,27 @@ export function usePrescriptions() {
         await fetchPrescriptions();
     }, [fetchPrescriptions]);
 
+    const updatePrescriptionStatus = useCallback(async (
+        id: string,
+        payload:
+            | string
+            | {
+                status: Prescription['status'];
+                reason?: string;
+                changedBy?: string;
+                effectiveDate?: string;
+            },
+    ) => {
+        await prescriptionsService.updateStatus(id, payload);
+        await fetchPrescriptions();
+    }, [fetchPrescriptions]);
+
     return {
         prescriptions,
         isLoading,
         createPrescription,
         updatePrescription,
+        updatePrescriptionStatus,
         deletePrescription,
         refetch: fetchPrescriptions
     };

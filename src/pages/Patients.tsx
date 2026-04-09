@@ -59,6 +59,13 @@ import { usePatients, useClinics, useHospitals, useWards, usePrescriptions } fro
 import { Patient } from "@/lib/database";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
+import {
+  birthDateInputToIso,
+  compareBedLabels,
+  formatBirthDateForDisplay,
+  formatBirthDateInput,
+  isoDateToBirthDateInput,
+} from "@/lib/patientDisplay";
 
 const Patients = () => {
   const navigate = useNavigate();
@@ -119,17 +126,23 @@ const Patients = () => {
 
 
 
-  const filteredPatients = patients.filter(
-    (patient) => {
-      const matchesSearch = patient.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  const filteredPatients = patients
+    .filter((patient) => {
+      const normalizedQuery = searchQuery.toLowerCase();
+      const matchesSearch = patient.name.toLowerCase().includes(normalizedQuery) ||
         patient.record.includes(searchQuery) ||
+        formatBirthDateForDisplay(patient.dob).includes(searchQuery) ||
         patient.dob?.includes(searchQuery);
 
       if (statusFilter === 'all') return matchesSearch;
       if (statusFilter === 'active') return matchesSearch && (patient.status === 'active' || !patient.status);
       return matchesSearch && patient.status === statusFilter;
-    }
-  );
+    })
+    .sort((left, right) => {
+      const bedComparison = compareBedLabels(left.bed, right.bed);
+      if (bedComparison !== 0) return bedComparison;
+      return left.name.localeCompare(right.name);
+    });
 
   const resetForm = () => {
     setNewPatient({
@@ -157,6 +170,11 @@ const Patients = () => {
       toast.error("Preencha todos os campos obrigatórios");
       return;
     }
+    const normalizedDob = birthDateInputToIso(newPatient.dob);
+    if (!normalizedDob) {
+      toast.error("Preencha a data de nascimento no formato DD/MM/AAAA.");
+      return;
+    }
     if (newPatient.height) {
       const h = parseFloat(newPatient.height);
       if (h > 250) {
@@ -169,7 +187,7 @@ const Patients = () => {
       if (editingPatient?.id) {
         const updateData = {
           name: newPatient.name,
-          dob: newPatient.dob,
+          dob: normalizedDob,
           record: newPatient.record,
           bed: newPatient.bed,
           ward: newPatient.ward,
@@ -191,7 +209,7 @@ const Patients = () => {
       } else {
         await createPatient({
           name: newPatient.name,
-          dob: newPatient.dob,
+          dob: normalizedDob,
           record: newPatient.record,
           bed: newPatient.bed,
           ward: newPatient.ward,
@@ -218,7 +236,7 @@ const Patients = () => {
     setEditingPatient(patient);
     setNewPatient({
       name: patient.name,
-      dob: patient.dob,
+      dob: isoDateToBirthDateInput(patient.dob),
       record: patient.record,
       bed: patient.bed || "",
       ward: patient.ward || "",
@@ -286,13 +304,7 @@ const Patients = () => {
   };
 
   const formatDate = (dateStr: string) => {
-    if (!dateStr) return "-";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('pt-BR');
-    } catch {
-      return dateStr;
-    }
+    return formatBirthDateForDisplay(dateStr);
   };
 
   return (
@@ -336,9 +348,12 @@ const Patients = () => {
                     <Label htmlFor="dob">Data de Nascimento *</Label>
                     <Input
                       id="dob"
-                      type="date"
+                      type="text"
                       value={newPatient.dob}
-                      onChange={(e) => setNewPatient({ ...newPatient, dob: e.target.value })}
+                      inputMode="numeric"
+                      maxLength={10}
+                      placeholder="DD/MM/AAAA"
+                      onChange={(e) => setNewPatient({ ...newPatient, dob: formatBirthDateInput(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-2">

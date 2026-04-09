@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FileText, Printer, ShieldCheck } from "lucide-react";
 import { can, getCurrentRole } from "@/lib/permissions";
 import { toast } from "sonner";
+import { compareBedLabels } from "@/lib/patientDisplay";
 
 interface ProtocolItem {
   ward: string;
@@ -105,7 +106,7 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
                   </TableHeader>
                   <TableBody>
                     {wardItems
-                      .sort((a, b) => a.bed.localeCompare(b.bed) || a.scheduleTime.localeCompare(b.scheduleTime))
+                      .sort((a, b) => compareBedLabels(a.bed, b.bed) || a.scheduleTime.localeCompare(b.scheduleTime))
                       .map((item, idx) => (
                         <TableRow key={`${item.bed}-${item.scheduleTime}-${idx}`}>
                           <TableCell className="text-xs py-1 font-medium">{item.bed}</TableCell>

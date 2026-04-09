@@ -21,6 +21,8 @@ import SupplementIcon from "@/components/icons/SupplementIcon";
 import type { Formula as CatalogFormula, Module as CatalogModule } from "@/lib/formulasDatabase";
 import { usePatients, usePrescriptions, useFormulas, useModules as useDbModules, useSettings, useSupplies, useWards } from "@/hooks/useDatabase";
 import { Patient, Prescription, OralSupplementSchedule, OralModuleSchedule } from "@/lib/database";
+import { can } from "@/lib/permissions";
+import { useCurrentRole } from "@/hooks/useCurrentRole";
 import {
   addNutritionAccumulators,
   calculateFormulaNutrition,
@@ -416,7 +418,9 @@ const PrescriptionNew = () => {
 
   // Usar pacientes e prescricoes do banco de dados
   const { patients, isLoading: patientsLoading, updatePatient } = usePatients();
-  const { prescriptions, createPrescription, updatePrescription } = usePrescriptions();
+  const { prescriptions, createPrescription, updatePrescription, updatePrescriptionStatus } = usePrescriptions();
+  const role = useCurrentRole();
+  const canConfigurePrescriptionSchedules = can(role, "manage_units") || can(role, "manage_wards");
   const [isSaving, setIsSaving] = useState(false);
   const [editingPrescriptionIds, setEditingPrescriptionIds] = useState<Record<TherapyType, string | null>>({
     oral: null,
@@ -929,21 +933,23 @@ const PrescriptionNew = () => {
   }, [applyPrescriptionScheduleTimes, baseScheduleTimes]);
 
   const savePatientSchedulePattern = useCallback(async () => {
+    if (!canConfigurePrescriptionSchedules) return;
     if (!selectedPatient?.id) return;
 
     await updatePatient(selectedPatient.id, { defaultSchedules: prescriptionScheduleTimes });
     setSelectedPatient((current) => current ? { ...current, defaultSchedules: prescriptionScheduleTimes } : current);
     toast.success("Padrao de horarios salvo para este paciente.");
-  }, [prescriptionScheduleTimes, selectedPatient?.id, updatePatient]);
+  }, [canConfigurePrescriptionSchedules, prescriptionScheduleTimes, selectedPatient?.id, updatePatient]);
 
   const clearPatientSchedulePattern = useCallback(async () => {
+    if (!canConfigurePrescriptionSchedules) return;
     if (!selectedPatient?.id) return;
 
     await updatePatient(selectedPatient.id, { defaultSchedules: [] });
     setSelectedPatient((current) => current ? { ...current, defaultSchedules: [] } : current);
     applyPrescriptionScheduleTimes(wardScheduleTimes);
     toast.success("Padrao personalizado do paciente removido.");
-  }, [applyPrescriptionScheduleTimes, selectedPatient?.id, updatePatient, wardScheduleTimes]);
+  }, [applyPrescriptionScheduleTimes, canConfigurePrescriptionSchedules, selectedPatient?.id, updatePatient, wardScheduleTimes]);
 
   // --- DYNAMIC STEP DEFINITIONS ---
   const STEP_DEFS: { id: number; title: string; condition: () => boolean }[] = useMemo(() => [
@@ -1247,6 +1253,24 @@ const PrescriptionNew = () => {
     } satisfies Record<TherapyType, Prescription | undefined>;
   }, [selectedPatient, prescriptions]);
 
+  const activePrescriptionsByType = useMemo(() => {
+    if (!selectedPatient?.id) return { enteral: undefined, oral: undefined, parenteral: undefined } as Record<TherapyType, Prescription | undefined>;
+
+    const patientPrescriptions = prescriptions
+      .filter((prescription) => prescription.patientId === selectedPatient.id && prescription.status === "active")
+      .sort(sortByMostRecentStartDate);
+
+    return {
+      enteral: patientPrescriptions.find((prescription) => prescription.therapyType === "enteral"),
+      oral: patientPrescriptions.find((prescription) => prescription.therapyType === "oral"),
+      parenteral: patientPrescriptions.find((prescription) => prescription.therapyType === "parenteral"),
+    } satisfies Record<TherapyType, Prescription | undefined>;
+  }, [selectedPatient, prescriptions]);
+
+  const hasExistingActiveRoute = Boolean(
+    activePrescriptionsByType.enteral || activePrescriptionsByType.oral || activePrescriptionsByType.parenteral,
+  );
+
   const handleRepeatPrescription = (therapyType: TherapyType) => {
     const sourcePrescription = latestPrescriptionsByType[therapyType];
     if (!sourcePrescription) {
@@ -1274,7 +1298,7 @@ const PrescriptionNew = () => {
   const canProceed = (step: number): boolean => {
     switch (step) {
       case 1: return !!selectedPatient;
-      case 2: return feedingRoutes.oral || feedingRoutes.enteral || feedingRoutes.parenteral;
+      case 2: return feedingRoutes.oral || feedingRoutes.enteral || feedingRoutes.parenteral || hasExistingActiveRoute;
       case 3: return !!enteralAccess;
       case 4: return !!systemType;
       default: return true;
@@ -1572,6 +1596,11 @@ const PrescriptionNew = () => {
       return;
     }
 
+    if (!feedingRoutes.enteral && !feedingRoutes.oral && !feedingRoutes.parenteral && !hasExistingActiveRoute) {
+      toast.error("Selecione pelo menos uma via de alimentacao.");
+      return;
+    }
+
     checkVolumeDivergence();
     checkScheduleOverlap();
 
@@ -1718,6 +1747,18 @@ const PrescriptionNew = () => {
       };
 
       const savedRoutes: string[] = [];
+      const discontinuedRoutes: string[] = [];
+      const closeDeselectedRoute = async (therapyType: TherapyType, label: string) => {
+        const activePrescription = activePrescriptionsByType[therapyType];
+        if (!activePrescription?.id || activePrescription.status !== "active") return;
+
+        await updatePrescriptionStatus(activePrescription.id, {
+          status: "completed",
+          reason: "Via removida na nova prescricao.",
+          effectiveDate: today,
+        });
+        discontinuedRoutes.push(label);
+      };
 
       if (feedingRoutes.enteral) {
         await persistPrescription("enteral", {
@@ -1851,7 +1892,30 @@ const PrescriptionNew = () => {
         savedRoutes.push("TNP");
       }
 
+      if (!feedingRoutes.enteral) {
+        await closeDeselectedRoute("enteral", "TNE");
+      }
+
+      if (!feedingRoutes.oral) {
+        await closeDeselectedRoute("oral", "Via oral");
+      }
+
+      if (!feedingRoutes.parenteral) {
+        await closeDeselectedRoute("parenteral", "TNP");
+      }
+
+      if (savedRoutes.length === 0 && discontinuedRoutes.length > 0) {
+        savedRoutes.push(`vias encerradas: ${discontinuedRoutes.join(", ")}`);
+      }
+
       try {
+        const nextNutritionType = feedingRoutes.enteral
+          ? "enteral"
+          : feedingRoutes.oral
+            ? "oral"
+            : feedingRoutes.parenteral
+              ? "parenteral"
+              : "jejum";
         await updatePatient(selectedPatient.id, {
           name: selectedPatient.name,
           record: selectedPatient.record,
@@ -1859,11 +1923,11 @@ const PrescriptionNew = () => {
           bed: selectedPatient.bed,
           ward: selectedPatient.ward,
           hospitalId: selectedPatient.hospitalId,
-          nutritionType: feedingRoutes.enteral ? "enteral" : feedingRoutes.oral ? "oral" : feedingRoutes.parenteral ? "parenteral" : selectedPatient.nutritionType,
-          consistency: feedingRoutes.oral ? oralDietConsistency || undefined : selectedPatient.consistency,
+          nutritionType: nextNutritionType,
+          consistency: feedingRoutes.oral ? oralDietConsistency || undefined : undefined,
           safeConsistency: feedingRoutes.oral && oralSpeechTherapy ? oralSafeConsistency || undefined : undefined,
-          mealCount: feedingRoutes.oral ? oralMealsPerDay : selectedPatient.mealCount,
-          observation: feedingRoutes.oral ? oralDietCharacteristics || selectedPatient.observation : selectedPatient.observation,
+          mealCount: feedingRoutes.oral ? oralMealsPerDay : undefined,
+          observation: selectedPatient.observation,
         });
       } catch (patientSyncError) {
         console.error("Erro ao sincronizar dados resumidos do paciente:", patientSyncError);
@@ -1999,7 +2063,7 @@ const PrescriptionNew = () => {
 
           {/* Main Content */}
           <div className="xl:col-span-3 space-y-6">
-            {selectedPatient && currentStep > 1 && (
+            {selectedPatient && currentStep > 1 && canConfigurePrescriptionSchedules && (
               <Card className="border-primary/30 bg-primary/5">
                 <CardHeader className="space-y-2">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -2009,7 +2073,7 @@ const PrescriptionNew = () => {
                         Horarios da prescricao
                       </CardTitle>
                       <CardDescription>
-                        A ala define o padrao inicial, mas voce pode ajustar esta prescricao e salvar um padrao proprio para o paciente.
+                        A gestao define o padrao inicial e pode ajustar a grade de horarios disponivel para esta prescricao.
                       </CardDescription>
                     </div>
                     <Badge variant="secondary" className="w-fit">
@@ -2197,24 +2261,24 @@ const PrescriptionNew = () => {
                         const newValue = !feedingRoutes[key];
 
                         if (key === "enteral") {
-                          // Toggling enteral: if turning off, also clear oral/parenteral
                           if (!newValue) {
-                            setFeedingRoutes({ oral: false, enteral: false, parenteral: false });
+                            setFeedingRoutes((current) => ({ ...current, enteral: false }));
                           } else {
-                            setFeedingRoutes({ ...feedingRoutes, enteral: true });
+                            setFeedingRoutes((current) => ({ ...current, enteral: true }));
                           }
                         } else {
-                          // Oral or Parenteral
                           if (feedingRoutes.enteral) {
-                            // When Enteral is active, allow combining
-                            setFeedingRoutes({ ...feedingRoutes, [key]: newValue });
+                            setFeedingRoutes((current) => ({ ...current, [key]: newValue }));
                           } else {
-                            // Without Enteral, only one at a time
-                            setFeedingRoutes({
-                              oral: key === "oral" ? newValue : false,
-                              enteral: false,
-                              parenteral: key === "parenteral" ? newValue : false,
-                            });
+                            if (!newValue) {
+                              setFeedingRoutes((current) => ({ ...current, [key]: false }));
+                            } else {
+                              setFeedingRoutes({
+                                oral: key === "oral",
+                                enteral: false,
+                                parenteral: key === "parenteral",
+                              });
+                            }
                           }
                         }
                       }}>
