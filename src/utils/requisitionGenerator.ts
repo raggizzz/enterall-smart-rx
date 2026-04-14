@@ -1,6 +1,7 @@
 import { Prescription, Formula, Module, Supply, Patient } from '@/lib/database';
 import { RequisitionData, DietMapItem, ConsolidatedItem } from '@/types/requisition';
 import { getPrescriptionRateLabel } from '@/lib/prescriptionInfusion';
+import { compareBedLabels } from '@/lib/patientDisplay';
 
 // Native Date helpers to replace date-fns
 const startOfDay = (date: Date): Date => {
@@ -94,6 +95,8 @@ export const generateRequisitionData = ({
         price: number = 0,
         type: ConsolidatedItem['type']
     ) => {
+        if (!Number.isFinite(amount) || amount <= 0) return;
+
         const key = `${code}-${name}`;
         const existing = consolidatedMap.get(key);
         if (existing) {
@@ -162,20 +165,27 @@ export const generateRequisitionData = ({
             ward: patient?.ward || p.patientWard || '-',
             dob: patient?.dob,
             route: p.therapyType === 'oral'
-                ? (p.oralDetails?.administrationRoute === 'translactation' ? 'Translactacao' : 'Oral')
+                ? (p.oralDetails?.administrationRoute === 'translactation' ? 'Translactação' : 'Oral')
                 : p.feedingRoute || p.therapyType,
         };
 
         let dailySets = 0;
         let dailyBottles = 0;
+        let hasMappedDelivery = false;
 
         // --- Process Formulas ---
         p.formulas.forEach(f => {
+            const formulaObj = formulas.find(item => item.id === f.formulaId);
             const matchingTimes = (f.schedules || [])
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
             matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
-            if (matchingTimes.length > 0) {
+            if (matchingTimes.length > 0 && f.volume > 0) {
+                hasMappedDelivery = true;
+                const openFormulaEntry = p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
+                const manipulationTimes = p.systemType === 'open' ? openFormulaEntry?.manipulationTimes || [] : [];
+                const manipulationLabel = manipulationTimes.length > 0 ? `Manipulação: ${manipulationTimes.join(', ')} | ` : '';
+
                 dietMap.push({
                     ...patientInfo,
                     type: 'formula',
@@ -186,12 +196,12 @@ export const generateRequisitionData = ({
                     stageVolumeUnit: 'ml',
                     rate: getPrescriptionRateLabel(p, f.volume),
                     times: matchingTimes,
-                    productCode: f.formulaId,
-                    observation: p.systemType === 'closed'
+                    productCode: formulaObj?.code || f.formulaId,
+                    observation: manipulationLabel + (p.systemType === 'closed'
                         ? 'Sistema fechado'
                         : p.infusionMode === 'bolus'
                             ? 'Sistema aberto - bolus'
-                            : 'Sistema aberto'
+                            : 'Sistema aberto')
                 });
 
                 const totalVol = f.volume * matchingTimes.length * dayDiff;
@@ -203,9 +213,7 @@ export const generateRequisitionData = ({
                 let rowSubtotal = 0;
 
                 // Formulas often billed by mL or Unit (bag).
-                const formulaObj = formulas.find(item => item.id === f.formulaId);
                 const billingUnit = formulaObj?.billingUnit || 'ml';
-                const openFormulaEntry = p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
                 const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
                 const extraVolumePerDay = equipmentVolumePerAdministration * matchingTimes.length;
                 const totalExtraVolume = extraVolumePerDay * dayDiff;
@@ -227,21 +235,19 @@ export const generateRequisitionData = ({
                         ? bagQtyFromPrescription
                         : Math.ceil(dailyVolume / bagSize);
                     const totalBags = dailyBags * dayDiff;
-                    const pricePerBag = billingUnit === 'ml' ? price * bagSize : price;
-                    rowUnitPrice = pricePerBag;
-                    rowSubtotal = totalBags * pricePerBag;
+                    const closedBillableQuantity = billingUnit === 'ml'
+                        ? totalBags * bagSize
+                        : totalBags;
+                    const closedBillingUnit = billingUnit === 'ml' ? 'ml' : billingUnit;
+                    rowUnitPrice = price;
+                    rowSubtotal = closedBillableQuantity * price;
 
-                    addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
+                    addToConsolidated(formulaObj?.code || f.formulaId, f.formulaName, closedBillableQuantity, closedBillingUnit, price, 'formula');
                 } else if (billingUnit === 'ml' && formulaObj?.presentations && formulaObj.presentations.length > 0) {
-                    const bagSize = formulaObj.presentations[0];
-                    const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
-                    const dailyBags = Math.ceil(dailyVolume / bagSize);
-                    const totalBags = dailyBags * dayDiff;
-                    const pricePerBag = price * bagSize;
-                    rowUnitPrice = pricePerBag;
-                    rowSubtotal = totalBags * pricePerBag;
+                    rowUnitPrice = price;
+                    rowSubtotal = totalBillableAmount * price;
 
-                    addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', pricePerBag, 'formula');
+                    addToConsolidated(formulaObj?.code || f.formulaId, f.formulaName, totalBillableAmount, 'ml', price, 'formula');
                 } else if (billingUnit === 'unit') {
                     const bagSize = formulaObj?.presentations?.[0] || 1000;
                     const dailyVolume = (f.volume * matchingTimes.length) + extraVolumePerDay;
@@ -250,12 +256,12 @@ export const generateRequisitionData = ({
                     rowUnitPrice = price;
                     rowSubtotal = totalBags * price;
 
-                    addToConsolidated(f.formulaId, f.formulaName, totalBags, 'bolsa', price, 'formula');
+                    addToConsolidated(formulaObj?.code || f.formulaId, f.formulaName, totalBags, 'bolsa', price, 'formula');
                 } else {
                     rowUnitPrice = price;
                     rowSubtotal = totalBillableAmount * price;
                     // Fallback: Bill by total volume (ml) or original unit
-                    addToConsolidated(f.formulaId, f.formulaName, totalBillableAmount, billingUnit, price, 'formula');
+                    addToConsolidated(formulaObj?.code || f.formulaId, f.formulaName, totalBillableAmount, billingUnit, price, 'formula');
                 }
 
                 const formulaRow = dietMap[dietMap.length - 1];
@@ -273,11 +279,13 @@ export const generateRequisitionData = ({
 
         // --- Process Modules ---
         p.modules.forEach(m => {
+            const moduleObj = modules.find(item => item.id === m.moduleId);
             const matchingTimes = (m.schedules || [])
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
             matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
-            if (matchingTimes.length > 0) {
+            if (matchingTimes.length > 0 && m.amount > 0) {
+                hasMappedDelivery = true;
                 dietMap.push({
                     ...patientInfo,
                     type: 'module',
@@ -285,13 +293,13 @@ export const generateRequisitionData = ({
                     volumeOrAmount: m.amount,
                     unit: m.unit || 'g',
                     times: matchingTimes,
-                    productCode: m.moduleId,
-                    observation: 'Modulo prescrito'
+                    productCode: moduleObj?.code || m.moduleId,
+                    observation: 'Módulo prescrito'
                 });
 
                 const totalAmount = m.amount * matchingTimes.length * dayDiff;
                 const price = getModulePrice(m.moduleId);
-                addToConsolidated(m.moduleId, m.moduleName, totalAmount, m.unit || 'g', price, 'module');
+                addToConsolidated(moduleObj?.code || m.moduleId, m.moduleName, totalAmount, m.unit || 'g', price, 'module');
 
                 const moduleRow = dietMap[dietMap.length - 1];
                 if (moduleRow?.productCode === m.moduleId && moduleRow.productName === m.moduleName) {
@@ -318,7 +326,8 @@ export const generateRequisitionData = ({
             );
             const thickenerSource = thickenerModule || legacyThickenerFormula;
 
-            if (thickenerTimes.length > 0) {
+            if (thickenerTimes.length > 0 && (thickenerGrams > 0 || thickenerVolume > 0)) {
+                hasMappedDelivery = true;
                 dietMap.push({
                     ...patientInfo,
                     type: thickenerModule ? 'module' : 'supplement',
@@ -328,8 +337,8 @@ export const generateRequisitionData = ({
                     stageVolume: thickenerVolume || undefined,
                     stageVolumeUnit: thickenerVolume > 0 ? 'ml' : undefined,
                     times: thickenerTimes,
-                    productCode: thickenerSource?.id,
-                    observation: 'Agua espessada',
+                    productCode: thickenerSource?.code || thickenerSource?.id,
+                    observation: 'Água espessada',
                 });
 
                 const dailyGrams = thickenerGrams * thickenerTimes.length;
@@ -350,7 +359,7 @@ export const generateRequisitionData = ({
                 const rowSubtotal = totalQuantity * unitPrice;
 
                 addToConsolidated(
-                    thickenerSource?.id || 'THICKENER',
+                    thickenerSource?.code || thickenerSource?.id || 'THICKENER',
                     p.oralDetails.thickenerProduct || thickenerSource?.name || 'Espessante',
                     totalQuantity,
                     billableUnit,
@@ -372,11 +381,12 @@ export const generateRequisitionData = ({
                 .map((time) => normalizeScheduleTime(time))
                 .filter((time) => selectedTimeSet.has(time));
             matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
-            if (matchingTimes.length > 0) {
+            if (matchingTimes.length > 0 && p.hydrationVolume > 0) {
+                hasMappedDelivery = true;
                 dietMap.push({
                     ...patientInfo,
                     type: 'water',
-                    productName: p.therapyType === 'oral' ? 'Agua para hidratacao' : 'Agua para diluicao/hidratacao',
+                    productName: p.therapyType === 'oral' ? 'Água para hidratação' : 'Água para diluição/hidratação',
                     volumeOrAmount: p.hydrationVolume,
                     unit: 'ml',
                     stageVolume: p.hydrationVolume,
@@ -384,7 +394,7 @@ export const generateRequisitionData = ({
                     rate: p.infusionMode === 'bolus' ? 'Bolus' : undefined,
                     times: matchingTimes,
                     productCode: 'WATER-001',
-                    observation: 'Linha separada de hidratacao'
+                    observation: 'Linha separada de hidratação'
                 });
                 const totalVol = p.hydrationVolume * matchingTimes.length * dayDiff;
                 // Exclude water from consolidated billing as requested
@@ -398,7 +408,7 @@ export const generateRequisitionData = ({
         }
 
         // --- Supplies Heuristics (Consolidated Only) ---
-        if (selectedTimes.length > 0) { // Only charge if we are serving diets
+        if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
             if (p.infusionMode === 'pump') {
                 const pumpSupply = supplies.find(s => s.name.toLowerCase().includes('bomba')) || supplies.find(s => s.type === 'set');
 
@@ -440,7 +450,8 @@ export const generateRequisitionData = ({
     const typeOrder: Record<DietMapItem['type'], number> = { formula: 1, water: 2, module: 3, supplement: 4 };
     dietMap.sort((a, b) => {
         if (a.ward !== b.ward) return a.ward.localeCompare(b.ward);
-        if (a.bed !== b.bed) return a.bed.localeCompare(b.bed);
+        const bedComparison = compareBedLabels(a.bed, b.bed);
+        if (bedComparison !== 0) return bedComparison;
         if (a.patientName !== b.patientName) return a.patientName.localeCompare(b.patientName);
         const leftTime = a.times[0] || '';
         const rightTime = b.times[0] || '';

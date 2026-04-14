@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Package, Recycle, TrendingUp, Users } from "lucide-react";
 import {
@@ -36,6 +36,8 @@ import {
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import type { DailyEvolution, Formula, Module, Patient, Prescription, Supply } from "@/lib/database";
+import { printElementInPopup } from "@/lib/printPopup";
+import { getManualBillingAdjustmentsForPeriod } from "@/lib/manualAdjustments";
 
 type ChartRow = {
   date: string;
@@ -47,7 +49,7 @@ type InterruptionReasonRow = {
   count: number;
 };
 
-type ProductCategory = "formula" | "module" | "supply";
+type ProductCategory = "formula" | "module" | "supply" | "diet";
 
 type ProductUsageRow = {
   productId: string;
@@ -107,6 +109,7 @@ const CATEGORY_LABEL: Record<ProductCategory, string> = {
   formula: "Formula",
   module: "Modulo",
   supply: "Insumo",
+  diet: "Ajuste manual",
 };
 
 const currencyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -806,9 +809,53 @@ const Reports = () => {
       });
   }, [filteredPrescriptions, startDate, endDate, formulasById, formulas, modulesById, modules, supplies]);
 
+  const manualAdjustmentRows = useMemo<ProductUsageRow[]>(() => {
+    const currentHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined;
+    return getManualBillingAdjustmentsForPeriod(startDate, endDate, {
+      hospitalId: selectedHospital || currentHospitalId,
+      ward: selectedWard,
+    }).map((adjustment) => {
+      const quantity = adjustment.mode === "cancellation"
+        ? -Math.abs(adjustment.quantity)
+        : adjustment.quantity;
+      const subtotal = adjustment.mode === "cancellation"
+        ? -Math.abs(adjustment.subtotal)
+        : adjustment.subtotal;
+
+      return {
+        productId: adjustment.id,
+        productName: adjustment.productName,
+        manufacturer: adjustment.observation || "Ajuste manual sem paciente",
+        category: adjustment.category === "diet" ? "diet" : adjustment.category,
+        therapyType: "enteral",
+        billingUnit: adjustment.unit,
+        totalQuantity: quantity,
+        totalVolumeMl: adjustment.unit.toLowerCase() === "ml" ? quantity : 0,
+        estimatedUnits: quantity,
+        patientDays: 0,
+        uniquePatients: 0,
+        uniquePrescriptions: 0,
+        totalCalories: 0,
+        totalCost: subtotal,
+        avgQuantityPerPatient: 0,
+        avgQuantityPerDay: 0,
+        avgCostPerPatient: 0,
+        costPerPatientDay: 0,
+        plasticG: 0,
+        paperG: 0,
+        metalG: 0,
+        glassG: 0,
+        wastePerPatient: 0,
+      };
+    });
+  }, [endDate, selectedHospital, selectedWard, startDate]);
+
   const reportProductUsage = useMemo(
-    () => productUsage.filter((item) => item.therapyType === "enteral"),
-    [productUsage],
+    () => [
+      ...productUsage.filter((item) => item.therapyType === "enteral"),
+      ...manualAdjustmentRows,
+    ],
+    [manualAdjustmentRows, productUsage],
   );
 
   useEffect(() => {
@@ -820,27 +867,29 @@ const Reports = () => {
   const managementSummary = useMemo(() => {
     const attendedPatients = new Set<string>();
     const patientDaySet = new Set<string>();
-    let enteralDays = 0;
+    const enteralInfusionDaySet = new Set<string>();
     let nursingCostTotal = 0;
     let materialCostTotal = 0;
     let therapyCostTotal = 0;
+
+    filteredEvolutions.forEach((evolution) => {
+      const hasEnteralInfusion = (evolution.volumeInfused || 0) > 0 || (evolution.enteralKcal || 0) > 0;
+      if (!hasEnteralInfusion) return;
+
+      attendedPatients.add(evolution.patientId);
+      enteralInfusionDaySet.add(`${evolution.patientId}:${evolution.date}`);
+    });
 
     enteralPrescriptions.forEach((prescription) => {
       const overlapDays = getOverlapDays(prescription.startDate, prescription.endDate, startDate, endDate);
       if (overlapDays <= 0) return;
 
-      attendedPatients.add(prescription.patientId);
-      enteralDays += overlapDays;
       nursingCostTotal += (prescription.nursingCostTotal || 0) * overlapDays;
       materialCostTotal += (prescription.materialCostTotal || 0) * overlapDays;
       therapyCostTotal += (prescription.totalCost || 0) * overlapDays;
-
-      const effectiveStart = prescription.startDate > startDate ? prescription.startDate : startDate;
-      const effectiveEnd = prescription.endDate && prescription.endDate < endDate ? prescription.endDate : endDate;
-      buildDateRange(effectiveStart, effectiveEnd).forEach((day) => {
-        patientDaySet.add(`${prescription.patientId}:${day}`);
-      });
     });
+
+    enteralInfusionDaySet.forEach((entry) => patientDaySet.add(entry));
 
     const formulasCost = reportProductUsage
       .filter((item) => item.category === "formula")
@@ -851,20 +900,24 @@ const Reports = () => {
     const suppliesCost = reportProductUsage
       .filter((item) => item.category === "supply")
       .reduce((sum, item) => sum + item.totalCost, 0);
-    const totalProductCost = formulasCost + modulesCost + suppliesCost;
+    const manualAdjustmentsCost = reportProductUsage
+      .filter((item) => item.category === "diet")
+      .reduce((sum, item) => sum + item.totalCost, 0);
+    const totalProductCost = formulasCost + modulesCost + suppliesCost + manualAdjustmentsCost;
     const patientCount = attendedPatients.size;
     const patientDays = patientDaySet.size;
     const averagePatientsPerDay = daysInPeriod.length > 0 ? patientDays / daysInPeriod.length : 0;
 
     return {
       patientCount,
-      prescriptionCount: enteralDays,
+      prescriptionCount: enteralInfusionDaySet.size,
       patientDays: averagePatientsPerDay,
-      prescriptionDays: enteralDays,
+      prescriptionDays: enteralInfusionDaySet.size,
       productCount: reportProductUsage.length,
       formulasCost,
       modulesCost,
       suppliesCost,
+      manualAdjustmentsCost,
       totalProductCost,
       averageCostPerPatient: patientCount > 0 ? totalProductCost / patientCount : 0,
       averageCostPerPatientDay: patientDays > 0 ? totalProductCost / patientDays : 0,
@@ -874,7 +927,7 @@ const Reports = () => {
       therapyCostTotal,
       indirectCostPerDay: settings?.indirectCosts?.laborCosts || 0,
     };
-  }, [daysInPeriod, endDate, enteralPrescriptions, reportProductUsage, settings, startDate]);
+  }, [daysInPeriod, endDate, enteralPrescriptions, filteredEvolutions, reportProductUsage, settings, startDate]);
 
   const comparisonRows = useMemo(() => {
     const selected = selectedProducts.filter(Boolean);
@@ -938,6 +991,7 @@ const Reports = () => {
     <custoFormulas>${managementSummary.formulasCost.toFixed(2)}</custoFormulas>
     <custoModulos>${managementSummary.modulesCost.toFixed(2)}</custoModulos>
     <custoInsumos>${managementSummary.suppliesCost.toFixed(2)}</custoInsumos>
+    <custoGuiasAjuste>${managementSummary.manualAdjustmentsCost.toFixed(2)}</custoGuiasAjuste>
     <custoProdutos>${managementSummary.totalProductCost.toFixed(2)}</custoProdutos>
     <custoMedioPaciente>${managementSummary.averageCostPerPatient.toFixed(2)}</custoMedioPaciente>
     <custoMedioPacienteDia>${managementSummary.averageCostPerPatientDay.toFixed(2)}</custoMedioPacienteDia>
@@ -1001,10 +1055,22 @@ const Reports = () => {
   const totalWasteG = wasteSummary.plasticG + wasteSummary.paperG + wasteSummary.metalG + wasteSummary.glassG;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
+    <div id="reports-print-document" className="min-h-screen bg-background print:bg-white">
+      <div className="print:hidden">
+        <Header />
+      </div>
 
-      <div className="container py-6 space-y-6">
+      <div className="hidden print:block mb-8 border-b-2 border-black pb-4 text-black">
+        <h1 className="text-2xl font-bold uppercase">{settings?.hospitalName || "Hospital não informado"}</h1>
+        <h2 className="text-xl font-semibold mt-1">Relatórios Gerenciais de Nutrição</h2>
+        <div className="flex gap-6 mt-2 text-sm">
+          <p><span className="font-bold">Período:</span> {new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(startDate))} a {new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(endDate))}</p>
+          <p><span className="font-bold">Unidade:</span> {selectedHospitalName}</p>
+          <p><span className="font-bold">Ala:</span> {selectedWard === "all" ? "Todas as alas" : selectedWard}</p>
+        </div>
+      </div>
+
+      <div className="container py-6 space-y-6 print:p-0 print:m-0 print:max-w-none print:space-y-4">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Relatorios gerenciais</h1>
@@ -1020,7 +1086,7 @@ const Reports = () => {
                 Exportar XML
               </Button>
             )}
-            <Button variant="outline" onClick={() => window.print()}>
+            <Button variant="outline" onClick={() => printElementInPopup("reports-print-document", "Relatórios gerenciais")}>
               <Download className="mr-2 h-4 w-4" />
               Imprimir relatorio
             </Button>
@@ -1234,6 +1300,13 @@ const Reports = () => {
                           </div>
                           <div className="text-right font-bold">{formatCurrency(managementSummary.suppliesCost)}</div>
                         </div>
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <p className="font-medium">Guias de ajuste</p>
+                            <p className="text-sm text-muted-foreground">Requisições extras e cancelamentos manuais sem paciente</p>
+                          </div>
+                          <div className="text-right font-bold">{formatCurrency(managementSummary.manualAdjustmentsCost)}</div>
+                        </div>
                         <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3">
                           <div>
                             <p className="font-medium">Total do periodo</p>
@@ -1281,32 +1354,14 @@ const Reports = () => {
               </TabsContent>
 
               <TabsContent value="historico" className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-1">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Media do periodo</CardTitle>
+                      <CardTitle className="text-base">% dieta enteral infundida / prescrita</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-3xl font-bold">{historySummary.avgPercentage}%</p>
                       <p className="text-sm text-muted-foreground">% de dieta enteral infundido em relacao ao prescrito.</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Dias em meta</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold text-emerald-600">{historySummary.daysOnGoal}</p>
-                      <p className="text-sm text-muted-foreground">Dias com dieta enteral infundida maior ou igual a 80% do prescrito.</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">Dias abaixo da meta</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold text-amber-600">{historySummary.daysBelow}</p>
-                      <p className="text-sm text-muted-foreground">Dias com dieta enteral infundida abaixo de 80% do prescrito.</p>
                     </CardContent>
                   </Card>
                 </div>

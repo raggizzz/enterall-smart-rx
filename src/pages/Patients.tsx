@@ -74,6 +74,7 @@ const Patients = () => {
   const [statusFilter, setStatusFilter] = useState("active"); // active, all, discharged, deceased
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [handledUrlAction, setHandledUrlAction] = useState("");
 
   // Status Confirmation State
   const [statusDialogData, setStatusDialogData] = useState<{
@@ -183,12 +184,22 @@ const Patients = () => {
       }
     }
 
+    const normalizedRecord = newPatient.record.trim();
+    const duplicatePatient = patients.find((patient) =>
+      patient.record.trim().toLowerCase() === normalizedRecord.toLowerCase()
+      && patient.id !== editingPatient?.id
+    );
+    if (duplicatePatient) {
+      toast.error(`Já existe um paciente cadastrado com o prontuário ${normalizedRecord}.`);
+      return;
+    }
+
     try {
       if (editingPatient?.id) {
         const updateData = {
           name: newPatient.name,
           dob: normalizedDob,
-          record: newPatient.record,
+          record: normalizedRecord,
           bed: newPatient.bed,
           ward: newPatient.ward,
           hospitalId: newPatient.hospitalId,
@@ -210,7 +221,7 @@ const Patients = () => {
         await createPatient({
           name: newPatient.name,
           dob: normalizedDob,
-          record: newPatient.record,
+          record: normalizedRecord,
           bed: newPatient.bed,
           ward: newPatient.ward,
           hospitalId: newPatient.hospitalId,
@@ -278,6 +289,35 @@ const Patients = () => {
       patientName: patient.name
     });
   };
+
+  useEffect(() => {
+    const action = searchParams.get("action");
+    const patientId = searchParams.get("patient");
+    const status = searchParams.get("status");
+    const actionKey = `${action || ""}:${patientId || ""}:${status || ""}`;
+
+    if (!action || !patientId || handledUrlAction === actionKey || patients.length === 0) return;
+
+    const patient = patients.find((item) => item.id === patientId);
+    if (!patient) return;
+
+    if (!canManagePatients) {
+      toast.error("Sem permissao para gerenciar pacientes.");
+      setHandledUrlAction(actionKey);
+      return;
+    }
+
+    if (action === "edit") {
+      handleEditPatient(patient);
+      setHandledUrlAction(actionKey);
+      return;
+    }
+
+    if (action === "status" && (status === "discharged" || status === "deceased")) {
+      openStatusDialog(patient, status);
+      setHandledUrlAction(actionKey);
+    }
+  }, [canManagePatients, handledUrlAction, patients, searchParams]);
 
   const getNutritionBadge = (type: string) => {
     const badges = {

@@ -36,8 +36,8 @@ import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
-import { useSettings, useBackup, useDashboardData, useHospitals, useWards } from "@/hooks/useDatabase";
-import { db, NursingCosts, IndirectCosts, Hospital, RolePermission, Ward, rolePermissionsService } from "@/lib/database";
+import { useSettings, useBackup, useDashboardData, useHospitals, useWards, useAppTools } from "@/hooks/useDatabase";
+import { db, NursingCosts, IndirectCosts, Hospital, RolePermission, Ward, rolePermissionsService, AppTool } from "@/lib/database";
 import {
     applyRolePermissionsFromDatabase,
     can,
@@ -70,6 +70,7 @@ const DEFAULT_SCHEDULE_OPTIONS = [...DEFAULT_SCHEDULE_TIMES];
 const Settings = () => {
     const { settings, saveSettings, isLoading: settingsLoading } = useSettings();
     const { exportBackup, importBackup, isExporting, isImporting } = useBackup();
+    const { tools, createTool, updateTool } = useAppTools();
     const dashboardData = useDashboardData();
     const role = useCurrentRole();
     const canManageUnits = can(role, "manage_units");
@@ -124,6 +125,7 @@ const Settings = () => {
         return initial;
     });
     const [isSavingPermissions, setIsSavingPermissions] = useState(false);
+    const [newUsefulLink, setNewUsefulLink] = useState({ title: "", url: "" });
 
     // Update form when settings load
     useEffect(() => {
@@ -284,6 +286,52 @@ const Settings = () => {
         }
     };
 
+    const usefulLinks = tools.filter((tool) => tool.category === "link" || Boolean(tool.link));
+
+    const normalizeLinkUrl = (value: string) => {
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+        return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    };
+
+    const handleAddUsefulLink = async () => {
+        const title = newUsefulLink.title.trim();
+        const url = normalizeLinkUrl(newUsefulLink.url);
+
+        if (!title || !url) {
+            toast.error("Informe o título e a URL do link.");
+            return;
+        }
+
+        try {
+            await createTool({
+                hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
+                code: `LINK_${Date.now()}`,
+                name: title,
+                category: "link",
+                link: url,
+                isActive: true,
+            });
+            setNewUsefulLink({ title: "", url: "" });
+            toast.success("Link útil adicionado.");
+        } catch (error) {
+            console.error("Erro ao adicionar link útil", error);
+            toast.error("Não foi possível adicionar o link.");
+        }
+    };
+
+    const handleRemoveUsefulLink = async (tool: AppTool) => {
+        if (!tool.id) return;
+
+        try {
+            await updateTool(tool.id, { isActive: false });
+            toast.success("Link removido.");
+        } catch (error) {
+            console.error("Erro ao remover link útil", error);
+            toast.error("Não foi possível remover o link.");
+        }
+    };
+
     const handleExport = async () => {
         try {
             await exportBackup();
@@ -422,6 +470,81 @@ const Settings = () => {
                                 <Save className="h-4 w-4 mr-2" />
                                 {isSavingPermissions ? "Salvando perfis..." : "Salvar perfis e permissoes"}
                             </Button>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {(canManageUnits || canManageWards) && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Plus className="h-5 w-5" />
+                                Links úteis
+                            </CardTitle>
+                            <CardDescription>
+                                Cadastre links institucionais exibidos na página de Ferramentas. As ferramentas clínicas permanecem fixas.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+                                <div className="space-y-2">
+                                    <Label>Título</Label>
+                                    <Input
+                                        value={newUsefulLink.title}
+                                        onChange={(event) => setNewUsefulLink((current) => ({ ...current, title: event.target.value }))}
+                                        placeholder="Ex: Protocolo institucional de TNE"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>URL</Label>
+                                    <Input
+                                        value={newUsefulLink.url}
+                                        onChange={(event) => setNewUsefulLink((current) => ({ ...current, url: event.target.value }))}
+                                        placeholder="https://..."
+                                    />
+                                </div>
+                                <div className="flex items-end">
+                                    <Button type="button" onClick={handleAddUsefulLink} className="w-full">
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Adicionar
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="rounded-lg border">
+                                {usefulLinks.length === 0 ? (
+                                    <p className="p-4 text-sm text-muted-foreground">Nenhum link útil cadastrado para esta unidade.</p>
+                                ) : (
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Título</TableHead>
+                                                <TableHead>URL</TableHead>
+                                                <TableHead className="w-[120px] text-right">Ações</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {usefulLinks.map((tool) => (
+                                                <TableRow key={tool.id || tool.code}>
+                                                    <TableCell className="font-medium">{tool.name}</TableCell>
+                                                    <TableCell className="text-muted-foreground">{tool.link}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleRemoveUsefulLink(tool)}
+                                                            disabled={!tool.id}
+                                                        >
+                                                            Remover
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                )}
+                            </div>
                         </CardContent>
                     </Card>
                 )}

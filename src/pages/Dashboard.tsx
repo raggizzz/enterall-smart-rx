@@ -13,6 +13,9 @@ import {
   BanIcon,
   Printer,
   Target,
+  Edit,
+  LogOut,
+  XCircle,
 } from "lucide-react";
 import SupplementIcon from "@/components/icons/SupplementIcon";
 import EnteralIcon from "@/components/icons/EnteralIcon";
@@ -23,11 +26,12 @@ import { toast } from "sonner";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { DailyEvolutionDialog } from "@/components/DailyEvolutionDialog";
-import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards, useEvolutions } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useHospitals, useProfessionals, useWards, useEvolutions, useSettings } from "@/hooks/useDatabase";
 import SectorMapPrint from "@/components/SectorMapPrint";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
 import { compareBedLabels, formatBirthDateForDisplay, formatBirthDateInput } from "@/lib/patientDisplay";
+import { printElementInPopup } from "@/lib/printPopup";
 
 interface WardBed {
   bed: string;
@@ -61,6 +65,7 @@ const Dashboard = () => {
   const { prescriptions } = usePrescriptions();
   const { evolutions } = useEvolutions();
   const { hospitals } = useHospitals();
+  const { settings } = useSettings();
   const { wards } = useWards(selectedHospital);
   const { professionals } = useProfessionals(selectedHospital || undefined);
   const canManagePatients = can(role, "manage_patients");
@@ -321,8 +326,18 @@ const Dashboard = () => {
     navigate(`/prescription?${query.toString()}`);
   };
 
+  const handleOpenPatientEdit = (patient: WardBed) => {
+    if (!patient.patientId) return;
+    navigate(`/patients?action=edit&patient=${patient.patientId}`);
+  };
+
+  const handleOpenPatientStatus = (patient: WardBed, status: "discharged" | "deceased") => {
+    if (!patient.patientId) return;
+    navigate(`/patients?action=status&patient=${patient.patientId}&status=${status}`);
+  };
+
   const handlePrintSectorMap = () => {
-    window.print();
+    printElementInPopup("sector-map-print-document", `Mapa do setor - ${selectedWard}`);
   };
 
   const patientsInSelectedWard = useMemo(() => {
@@ -335,7 +350,7 @@ const Dashboard = () => {
       .sort((left, right) => compareBedLabels(left.bed, right.bed) || left.name.localeCompare(right.name));
   }, [patients, selectedHospital, selectedWard]);
 
-  const currentHospitalName = hospitals.find((hospital) => hospital.id === selectedHospital)?.name;
+  const currentHospitalName = hospitals.find((hospital) => hospital.id === selectedHospital)?.name || settings?.hospitalName || "Hospital não informado";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-secondary/35 to-background print:bg-white">
@@ -568,6 +583,19 @@ const Dashboard = () => {
                                   Prescrever
                                 </Button>
                               )}
+                              {canManagePatients && (
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-primary text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPatientEdit(bed);
+                                  }}
+                                >
+                                  <Edit className="h-3.5 w-3.5 mr-1" />
+                                  Editar
+                                </Button>
+                              )}
                               {canManageMonitoring && (
                                 <Button
                                   variant="link"
@@ -583,6 +611,32 @@ const Dashboard = () => {
                                 </Button>
                               )}
                             </div>
+                            {canManagePatients && (
+                              <div className="flex flex-wrap gap-2">
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-green-700 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPatientStatus(bed, "discharged");
+                                  }}
+                                >
+                                  <LogOut className="h-3.5 w-3.5 mr-1" />
+                                  Alta
+                                </Button>
+                                <Button
+                                  variant="link"
+                                  className="p-0 h-auto text-red-700 text-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenPatientStatus(bed, "deceased");
+                                  }}
+                                >
+                                  <XCircle className="h-3.5 w-3.5 mr-1" />
+                                  Óbito
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground">Leito disponível</p>

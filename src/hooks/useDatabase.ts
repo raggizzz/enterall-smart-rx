@@ -834,9 +834,27 @@ export function useAppTools() {
 
     useAutoRefresh(fetchTools, CATALOG_REFRESH_MS, [fetchTools]);
 
+    const createTool = useCallback(async (data: Omit<AppTool, "id" | "createdAt" | "updatedAt">) => {
+        await appToolsService.create(data);
+        await fetchTools();
+    }, [fetchTools]);
+
+    const updateTool = useCallback(async (id: string, data: Partial<Omit<AppTool, "id" | "createdAt" | "updatedAt">>) => {
+        await appToolsService.update(id, data);
+        await fetchTools();
+    }, [fetchTools]);
+
+    const deleteTool = useCallback(async (id: string) => {
+        await appToolsService.delete(id);
+        await fetchTools();
+    }, [fetchTools]);
+
     return {
         tools,
         isLoading,
+        createTool,
+        updateTool,
+        deleteTool,
         refetch: fetchTools
     };
 }

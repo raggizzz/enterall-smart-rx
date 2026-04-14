@@ -20,6 +20,8 @@ import { RequisitionData } from "@/types/requisition";
 import { generateRequisitionData } from "@/utils/requisitionGenerator";
 import { toast } from "sonner";
 import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
+import { createPrintPopup, printElementInPopup } from "@/lib/printPopup";
+import { addManualBillingAdjustment, ManualAdjustmentCategory } from "@/lib/manualAdjustments";
 
 const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
@@ -69,6 +71,18 @@ const Billing = () => {
     const [manualCancelPatientId, setManualCancelPatientId] = useState("");
     const [manualCancelDate, setManualCancelDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [manualCancelSelectedItems, setManualCancelSelectedItems] = useState<string[]>([]);
+    const [manualFreeItem, setManualFreeItem] = useState({
+        ward: "",
+        productKey: "",
+        productCode: "",
+        productName: "",
+        category: "diet" as ManualAdjustmentCategory,
+        quantity: "",
+        unit: "un",
+        unitPrice: "",
+        subtotal: "",
+        observation: "",
+    });
 
     const signatureConfig = {
         signature1: "Nutricionista prescritor",
@@ -199,17 +213,90 @@ const Billing = () => {
             }));
     }, [manualCancelPatientId, previewRequisitionData]);
 
-    const manualCancelTotal = useMemo(
-        () => manualCancelCandidates
+    const manualSelectablePatients = useMemo(() => {
+        if (!previewRequisitionData) return [];
+        const ids = Array.from(new Set(previewRequisitionData.dietMap.map((item) => item.patientId)));
+
+        return ids
+            .map((patientId) => {
+                const patient = patients.find((item) => item.id === patientId);
+                const mapItem = previewRequisitionData.dietMap.find((item) => item.patientId === patientId);
+
+                return {
+                    id: patientId,
+                    name: patient?.name || mapItem?.patientName || "Paciente sem nome",
+                    bed: patient?.bed || mapItem?.bed || "",
+                    ward: patient?.ward || mapItem?.ward || "",
+                    status: patient?.status || "active",
+                };
+            })
+            .sort((left, right) => left.name.localeCompare(right.name));
+    }, [patients, previewRequisitionData]);
+
+    const manualProductOptions = useMemo(() => {
+        const formulaOptions = formulas
+            .filter((formula) => formula.isActive !== false)
+            .map((formula) => ({
+                key: `formula-${formula.id || formula.code}`,
+                code: formula.code,
+                name: formula.name,
+                category: "formula" as ManualAdjustmentCategory,
+                unit: formula.billingUnit === "unit" ? "un" : formula.billingUnit || "ml",
+                unitPrice: formula.billingPrice || 0,
+                label: `${formula.name}${formula.code ? ` (${formula.code})` : ""}`,
+            }));
+
+        const moduleOptions = modules
+            .filter((moduleItem) => moduleItem.isActive !== false)
+            .map((moduleItem) => ({
+                key: `module-${moduleItem.id || moduleItem.code || moduleItem.name}`,
+                code: moduleItem.code || "",
+                name: moduleItem.name,
+                category: "module" as ManualAdjustmentCategory,
+                unit: moduleItem.billingUnit === "unit" ? "un" : moduleItem.billingUnit || "g",
+                unitPrice: moduleItem.billingPrice || 0,
+                label: `${moduleItem.name}${moduleItem.code ? ` (${moduleItem.code})` : ""}`,
+            }));
+
+        const supplyOptions = supplies
+            .filter((supply) => supply.isActive !== false)
+            .map((supply) => ({
+                key: `supply-${supply.id || supply.code}`,
+                code: supply.code,
+                name: supply.name,
+                category: "supply" as ManualAdjustmentCategory,
+                unit: supply.billingUnit === "unit" ? "un" : supply.billingUnit || "un",
+                unitPrice: supply.unitPrice || 0,
+                label: `${supply.name}${supply.code ? ` (${supply.code})` : ""}`,
+            }));
+
+        return [...formulaOptions, ...moduleOptions, ...supplyOptions].sort((left, right) => left.label.localeCompare(right.label));
+    }, [formulas, modules, supplies]);
+
+    const manualCancelTotal = useMemo(() => {
+        if (!manualCancelPatientId) {
+            const explicitSubtotal = Number(manualFreeItem.subtotal) || 0;
+            if (explicitSubtotal > 0) return explicitSubtotal;
+            return (Number(manualFreeItem.quantity) || 0) * (Number(manualFreeItem.unitPrice) || 0);
+        }
+
+        return manualCancelCandidates
             .filter(({ key }) => manualCancelSelectedItems.includes(key))
-            .reduce((sum, { item }) => sum + (item.subtotal || 0), 0),
-        [manualCancelCandidates, manualCancelSelectedItems],
-    );
+            .reduce((sum, { item }) => sum + (item.subtotal || 0), 0);
+    }, [
+        manualCancelCandidates,
+        manualCancelPatientId,
+        manualCancelSelectedItems,
+        manualFreeItem.quantity,
+        manualFreeItem.subtotal,
+        manualFreeItem.unitPrice,
+    ]);
 
     const openManualRequestDialog = (mode: ManualRequestMode) => {
         setManualRequestMode(mode);
         setManualCancelPatientId("");
         setManualCancelSelectedItems([]);
+        setManualFreeItem({ ward: unit === "all" ? "" : unit, productKey: "", productCode: "", productName: "", category: "diet", quantity: "", unit: "un", unitPrice: "", subtotal: "", observation: "" });
         setManualCancelDate(new Date().toISOString().split("T")[0]);
         setManualCancelOpen(true);
     };
@@ -217,37 +304,110 @@ const Billing = () => {
     const handleGenerateRequisition = () => {
         if (!previewRequisitionData) return;
 
+        const popup = createPrintPopup("Requisição de insumos");
         setRequisitionData({ ...previewRequisitionData, documentType: "billing" });
-        setTimeout(() => window.print(), 100);
+        setTimeout(() => printElementInPopup("requisition-print-document", "Requisição de insumos", popup), 100);
     };
 
     const handleGenerateManualCancellation = () => {
-        if (!previewRequisitionData || !manualCancelPatientId || manualCancelSelectedItems.length === 0) {
-            toast.error("Selecione o paciente e ao menos um item.");
+        if (!previewRequisitionData) return;
+
+        const selectedDietMap = manualCancelPatientId
+            ? manualCancelCandidates
+                .filter(({ key }) => manualCancelSelectedItems.includes(key))
+                .map(({ item }) => item)
+            : [];
+
+        const hasManualFreeItem = !manualCancelPatientId && manualFreeItem.productName.trim() && Number(manualFreeItem.quantity) > 0;
+        if (manualCancelPatientId && selectedDietMap.length === 0) {
+            toast.error("Selecione ao menos um item do paciente.");
+            return;
+        }
+        if (!manualCancelPatientId && !hasManualFreeItem) {
+            toast.error("Preencha o item manual ou selecione um paciente.");
             return;
         }
 
-        const selectedDietMap = manualCancelCandidates
-            .filter(({ key }) => manualCancelSelectedItems.includes(key))
-            .map(({ item }) => item);
+        const manualSubtotal = manualCancelTotal;
+        const manualUnitPrice = Number(manualFreeItem.unitPrice) || (
+            Number(manualFreeItem.quantity) > 0 ? manualSubtotal / Number(manualFreeItem.quantity) : 0
+        );
+        const manualWard = manualFreeItem.ward || (unit === "all" ? "Ala nao informada" : unit);
+        const freeDietMap = hasManualFreeItem
+            ? [{
+                patientId: `manual-${Date.now()}`,
+                patientName: "Ajuste manual",
+                patientRecord: undefined,
+                bed: "-",
+                ward: manualWard,
+                dob: undefined,
+                route: "Manual",
+                type: "formula" as const,
+                productCode: manualFreeItem.productCode || undefined,
+                productName: manualFreeItem.productName.trim(),
+                volumeOrAmount: Number(manualFreeItem.quantity) || 0,
+                unit: manualFreeItem.unit || "un",
+                times: [],
+                observation: manualFreeItem.observation || "Lancamento manual sem vinculo com paciente",
+                unitPrice: manualUnitPrice,
+                subtotal: manualSubtotal,
+            }]
+            : [];
 
-        const selectedPatient = patients.find((patient) => patient.id === manualCancelPatientId);
         const documentType: RequisitionData["documentType"] = manualRequestMode === "cancellation" ? "cancellation" : "extra";
+        const popupTitle = manualRequestMode === "cancellation" ? "Requisição de cancelamento" : "Requisição extra";
+        const popup = createPrintPopup(popupTitle);
+        const manualConsolidated = hasManualFreeItem
+            ? [{
+                code: manualFreeItem.productCode || "AJUSTE-MANUAL",
+                name: manualFreeItem.productName.trim(),
+                billingUnit: manualFreeItem.unit || "un",
+                totalQuantity: Number(manualFreeItem.quantity) || 0,
+                unitPrice: manualUnitPrice,
+                subtotal: manualSubtotal,
+                type: manualFreeItem.category,
+            }]
+            : selectedDietMap.map((item) => ({
+                code: item.productCode || "AJUSTE-MANUAL",
+                name: item.productName,
+                billingUnit: item.unit,
+                totalQuantity: item.volumeOrAmount || 0,
+                unitPrice: item.unitPrice || 0,
+                subtotal: item.subtotal || 0,
+                type: item.type === "module" ? "module" as const : "formula" as const,
+            }));
+
+        if (hasManualFreeItem) {
+            addManualBillingAdjustment({
+                hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
+                ward: manualWard,
+                effectiveDate: manualCancelDate,
+                mode: manualRequestMode,
+                productCode: manualFreeItem.productCode || undefined,
+                productName: manualFreeItem.productName.trim(),
+                quantity: Number(manualFreeItem.quantity) || 0,
+                unit: manualFreeItem.unit || "un",
+                unitPrice: manualUnitPrice,
+                subtotal: manualSubtotal,
+                category: manualFreeItem.category,
+                observation: manualFreeItem.observation || undefined,
+            });
+            toast.success("Guia de ajuste registrada para os relatórios.");
+        }
 
         setRequisitionData({
             ...previewRequisitionData,
-            unitName: unit === "all" ? "Todas as unidades" : unit,
+            unitName: manualWard,
             selectedTimes: [],
             documentType,
             effectiveDate: manualCancelDate,
-            dietMap: selectedDietMap,
-            consolidated: [],
+            dietMap: selectedDietMap.length > 0 ? selectedDietMap : freeDietMap,
+            consolidated: manualConsolidated,
             signatures: previewRequisitionData.signatures,
-            patientCount: selectedPatient ? 1 : new Set(selectedDietMap.map((item) => item.patientId)).size,
         });
 
         setManualCancelOpen(false);
-        setTimeout(() => window.print(), 120);
+        setTimeout(() => printElementInPopup("requisition-print-document", popupTitle, popup), 120);
     };
 
     const buildCancellationRequisition = (prescription: Prescription): RequisitionData => {
@@ -293,6 +453,7 @@ const Billing = () => {
 
         const changedBy = typeof window !== "undefined" ? localStorage.getItem("userName") || "Usuario do sistema" : "Usuario do sistema";
         const cancellationDocument = buildCancellationRequisition(cancelTarget);
+        const popup = createPrintPopup("Requisição de cancelamento");
 
         try {
             setIsCancelling(true);
@@ -306,7 +467,7 @@ const Billing = () => {
             setCancelDialogOpen(false);
             toast.success("Prescricao suspensa e requisicao de cancelamento gerada.");
             setTimeout(() => {
-                window.print();
+                printElementInPopup("requisition-print-document", "Requisição de cancelamento", popup);
                 setCancelTarget(null);
             }, 350);
         } catch (error) {
@@ -673,14 +834,14 @@ const Billing = () => {
                                     <Button
                                         variant="outline"
                                         onClick={() => openManualRequestDialog("cancellation")}
-                                        disabled={!previewRequisitionData || previewRequisitionData.dietMap.length === 0}
+                                        disabled={!previewRequisitionData}
                                     >
                                         Cancelamento manual
                                     </Button>
                                     <Button
                                         variant="outline"
                                         onClick={() => openManualRequestDialog("extra")}
-                                        disabled={!previewRequisitionData || previewRequisitionData.dietMap.length === 0}
+                                        disabled={!previewRequisitionData}
                                     >
                                         Requisicao extra
                                     </Button>
@@ -818,9 +979,14 @@ const Billing = () => {
                                         <SelectValue placeholder="Selecione o paciente" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {filteredPatients.map((patient) => (
+                                        {manualSelectablePatients.map((patient) => (
                                             <SelectItem key={patient.id} value={patient.id || ""}>
-                                                {[patient.name, patient.bed && `Leito ${patient.bed}`, patient.ward].filter(Boolean).join(" | ")}
+                                                {[
+                                                    patient.name,
+                                                    patient.bed && `Leito ${patient.bed}`,
+                                                    patient.ward,
+                                                    patient.status !== "active" ? "inativo" : null,
+                                                ].filter(Boolean).join(" | ")}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -841,7 +1007,7 @@ const Billing = () => {
                                 <div>
                                     <p className="font-medium">Itens selecionaveis do paciente</p>
                                     <p className="text-xs text-muted-foreground">
-                                        O documento vai sair sem horarios e com o valor individual de cada linha.
+                                        Selecione itens do paciente ou, se nao houver paciente, preencha o ajuste manual abaixo.
                                     </p>
                                 </div>
                                 <div className="text-right">
@@ -886,6 +1052,119 @@ const Billing = () => {
                                 </div>
                             )}
                         </div>
+
+                        {!manualCancelPatientId && (
+                            <div className="rounded-md border p-4 space-y-3">
+                                <div>
+                                    <p className="font-medium">Ajuste manual sem paciente</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Use para admissoes, dietas reiniciadas, extras ou cancelamentos sem vinculo direto a paciente/horario.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <Label>Ala</Label>
+                                        <Select
+                                            value={manualFreeItem.ward}
+                                            onValueChange={(value) => setManualFreeItem((current) => ({ ...current, ward: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione a ala" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(unit !== "all" ? [unit] : wards).map((ward) => (
+                                                    <SelectItem key={ward} value={ward}>
+                                                        {ward}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Produto cadastrado</Label>
+                                        <Select
+                                            value={manualFreeItem.productKey}
+                                            onValueChange={(value) => {
+                                                const selectedProduct = manualProductOptions.find((product) => product.key === value);
+                                                setManualFreeItem((current) => ({
+                                                    ...current,
+                                                    productKey: value,
+                                                    productCode: selectedProduct?.code || "",
+                                                    productName: selectedProduct?.name || current.productName,
+                                                    category: selectedProduct?.category || current.category,
+                                                    unit: selectedProduct?.unit || current.unit,
+                                                    unitPrice: selectedProduct?.unitPrice ? String(selectedProduct.unitPrice) : current.unitPrice,
+                                                }));
+                                            }}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecionar produto cadastrado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {manualProductOptions.map((product) => (
+                                                    <SelectItem key={product.key} value={product.key}>
+                                                        {product.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Produto / item livre</Label>
+                                        <Input
+                                            value={manualFreeItem.productName}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, productKey: "", productCode: "", productName: event.target.value, category: "diet" }))}
+                                            placeholder="Ex: Peptamen 1.5, frasco, equipo"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Quantidade</Label>
+                                        <Input
+                                            type="number"
+                                            value={manualFreeItem.quantity}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, quantity: event.target.value }))}
+                                            placeholder="Ex: 1000"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Unidade</Label>
+                                        <Input
+                                            value={manualFreeItem.unit}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, unit: event.target.value }))}
+                                            placeholder="ml, g, un"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Valor unitário</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            value={manualFreeItem.unitPrice}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, unitPrice: event.target.value }))}
+                                            placeholder="Ex: 0.08"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Valor total (opcional)</Label>
+                                        <Input
+                                            type="number"
+                                            step="0.01"
+                                            value={manualFreeItem.subtotal}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, subtotal: event.target.value }))}
+                                            placeholder="Ex: 125.50"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Observação</Label>
+                                        <Input
+                                            value={manualFreeItem.observation}
+                                            onChange={(event) => setManualFreeItem((current) => ({ ...current, observation: event.target.value }))}
+                                            placeholder="Ex: admissao noturna, ajuste de estoque"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <DialogFooter>

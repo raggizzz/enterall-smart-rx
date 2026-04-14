@@ -1,5 +1,6 @@
 import React from 'react';
 import { RequisitionData, DietMapItem } from '@/types/requisition';
+import { useSettings } from '@/hooks/useDatabase';
 
 interface RequisitionDocumentProps {
     data: RequisitionData | null;
@@ -12,13 +13,14 @@ const formatQuantity = (value?: number, unit?: string) => {
 };
 
 const getTypeBadge = (item: DietMapItem) => {
-    if (item.type === 'water') return 'AGUA';
-    if (item.type === 'module') return 'MODULO';
+    if (item.type === 'water') return 'ÁGUA';
+    if (item.type === 'module') return 'MÓDULO';
     if (item.type === 'supplement') return 'SUPLEMENTO';
     return 'DIETA';
 };
 
 export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }) => {
+    const { settings } = useSettings();
     if (!data) return null;
 
     const isCancellation = data.documentType === 'cancellation';
@@ -31,21 +33,22 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
 
     const consolidatedTotal = data.consolidated.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     const documentTitle = isCancellation
-        ? 'Requisicao de cancelamento'
+        ? 'Requisição de cancelamento'
         : isExtraRequest
-            ? 'Requisicao extra de insumos'
-            : 'Requisicao de insumos para faturamento';
+            ? 'Requisição extra de insumos'
+            : 'Requisição de insumos para faturamento';
     const mapTitle = isCancellation
         ? 'Mapa do cancelamento por paciente'
         : isExtraRequest
-            ? 'Mapa da requisicao extra por paciente'
+            ? 'Mapa da requisição extra por paciente'
             : 'Mapa da dieta por paciente';
 
     return (
-        <div className="hidden print:block bg-white p-4 text-[10px] text-black">
+        <div id="requisition-print-document" className="hidden print:block bg-white p-4 text-[10px] text-black">
             <div className="mb-4 border-b border-black pb-3">
                 <div className="text-center">
-                    <p className="text-lg font-bold uppercase">{data.unitName}</p>
+                    <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital não informado"}</h1>
+                    <p className="text-lg font-bold uppercase mt-1">{data.unitName}</p>
                     <p className="text-sm font-semibold uppercase">{documentTitle}</p>
                 </div>
 
@@ -55,7 +58,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                         <p><span className="font-semibold">Via:</span> {data.therapyLabel}</p>
                     </div>
                     <div>
-                        <p><span className="font-semibold">Data da requisicao:</span> {data.printDate}</p>
+                        <p><span className="font-semibold">Data da requisição:</span> {data.printDate}</p>
                         <p>
                             <span className="font-semibold">{isManualAction ? 'Data efetiva:' : 'Periodo:'}</span>{' '}
                             {isManualAction ? (data.effectiveDate || data.startDate) : `${data.startDate} a ${data.endDate}`}
@@ -63,13 +66,14 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                     </div>
                     <div>
                         {!isManualAction && (
-                            <p><span className="font-semibold">Horarios:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
+                            <p><span className="font-semibold">Horários:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
                         )}
                         <p><span className="font-semibold">Pacientes no mapa:</span> {new Set(data.dietMap.map((item) => item.patientId)).size}</p>
                     </div>
                 </div>
             </div>
 
+            {!isManualAction && (
             <div className="mb-6">
                 <h2 className="mb-2 text-xs font-bold uppercase">{mapTitle}</h2>
                 <table className="w-full border-collapse border border-black">
@@ -80,7 +84,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                 <th className="border border-black p-1 text-left">Ala</th>
                                 <th className="border border-black p-1 text-left">Leito</th>
                                 <th className="border border-black p-1 text-left">Paciente</th>
-                                <th className="border border-black p-1 text-left">Produto / modulo</th>
+                                <th className="border border-black p-1 text-left">Produto / módulo</th>
                                 <th className="border border-black p-1 text-right">Valor</th>
                             </tr>
                         ) : (
@@ -93,8 +97,8 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                 <th className="border border-black p-1 text-center">Vol/gr</th>
                                 <th className="border border-black p-1 text-center">Volume total/etapa</th>
                                 <th className="border border-black p-1 text-center">Vel Inf</th>
-                                <th className="border border-black p-1 text-center">Horarios</th>
-                                <th className="border border-black p-1 text-left">Observacoes</th>
+                                <th className="border border-black p-1 text-center">Horários</th>
+                                <th className="border border-black p-1 text-left">Observações</th>
                             </tr>
                         )}
                     </thead>
@@ -122,7 +126,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                 <td className="border border-black p-1 align-top">
                                                     <div className="font-semibold">{item.patientName}</div>
                                                     {item.patientRecord && (
-                                                        <div className="text-[9px] text-slate-600">Prontuario: {item.patientRecord}</div>
+                                                            <div className="text-[9px] text-slate-600">Prontuário: {item.patientRecord}</div>
                                                     )}
                                                 </td>
                                                 <td className="border border-black p-1 align-top">
@@ -150,7 +154,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                         <td rowSpan={rowSpan} className="border border-black p-1 align-top">
                                                             <div className="font-semibold">{item.patientName}</div>
                                                             {item.patientRecord && (
-                                                                <div className="text-[9px] text-slate-600">Prontuario: {item.patientRecord}</div>
+                                                                <div className="text-[9px] text-slate-600">Prontuário: {item.patientRecord}</div>
                                                             )}
                                                         </td>
                                                     </>
@@ -182,20 +186,20 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                     </tbody>
                 </table>
             </div>
+            )}
 
-            {!isManualAction && (
-                <div className="mb-6 break-inside-avoid">
+            <div className="mb-6 break-inside-avoid">
                     <h2 className="mb-2 text-xs font-bold uppercase">
-                        Requisicao consolidada de produtos
+                        {isManualAction ? 'Consolidado da guia de ajuste' : 'Requisição consolidada de produtos'}
                     </h2>
                     <table className="w-full border-collapse border border-black">
                         <thead>
                             <tr>
                                 <th className="border border-black p-1 text-left">Item</th>
-                                <th className="border border-black p-1 text-left">Codigo</th>
+                                <th className="border border-black p-1 text-left">Código</th>
                                 <th className="border border-black p-1 text-center">Quantidade total</th>
                                 <th className="border border-black p-1 text-center">Unidade</th>
-                                <th className="border border-black p-1 text-right">Preco unitario</th>
+                                <th className="border border-black p-1 text-right">Preço unitário</th>
                                 <th className="border border-black p-1 text-right">Subtotal</th>
                             </tr>
                         </thead>
@@ -234,20 +238,19 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                             )}
                         </tbody>
                     </table>
-                </div>
-            )}
+            </div>
 
             <div className="mt-10 grid grid-cols-3 gap-8 text-[10px]">
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Tecnico responsavel / Matricula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Técnico responsável / Matrícula:</p>
                     <p className="mt-2">{data.signatures.technician}</p>
                 </div>
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Nutricionista prescritor / Matricula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Nutricionista prescritor / Matrícula:</p>
                     <p className="mt-2">{data.signatures.prescriber}</p>
                 </div>
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Nutricionista RT ou da Concessionaria / Matricula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Nutricionista RT ou da Concessionária / Matrícula:</p>
                     <p className="mt-2">{data.signatures.manager}</p>
                 </div>
             </div>

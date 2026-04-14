@@ -104,8 +104,8 @@ export const PatientMonitoring = ({
 }: PatientMonitoringProps) => {
     // Estados locais
     const [goals, setGoals] = useState<TNEGoals>(patient.tneGoals || {});
-    const [infusionPercentage, setInfusionPercentage] = useState(
-        savedEvolution?.metaReached ?? patient.infusionPercentage24h ?? 0
+    const [infusionPercentageInput, setInfusionPercentageInput] = useState(
+        savedEvolution?.metaReached !== undefined ? String(savedEvolution.metaReached) : ""
     );
     const [interruptions, setInterruptions] = useState<TNEInterruptions>(
         patient.tneInterruptions || {}
@@ -114,27 +114,28 @@ export const PatientMonitoring = ({
         patient.unintentionalCalories || {}
     );
     const [monitoringNotes, setMonitoringNotes] = useState(patient.monitoringNotes || "");
-    const [oralActualKcal, setOralActualKcal] = useState(savedEvolution?.oralKcal ?? oralKcal);
-    const [oralActualProtein, setOralActualProtein] = useState(savedEvolution?.oralProtein ?? oralProtein);
-    const [parenteralActualKcal, setParenteralActualKcal] = useState(savedEvolution?.parenteralKcal ?? parenteralKcal);
-    const [parenteralActualProtein, setParenteralActualProtein] = useState(savedEvolution?.parenteralProtein ?? parenteralProtein);
+    const [oralPercentageInput, setOralPercentageInput] = useState(
+        savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : ""
+    );
+    const [parenteralPercentageInput, setParenteralPercentageInput] = useState(
+        savedEvolution?.parenteralKcal !== undefined && parenteralKcal > 0 ? String(Math.round((savedEvolution.parenteralKcal / parenteralKcal) * 100)) : ""
+    );
     const [isSaving, setIsSaving] = useState(false);
 
     // Seções collapse
+    const [interruptionsOpen, setInterruptionsOpen] = useState(false);
     const [proceduresOpen, setProceduresOpen] = useState(false);
     const [giOpen, setGiOpen] = useState(false);
     const [devicesOpen, setDevicesOpen] = useState(false);
 
     useEffect(() => {
         setGoals(patient.tneGoals || {});
-        setInfusionPercentage(savedEvolution?.metaReached ?? patient.infusionPercentage24h ?? 0);
+        setInfusionPercentageInput(savedEvolution?.metaReached !== undefined ? String(savedEvolution.metaReached) : "");
         setInterruptions(patient.tneInterruptions || {});
         setUnintentionalCal(patient.unintentionalCalories || {});
         setMonitoringNotes(patient.monitoringNotes || "");
-        setOralActualKcal(savedEvolution?.oralKcal ?? oralKcal);
-        setOralActualProtein(savedEvolution?.oralProtein ?? oralProtein);
-        setParenteralActualKcal(savedEvolution?.parenteralKcal ?? parenteralKcal);
-        setParenteralActualProtein(savedEvolution?.parenteralProtein ?? parenteralProtein);
+        setOralPercentageInput(savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : "");
+        setParenteralPercentageInput(savedEvolution?.parenteralKcal !== undefined && parenteralKcal > 0 ? String(Math.round((savedEvolution.parenteralKcal / parenteralKcal) * 100)) : "");
     }, [patient, savedEvolution, oralKcal, oralProtein, parenteralKcal, parenteralProtein]);
 
     // Calcular peso ideal (IMC 25)
@@ -160,6 +161,14 @@ export const PatientMonitoring = ({
         const citrate = (unintentionalCal.citrateGDay || 0) * 3.0;
         return { propofol, glucose, citrate, total: propofol + glucose + citrate };
     }, [unintentionalCal]);
+
+    const infusionPercentage = Number(infusionPercentageInput) || 0;
+    const oralPercentage = Number(oralPercentageInput) || 0;
+    const parenteralPercentage = Number(parenteralPercentageInput) || 0;
+    const oralActualKcal = Number(((oralKcal * oralPercentage) / 100).toFixed(1));
+    const oralActualProtein = Number(((oralProtein * oralPercentage) / 100).toFixed(1));
+    const parenteralActualKcal = Number(((parenteralKcal * parenteralPercentage) / 100).toFixed(1));
+    const parenteralActualProtein = Number(((parenteralProtein * parenteralPercentage) / 100).toFixed(1));
 
     const actualEnteralKcal = useMemo(() => {
         return Number(((enteralKcal * infusionPercentage) / 100).toFixed(1));
@@ -192,6 +201,8 @@ export const PatientMonitoring = ({
         const pctCarb = totalKcal > 0 ? (carbKcal / totalKcal) * 100 : 0;
         const pctFat = totalKcal > 0 ? (fatKcal / totalKcal) * 100 : 0;
 
+        const totalFreeWater = (patient.prescriptions || []).reduce((sum, rx) => sum + (rx.totalFreeWater || 0), 0);
+
         return {
             intentionalKcal,
             totalKcal,
@@ -199,6 +210,7 @@ export const PatientMonitoring = ({
             totalCarbs,
             totalFat,
             totalFiber,
+            totalFreeWater,
             kcalPerKg,
             proteinPerKg,
             proteinPerKgIdeal,
@@ -351,81 +363,11 @@ export const PatientMonitoring = ({
 
     return (
         <div className="space-y-6">
-            {/* Metas para TNE */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Target className="h-5 w-5" />
-                        Metas para Terapia Nutricional Enteral
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <Label>Meta kcal/kg</Label>
-                            <Input
-                                type="number"
-                                step="0.1"
-                                value={goals.targetKcalPerKg || ''}
-                                onChange={(e) => setGoals({
-                                    ...goals,
-                                    targetKcalPerKg: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 25"
-                            />
-                            {targetKcal > 0 && (
-                                <p className="text-xs text-muted-foreground">
-                                    Meta calculada: {targetKcal.toFixed(0)} kcal/dia
-                                </p>
-                            )}
-                            {goalStatus.kcalReached > 0 && (
-                                <Progress value={Math.min(goalStatus.kcalReached, 100)} className="h-2" />
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Meta proteínas g/kg (peso atual)</Label>
-                            <Input
-                                type="number"
-                                step="0.1"
-                                value={goals.targetProteinPerKgActual || ''}
-                                onChange={(e) => setGoals({
-                                    ...goals,
-                                    targetProteinPerKgActual: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 1.2"
-                            />
-                            {goalStatus.proteinReached > 0 && (
-                                <Progress value={Math.min(goalStatus.proteinReached, 100)} className="h-2" />
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Meta proteínas g/kg (peso ideal)</Label>
-                            <p className="text-xs text-muted-foreground">Para IMC &gt; 30</p>
-                            <Input
-                                type="number"
-                                step="0.1"
-                                value={goals.targetProteinPerKgIdeal || ''}
-                                onChange={(e) => setGoals({
-                                    ...goals,
-                                    targetProteinPerKgIdeal: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 2.0"
-                                disabled={!bmi || bmi <= 30}
-                            />
-                            {goalStatus.proteinIdealReached !== null && goalStatus.proteinIdealReached > 0 && (
-                                <Progress value={Math.min(goalStatus.proteinIdealReached, 100)} className="h-2" />
-                            )}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+            {/* Metas movidas para a tela de prescrição */}
 
             <Card className="border-dashed border-primary/30 bg-gradient-to-r from-white to-sky-50/70">
                 <CardHeader>
                     <CardTitle>Leitura Rápida</CardTitle>
-                    <CardDescription>
-                        Separação direta entre o fechamento do dia anterior e a previsão da prescrição atual.
-                    </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="rounded-xl border bg-white p-4">
@@ -449,7 +391,7 @@ export const PatientMonitoring = ({
                         <p className="mt-2 text-2xl font-bold text-amber-700">{interruptionCount}</p>
                         <p className="text-sm text-muted-foreground">itens registrados</p>
                         <p className="mt-2 text-xs text-muted-foreground">
-                            {infusionPercentage < 80 ? "Infusão abaixo de 80% da meta no fechamento do dia anterior." : "Sem alerta crítico automático de infusão no fechamento."}
+                            {infusionPercentageInput && infusionPercentage < 80 ? "Infusão abaixo de 80% da meta no fechamento do dia anterior." : "Sem alerta crítico automático de infusão no fechamento."}
                         </p>
                     </div>
                 </CardContent>
@@ -467,29 +409,65 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="h-5 w-5" />
-                        Execução do Dia Anterior (Últimas 24h)
+                        Infusão da dieta enteral em relação ao volume prescrito no dia anterior
                     </CardTitle>
-                    <CardDescription>
-                        Esta seção consolida o fechamento do dia anterior: percentual de infusão, aporte efetivo e o que realmente entrou por cada via.
-                    </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                        <Input
-                            type="number"
-                            max="100"
-                            value={infusionPercentage}
-                            onChange={(e) => setInfusionPercentage(parseInt(e.target.value) || 0)}
-                            className="w-full sm:w-24"
-                        />
-                        <span className="text-lg">%</span>
-                        <Progress value={infusionPercentage} className="flex-1 h-4" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        {/* NE */}
+                        <div className="space-y-3 rounded-lg border p-4 bg-sky-50/30">
+                            <p className="font-semibold text-sky-700">NEinfundida/NEprescrita</p>
+                            <div className="flex items-center gap-3">
+                                <Input
+                                    type="number"
+                                    max="100"
+                                    value={infusionPercentageInput}
+                                    onChange={(e) => setInfusionPercentageInput(e.target.value)}
+                                    placeholder="%"
+                                    className="w-full sm:w-24 bg-white"
+                                />
+                                <span className="text-lg font-medium text-sky-800">%</span>
+                            </div>
+                        </div>
+
+                        {/* NP */}
+                        <div className="space-y-3 rounded-lg border p-4 bg-orange-50/30">
+                            <p className="font-semibold text-orange-700">NPinfundida/NPprescrita</p>
+                            <div className="flex items-center gap-3">
+                                <Input
+                                    type="number"
+                                    max="100"
+                                    value={parenteralPercentageInput}
+                                    onChange={(e) => setParenteralPercentageInput(e.target.value)}
+                                    placeholder="%"
+                                    className="w-full sm:w-24 bg-white"
+                                />
+                                <span className="text-lg font-medium text-orange-800">%</span>
+                            </div>
+                        </div>
+
+                        {/* VO */}
+                        <div className="space-y-3 rounded-lg border p-4 bg-green-50/30">
+                            <p className="font-semibold text-green-700">Aceitação/tolerância da via oral</p>
+                            <div className="flex items-center gap-3">
+                                <Input
+                                    type="number"
+                                    max="100"
+                                    value={oralPercentageInput}
+                                    onChange={(e) => setOralPercentageInput(e.target.value)}
+                                    placeholder="%"
+                                    className="w-full sm:w-24 bg-white"
+                                />
+                                <span className="text-lg font-medium text-green-800">%</span>
+                            </div>
+                        </div>
                     </div>
-                    <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                         <div className="rounded-lg border bg-sky-50 p-4">
                             <div className="flex items-center justify-between">
                                 <span className="font-medium text-sky-700">NE efetiva (consolidado executado do dia anterior)</span>
-                                <Badge className="bg-sky-600">{infusionPercentage}%</Badge>
+                                <Badge className="bg-sky-600">{infusionPercentageInput ? `${infusionPercentage}%` : "-"}</Badge>
                             </div>
                             <p className="mt-2 text-sm text-sky-900">
                                 {actualEnteralKcal.toFixed(0)} kcal e {actualEnteralProtein.toFixed(1)} g de proteína
@@ -554,52 +532,8 @@ export const PatientMonitoring = ({
                                 {targetKcal > 0 ? `${actualNutritionShare.totalPct.toFixed(1)}% da meta` : "Meta kcal nao definida"}
                             </p>
                         </div>
-                        <div className="space-y-3 rounded-lg border p-4">
-                            <p className="font-medium text-green-700">Via oral efetiva</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>kcal VO</Label>
-                                    <Input
-                                        type="number"
-                                        value={oralActualKcal}
-                                        onChange={(e) => setOralActualKcal(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Proteína VO (g)</Label>
-                                    <Input
-                                        type="number"
-                                        step="0.1"
-                                        value={oralActualProtein}
-                                        onChange={(e) => setOralActualProtein(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="space-y-3 rounded-lg border p-4 lg:col-span-2">
-                            <p className="font-medium text-orange-700">Parenteral efetiva</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-2">
-                                    <Label>kcal NP</Label>
-                                    <Input
-                                        type="number"
-                                        value={parenteralActualKcal}
-                                        onChange={(e) => setParenteralActualKcal(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Proteína NP (g)</Label>
-                                    <Input
-                                        type="number"
-                                        step="0.1"
-                                        value={parenteralActualProtein}
-                                        onChange={(e) => setParenteralActualProtein(parseFloat(e.target.value) || 0)}
-                                    />
-                                </div>
-                            </div>
-                        </div>
                     </div>
-                    {infusionPercentage < 80 && (
+                    {infusionPercentageInput && infusionPercentage < 80 && (
                         <p className="text-sm text-amber-600 mt-2">
                             ⚠️ Infusão abaixo de 80% da meta
                         </p>
@@ -616,16 +550,31 @@ export const PatientMonitoring = ({
 
             {/* Motivos de Interrupção */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <AlertCircle className="h-5 w-5" />
-                        Motivos de Interrupção da TNE (últimas 24h)
-                    </CardTitle>
-                    <CardDescription>
-                        Use esta seção para justificar interrupções, intolerâncias ou barreiras operacionais observadas no fechamento do dia anterior.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                <Collapsible open={interruptionsOpen} onOpenChange={setInterruptionsOpen}>
+                    <CollapsibleTrigger asChild>
+                        <CardHeader className="cursor-pointer hover:bg-slate-50 transition-colors rounded-t-xl">
+                            <div className="flex items-center justify-between">
+                                <CardTitle className="flex items-center gap-2">
+                                    <AlertCircle className="h-5 w-5" />
+                                    Motivos de Interrupção da TNE (últimas 24h)
+                                </CardTitle>
+                                <ChevronDown className={`h-5 w-5 transition-transform text-muted-foreground ${interruptionsOpen ? 'rotate-180' : ''}`} />
+                            </div>
+                            <CardDescription>
+                                Use esta seção para justificar interrupções, intolerâncias ou barreiras operacionais observadas no fechamento do dia anterior.
+                            </CardDescription>
+                        </CardHeader>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <CardContent className="space-y-4 pt-4 border-t">
+                            <div className="space-y-2 mb-4">
+                                <Label>DOI de referência</Label>
+                                <Input 
+                                    placeholder="Digite o DOI..."
+                                    value={interruptions.doi || ''}
+                                    onChange={(e) => setInterruptions({ ...interruptions, doi: e.target.value })}
+                                />
+                            </div>
                     {/* Procedimentos */}
                     <Collapsible open={proceduresOpen} onOpenChange={setProceduresOpen}>
                         <CollapsibleTrigger asChild>
@@ -796,78 +745,25 @@ export const PatientMonitoring = ({
                             />
                         )}
                     </div>
-                </CardContent>
+                        </CardContent>
+                    </CollapsibleContent>
+                </Collapsible>
             </Card>
 
-            {/* Calorias Não Intencionais */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Syringe className="h-5 w-5" />
-                        Calorias Não Intencionais
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <Label>Propofol (ml/h)</Label>
-                            <Input
-                                type="number"
-                                step="0.1"
-                                value={unintentionalCal.propofolMlH || ''}
-                                onChange={(e) => setUnintentionalCal({
-                                    ...unintentionalCal,
-                                    propofolMlH: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 10"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                = {unintentionalKcal.propofol.toFixed(0)} kcal/dia
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Glicose (g/dia)</Label>
-                            <Input
-                                type="number"
-                                step="1"
-                                value={unintentionalCal.glucoseGDay || ''}
-                                onChange={(e) => setUnintentionalCal({
-                                    ...unintentionalCal,
-                                    glucoseGDay: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 50"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                = {unintentionalKcal.glucose.toFixed(0)} kcal/dia
-                            </p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Citrato (g/dia)</Label>
-                            <Input
-                                type="number"
-                                step="1"
-                                value={unintentionalCal.citrateGDay || ''}
-                                onChange={(e) => setUnintentionalCal({
-                                    ...unintentionalCal,
-                                    citrateGDay: parseFloat(e.target.value) || undefined
-                                })}
-                                placeholder="Ex: 20"
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                = {unintentionalKcal.citrate.toFixed(0)} kcal/dia
-                            </p>
-                        </div>
-                    </div>
-                    <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+            {/* Calorias Não Intencionais - somente leitura (campos de entrada movidos para prescrição) */}
+            {unintentionalKcal.total > 0 && (
+                <Card className="border-amber-200 bg-amber-50/50">
+                    <CardContent className="py-3">
                         <div className="flex items-center justify-between">
-                            <span className="font-medium text-amber-800">Subtotal Calorias Não Intencionais:</span>
-                            <Badge variant="secondary" className="text-lg">
-                                {unintentionalKcal.total.toFixed(0)} kcal/dia
-                            </Badge>
+                            <div className="flex items-center gap-2 text-amber-700">
+                                <Syringe className="h-4 w-4" />
+                                <span className="text-sm font-medium">Calorias Não Intencionais (da prescrição):</span>
+                            </div>
+                            <Badge variant="secondary">{unintentionalKcal.total.toFixed(0)} kcal/dia</Badge>
                         </div>
-                    </div>
-                </CardContent>
-            </Card>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="space-y-1">
                 <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Registro clínico</p>
@@ -941,6 +837,40 @@ export const PatientMonitoring = ({
                             )}
                         </div>
                     </div>
+
+                    {/* Macronutrientes % VET */}
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                        <div className="text-center p-3 bg-white rounded-lg shadow-sm border">
+                            <div className="text-xl font-bold text-blue-600">{totalNutrition.pctProt.toFixed(1)}%</div>
+                            <div className="text-xs text-muted-foreground">Proteínas</div>
+                            <div className="text-xs text-blue-700 font-medium">{totalNutrition.totalProtein.toFixed(1)}g</div>
+                        </div>
+                        <div className="text-center p-3 bg-white rounded-lg shadow-sm border">
+                            <div className="text-xl font-bold text-amber-600">{totalNutrition.pctCarb.toFixed(1)}%</div>
+                            <div className="text-xs text-muted-foreground">Carboidratos</div>
+                            <div className="text-xs text-amber-700 font-medium">{totalNutrition.totalCarbs.toFixed(1)}g</div>
+                        </div>
+                        <div className="text-center p-3 bg-white rounded-lg shadow-sm border">
+                            <div className="text-xl font-bold text-red-500">{totalNutrition.pctFat.toFixed(1)}%</div>
+                            <div className="text-xs text-muted-foreground">Lipídeos</div>
+                            <div className="text-xs text-red-600 font-medium">{totalNutrition.totalFat.toFixed(1)}g</div>
+                        </div>
+                    </div>
+
+                    {/* Água livre g/kg */}
+                    {patient.weight && totalNutrition.totalFreeWater > 0 && (
+                        <div className="mb-4 p-3 bg-white rounded-lg shadow-sm border border-cyan-200">
+                            <div className="flex items-center justify-between">
+                                <span className="font-medium text-cyan-700">Água livre:</span>
+                                <div className="text-right">
+                                    <span className="font-bold text-cyan-600">{totalNutrition.totalFreeWater.toFixed(0)} ml</span>
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                        ({(totalNutrition.totalFreeWater / patient.weight).toFixed(1)} ml/kg)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Detalhamento por via */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 text-sm">

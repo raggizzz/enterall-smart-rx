@@ -1,20 +1,42 @@
+import { useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, Calculator, ChevronRight } from "lucide-react";
+import {
+  parenteralAminoacidsFromMl,
+  parenteralGlucoseFromMl,
+  parenteralLipidsFromMl,
+} from "@/lib/prescriptionCalculations";
 import type { Patient } from "@/lib/database";
 
-interface ParenteralValues {
-  aminoacids: number;
-  lipids: number;
-  glucose: number;
+export type GlucoseConcentration = 5 | 10 | 50;
+
+export interface ParenteralValues {
+  aminoacidsMl: number;
+  lipidsMl: number;
+  glucoseMl: number;
+  glucoseConc: GlucoseConcentration;
+  multivitamin: boolean;
+  traceElements: boolean;
   access: 'central' | 'peripheral' | 'picc';
   infusionTime: number;
   observations: string;
+}
+
+export interface ParenteralDerived {
+  aminoacidsG: number;
+  aminoacidsKcal: number;
+  lipidsG: number;
+  lipidsKcal: number;
+  glucoseG: number;
+  glucoseKcal: number;
   vet: number;
   perKg: {
     kcal: number;
@@ -25,55 +47,85 @@ interface ParenteralValues {
   };
 }
 
+export const deriveParenteralValues = (
+  values: ParenteralValues,
+  weight?: number | null,
+): ParenteralDerived => {
+  const aa = parenteralAminoacidsFromMl(values.aminoacidsMl, 10);
+  const lip = parenteralLipidsFromMl(values.lipidsMl, 20);
+  const glu = parenteralGlucoseFromMl(values.glucoseMl, values.glucoseConc);
+  const vet = aa.kcal + lip.kcal + glu.kcal;
+  const w = weight || 0;
+
+  return {
+    aminoacidsG: aa.g,
+    aminoacidsKcal: aa.kcal,
+    lipidsG: lip.g,
+    lipidsKcal: lip.kcal,
+    glucoseG: glu.g,
+    glucoseKcal: glu.kcal,
+    vet,
+    perKg: {
+      kcal: w ? vet / w : 0,
+      amino: w ? aa.g / w : 0,
+      lipids: w ? lip.g / w : 0,
+      glucose: w ? glu.g / w : 0,
+      tig: w && values.infusionTime > 0
+        ? (glu.g * 1000) / (w * 60 * values.infusionTime)
+        : 0,
+    },
+  };
+};
+
 interface Props {
   values: ParenteralValues;
   selectedPatient: Patient | null;
-  onAminoacidsChange: (v: number) => void;
-  onLipidsChange: (v: number) => void;
-  onGlucoseChange: (v: number) => void;
-  onAccessChange: (v: 'central' | 'peripheral' | 'picc') => void;
-  onInfusionTimeChange: (v: number) => void;
-  onObservationsChange: (v: string) => void;
+  onValuesChange: (v: Partial<ParenteralValues>) => void;
   onBack: () => void;
   onNext: () => void;
 }
 
-export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, onLipidsChange, onGlucoseChange, onAccessChange, onInfusionTimeChange, onObservationsChange, onBack, onNext }: Props) {
+export function ParenteralStep({ values, selectedPatient, onValuesChange, onBack, onNext }: Props) {
+  const derived = useMemo(
+    () => deriveParenteralValues(values, selectedPatient?.weight),
+    [values, selectedPatient?.weight],
+  );
+
   return (
     <div className="space-y-6">
       {/* Resumo da Prescrição */}
-      <Card className="border-2 border-purple-300 bg-gradient-to-r from-purple-50 to-violet-50">
+      <Card className="border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50">
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-purple-700">
-            <Calculator className="h-5 w-5" />Resumo da Prescrição
+          <CardTitle className="flex items-center gap-2 text-orange-700">
+            <Calculator className="h-5 w-5" />Resumo da Prescrição Parenteral
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-              <div className="text-2xl font-bold text-purple-600">{values.vet.toFixed(0)}</div>
+              <div className="text-2xl font-bold text-orange-600">{derived.vet.toFixed(0)}</div>
               <div className="text-xs text-muted-foreground">kcal/dia</div>
-              {values.perKg.kcal > 0 && <div className="text-sm font-semibold text-purple-700">{values.perKg.kcal.toFixed(1)} kcal/kg</div>}
+              {derived.perKg.kcal > 0 && <div className="text-sm font-semibold text-orange-700">{derived.perKg.kcal.toFixed(1)} kcal/kg</div>}
             </div>
             <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-              <div className="text-2xl font-bold text-blue-600">{values.aminoacids.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-blue-600">{derived.aminoacidsG.toFixed(1)}</div>
               <div className="text-xs text-muted-foreground">g aminoácidos/dia</div>
-              {values.perKg.amino > 0 && <div className="text-sm font-semibold text-blue-700">{values.perKg.amino.toFixed(2)} g/kg</div>}
+              {derived.perKg.amino > 0 && <div className="text-sm font-semibold text-blue-700">{derived.perKg.amino.toFixed(2)} g/kg</div>}
             </div>
             <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-              <div className="text-2xl font-bold text-amber-600">{values.lipids.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-amber-600">{derived.lipidsG.toFixed(1)}</div>
               <div className="text-xs text-muted-foreground">g lipídeos/dia</div>
-              {values.perKg.lipids > 0 && <div className="text-sm font-semibold text-amber-700">{values.perKg.lipids.toFixed(2)} g/kg</div>}
+              {derived.perKg.lipids > 0 && <div className="text-sm font-semibold text-amber-700">{derived.perKg.lipids.toFixed(2)} g/kg</div>}
             </div>
             <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-              <div className="text-2xl font-bold text-green-600">{values.glucose.toFixed(1)}</div>
+              <div className="text-2xl font-bold text-green-600">{derived.glucoseG.toFixed(1)}</div>
               <div className="text-xs text-muted-foreground">g glicose/dia</div>
-              {values.perKg.glucose > 0 && <div className="text-sm font-semibold text-green-700">{values.perKg.glucose.toFixed(2)} g/kg</div>}
+              {derived.perKg.glucose > 0 && <div className="text-sm font-semibold text-green-700">{derived.perKg.glucose.toFixed(2)} g/kg</div>}
             </div>
           </div>
           {selectedPatient?.weight && (
-            <div className="rounded-lg border border-purple-200 bg-white/80 px-4 py-3 text-sm">
-              <span className="font-semibold text-purple-700">TIG:</span> {values.perKg.tig.toFixed(2)} mg/kg/min
+            <div className="rounded-lg border border-orange-200 bg-white/80 px-4 py-3 text-sm">
+              <span className="font-semibold text-orange-700">TIG:</span> {derived.perKg.tig.toFixed(2)} mg/kg/min
             </div>
           )}
         </CardContent>
@@ -85,7 +137,7 @@ export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, on
         <CardContent>
           <RadioGroup
             value={values.access}
-            onValueChange={(v) => onAccessChange(v as 'central' | 'peripheral' | 'picc')}
+            onValueChange={(v) => onValuesChange({ access: v as 'central' | 'peripheral' | 'picc' })}
             className="flex flex-wrap gap-4"
           >
             <div className="flex items-center space-x-2">
@@ -121,7 +173,7 @@ export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, on
             <Input
               type="number" min="1" max="24"
               value={values.infusionTime}
-              onChange={e => onInfusionTimeChange(parseInt(e.target.value) || 24)}
+              onChange={e => onValuesChange({ infusionTime: parseInt(e.target.value) || 24 })}
               className="w-24"
             />
             <span className="text-lg">horas</span>
@@ -133,34 +185,109 @@ export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, on
 
       {/* Composição da NP */}
       <Card>
-        <CardHeader><CardTitle>Composição da NP</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle>Composição da NP</CardTitle>
+          <CardDescription>Entrada em ml — o sistema converte automaticamente para gramas e kcal</CardDescription>
+        </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>VET (kcal/dia)</Label>
-              <Input type="number" value={values.vet ? values.vet.toFixed(0) : ''} readOnly placeholder="Calculado automaticamente" />
-              <p className="text-xs text-muted-foreground">Cálculo automático: aminoácidos x 4 + lipídeos x 9 + glicose x 3.4</p>
-              {selectedPatient?.weight && <p className="text-xs text-muted-foreground">= {values.perKg.kcal.toFixed(1)} kcal/kg</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Aminoácidos */}
+            <div className="space-y-2 p-4 rounded-lg border bg-blue-50/50">
+              <Label className="text-blue-700 font-semibold">Aminoácidos (concentração fixa 10%)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" step="1"
+                  value={values.aminoacidsMl || ''}
+                  onChange={e => onValuesChange({ aminoacidsMl: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 800"
+                />
+                <span className="text-sm whitespace-nowrap font-medium">ml</span>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <p>= <strong>{derived.aminoacidsG.toFixed(1)}</strong> g ({derived.perKg.amino > 0 ? `${derived.perKg.amino.toFixed(2)} g/kg` : '—'})</p>
+                <p>= <strong>{derived.aminoacidsKcal.toFixed(0)}</strong> kcal</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Aminoácidos (g/dia)</Label>
-              <Input type="number" step="0.1" value={values.aminoacids || ''} onChange={e => onAminoacidsChange(parseFloat(e.target.value) || 0)} placeholder="Ex: 80" />
-              {selectedPatient?.weight && <p className="text-xs text-muted-foreground">= {values.perKg.amino.toFixed(2)} g/kg</p>}
+
+            {/* Glicose */}
+            <div className="space-y-2 p-4 rounded-lg border bg-green-50/50">
+              <Label className="text-green-700 font-semibold">Glicose</Label>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(values.glucoseConc)}
+                  onValueChange={v => onValuesChange({ glucoseConc: parseInt(v) as GlucoseConcentration })}
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5%</SelectItem>
+                    <SelectItem value="10">10%</SelectItem>
+                    <SelectItem value="50">50%</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number" step="1"
+                  value={values.glucoseMl || ''}
+                  onChange={e => onValuesChange({ glucoseMl: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 500"
+                />
+                <span className="text-sm whitespace-nowrap font-medium">ml</span>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <p>= <strong>{derived.glucoseG.toFixed(1)}</strong> g ({derived.perKg.glucose > 0 ? `${derived.perKg.glucose.toFixed(2)} g/kg` : '—'})</p>
+                <p>= <strong>{derived.glucoseKcal.toFixed(0)}</strong> kcal</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Lipídeos (g/dia)</Label>
-              <Input type="number" step="0.1" value={values.lipids || ''} onChange={e => onLipidsChange(parseFloat(e.target.value) || 0)} placeholder="Ex: 60" />
-              {selectedPatient?.weight && <p className="text-xs text-muted-foreground">= {values.perKg.lipids.toFixed(2)} g/kg</p>}
+
+            {/* Lipídeos */}
+            <div className="space-y-2 p-4 rounded-lg border bg-amber-50/50">
+              <Label className="text-amber-700 font-semibold">Lipídeos (concentração fixa 20%)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number" step="1"
+                  value={values.lipidsMl || ''}
+                  onChange={e => onValuesChange({ lipidsMl: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 250"
+                />
+                <span className="text-sm whitespace-nowrap font-medium">ml</span>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <p>= <strong>{derived.lipidsG.toFixed(1)}</strong> g ({derived.perKg.lipids > 0 ? `${derived.perKg.lipids.toFixed(2)} g/kg` : '—'})</p>
+                <p>= <strong>{derived.lipidsKcal.toFixed(0)}</strong> kcal</p>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Glicose (g/dia)</Label>
-              <Input type="number" step="1" value={values.glucose || ''} onChange={e => onGlucoseChange(parseFloat(e.target.value) || 0)} placeholder="Ex: 200" />
-              {selectedPatient?.weight && <p className="text-xs text-muted-foreground">= {values.perKg.glucose.toFixed(2)} g/kg</p>}
-            </div>
-            <div className="space-y-2">
+
+            {/* TIG */}
+            <div className="space-y-2 p-4 rounded-lg border">
               <Label>TIG (mg/kg/min)</Label>
-              <Input type="number" value={selectedPatient?.weight ? values.perKg.tig.toFixed(2) : ''} readOnly placeholder="Informe o peso do paciente" />
-              <p className="text-xs text-muted-foreground">Calculo: glicose (g/dia) x 1000 / peso / 60 / horas de infusao</p>
+              <Input
+                type="number"
+                value={selectedPatient?.weight ? derived.perKg.tig.toFixed(2) : ''}
+                readOnly
+                placeholder="Informe o peso do paciente"
+              />
+              <p className="text-xs text-muted-foreground">Cálculo: glicose (g/dia) × 1000 / peso / 60 / horas de infusão</p>
+            </div>
+          </div>
+
+          {/* Checkboxes extras */}
+          <div className="flex flex-wrap gap-6 p-4 rounded-lg border bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="pn-multivitamin"
+                checked={values.multivitamin}
+                onCheckedChange={checked => onValuesChange({ multivitamin: !!checked })}
+              />
+              <Label htmlFor="pn-multivitamin" className="cursor-pointer font-medium">Multivitamínico</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="pn-trace-elements"
+                checked={values.traceElements}
+                onCheckedChange={checked => onValuesChange({ traceElements: !!checked })}
+              />
+              <Label htmlFor="pn-trace-elements" className="cursor-pointer font-medium">Oligoelementos</Label>
             </div>
           </div>
         </CardContent>
@@ -172,7 +299,7 @@ export function ParenteralStep({ values, selectedPatient, onAminoacidsChange, on
         <CardContent>
           <Textarea
             value={values.observations}
-            onChange={e => onObservationsChange(e.target.value)}
+            onChange={e => onValuesChange({ observations: e.target.value })}
             placeholder="Anotações sobre a prescrição parenteral..."
             rows={4}
           />

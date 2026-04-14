@@ -27,6 +27,7 @@ import { useNavigate } from "react-router-dom";
 import ScheduleSelector from "@/components/ScheduleSelector";
 import { calcInfusionRate, calcTotals } from "@/lib/nutrition"; // assume existe
 import { supabase } from "@/lib/supabase"; // opcional
+import { printElementInPopup } from "@/lib/printPopup";
 
 
 
@@ -517,7 +518,7 @@ export default function Prescription() {
      RENDER
      =========================== */
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center py-8 px-4 bg-black/30">
+    <div id="legacy-prescription-print-document" className="fixed inset-0 z-50 flex items-start justify-center py-8 px-4 bg-black/30">
       <div className="w-full max-w-6xl h-[90vh] overflow-auto bg-background rounded-lg shadow-lg p-6">
         {/* header */}
         <div className="flex items-center justify-between mb-4">
@@ -530,7 +531,7 @@ export default function Prescription() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => window.print()}>Imprimir</Button>
+            <Button variant="ghost" onClick={() => printElementInPopup("legacy-prescription-print-document", "Prescrição nutricional")}>Imprimir</Button>
             <Button onClick={handleSave}><Save className="mr-2" /> Salvar</Button>
           </div>
         </div>

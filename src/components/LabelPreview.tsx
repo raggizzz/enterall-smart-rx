@@ -1,4 +1,4 @@
-﻿
+
 
 export interface LabelData {
     id: string;

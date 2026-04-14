@@ -178,6 +178,10 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
   ].filter(Boolean).join("; ");
   const observations = buildObservationLines(patient, oralPrescription, enteralPrescription, parenteralPrescription);
   const unint = getUnintentionalBreakdown(patient);
+  const oralSupplements = (oralPrescription?.oralDetails?.supplements || []).filter((supplement) => (supplement.amount || 0) > 0);
+  const oralModules = (oralPrescription?.oralDetails?.modules || []).filter((module) => (module.amount || 0) > 0);
+  const enteralFormulas = (enteralPrescription?.formulas || []).filter((formula) => (formula.volume || 0) > 0);
+  const enteralModules = (enteralPrescription?.modules || []).filter((module) => (module.amount || 0) > 0);
 
   const totalKcal =
     (oralPrescription?.totalCalories || 0)
@@ -204,19 +208,19 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
       oralPrescription.oralDetails?.dietCharacteristics || patient.observation || oralPrescription.notes || "-",
     ));
 
-    if ((oralPrescription.oralDetails?.supplements || []).length > 0) {
+    if (oralSupplements.length > 0) {
       leftRows.push(bold(
         "TNVO: ",
-        oralPrescription.oralDetails!.supplements!.map((supplement) =>
+        oralSupplements.map((supplement) =>
           `${supplement.supplementName}: ${formatNumber(supplement.amount)}${supplement.unit || "ml"} ${getOralScheduleNames(supplement.schedules).join(" / ") || "-"}`
         ).join("   "),
       ));
     }
 
-    if ((oralPrescription.oralDetails?.modules || []).length > 0) {
+    if (oralModules.length > 0) {
       leftRows.push(bold(
         "Módulo VO: ",
-        oralPrescription.oralDetails!.modules!.map((module) =>
+        oralModules.map((module) =>
           `${module.moduleName} ${formatNumber(module.amount)}${module.unit || "g"} ${getOralScheduleNames(module.schedules).join(" - ") || "-"}`
         ).join("   "),
       ));
@@ -235,25 +239,25 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
       bold("Infusão: ", enteralPrescription.infusionMode === "pump" ? "Bomba de infusão" : enteralPrescription.infusionMode === "gravity" ? "Gravitacional" : enteralPrescription.infusionMode || "-"),
     ]));
 
-    if (enteralPrescription.formulas.length > 0) {
+    if (enteralFormulas.length > 0) {
       leftRows.push(bold(
         "Fórmula(s): ",
-        enteralPrescription.formulas.map((formula) =>
+        enteralFormulas.map((formula) =>
           `${formula.formulaName} ${formatNumber(formula.volume)}ml - ${formatSchedules(formula.schedules)} ${getPrescriptionRateLabel(enteralPrescription, formula.volume) || ""}`.trim()
         ).join("   "),
       ));
     }
 
-    if (enteralPrescription.modules.length > 0) {
+    if (enteralModules.length > 0) {
       leftRows.push(bold(
         "Módulos: ",
-        enteralPrescription.modules.map((module) =>
+        enteralModules.map((module) =>
           `${module.moduleName} ${formatNumber(module.amount)}${module.unit || "g"} - ${formatSchedules(module.schedules)}`
         ).join("   "),
       ));
     }
 
-    if (enteralPrescription.hydrationVolume || enteralPrescription.totalFreeWater) {
+    if ((enteralPrescription.hydrationVolume || 0) > 0 || (enteralPrescription.totalFreeWater || 0) > 0) {
       leftRows.push(joinNonEmpty([
         bold("Água para hidratação: ", `${formatNumber(enteralPrescription.hydrationVolume)}ml ; ${enteralPrescription.hydrationSchedules?.length || 0}x/dia`),
         bold("Água livre total: ", `${formatNumber(enteralPrescription.totalFreeWater)} ml`),
@@ -352,7 +356,7 @@ const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: Sec
   const patientPages = chunkPatients(patients, 8);
 
   return (
-    <div className="hidden print:block bg-white text-black">
+    <div id="sector-map-print-document" className="hidden print:block bg-white text-black">
       {patientPages.map((pagePatients, pageIndex) => (
         <section
           key={`page-${pageIndex + 1}`}

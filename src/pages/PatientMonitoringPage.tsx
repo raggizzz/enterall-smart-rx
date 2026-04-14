@@ -84,6 +84,18 @@ const pickPrescriptionForType = (
     return [...candidates].sort(sortByMostRecentStartDate)[0];
 };
 
+const pickPrescriptionForTypeWithFallback = (
+    activePrescriptions: Prescription[],
+    patientPrescriptions: Prescription[],
+    therapyType: Prescription["therapyType"],
+    preferredId?: string,
+): Prescription | undefined => {
+    return (
+        pickPrescriptionForType(activePrescriptions, therapyType, preferredId) ||
+        pickPrescriptionForType(patientPrescriptions, therapyType, preferredId)
+    );
+};
+
 export default function PatientMonitoringPage() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
@@ -124,9 +136,20 @@ export default function PatientMonitoringPage() {
             };
         }
 
-        const patientPrescriptions = prescriptions.filter(
-            (p) => p.patientId === selectedPatient.id && p.status === "active",
+        const targetDate = getPreviousDay();
+        const prescriptionsOnTargetDate = prescriptions.filter(
+            (prescription) =>
+                prescription.patientId === selectedPatient.id &&
+                isPrescriptionActiveOn(prescription, targetDate),
         );
+        const allPatientPrescriptions = prescriptions.filter(
+            (prescription) => prescription.patientId === selectedPatient.id,
+        );
+        const patientPrescriptions = [
+            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "enteral"),
+            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "oral"),
+            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "parenteral"),
+        ].filter((prescription): prescription is NonNullable<typeof prescription> => Boolean(prescription));
 
         return patientPrescriptions.reduce(
             (acc, prescription) => {
@@ -272,8 +295,15 @@ export default function PatientMonitoringPage() {
                     prescription.patientId === selectedPatient.id &&
                     isPrescriptionActiveOn(prescription, targetDate),
             );
-            const enteralPrescription = pickPrescriptionForType(prescriptionsOnTargetDate, "enteral");
-            const referencePrescription = enteralPrescription || [...prescriptionsOnTargetDate].sort(sortByMostRecentStartDate)[0];
+            const allPatientPrescriptions = prescriptions.filter(
+                (prescription) => prescription.patientId === selectedPatient.id,
+            );
+            const enteralPrescription = pickPrescriptionForTypeWithFallback(
+                prescriptionsOnTargetDate,
+                allPatientPrescriptions,
+                "enteral",
+            );
+            const referencePrescription = enteralPrescription || [...allPatientPrescriptions].sort(sortByMostRecentStartDate)[0];
             const existingEvolution = evolutions.find(
                 (evolution) =>
                     evolution.patientId === selectedPatient.id &&
@@ -384,9 +414,7 @@ export default function PatientMonitoringPage() {
                         <p className="text-muted-foreground">
                             {selectedPatient.name} - Prontuário: {selectedPatient.record}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                            Fechamento do dia anterior separado da prescrição atual para facilitar a leitura assistencial.
-                        </p>
+
                     </div>
                 </div>
 

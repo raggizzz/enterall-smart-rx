@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Mic, ArrowLeft, Check, ChevronDown, ChevronRight, Droplet, Plus, Trash2, Utensils, Syringe, Calculator, Save, AlertCircle, Clock } from "lucide-react";
+import { Mic, ArrowLeft, Check, ChevronDown, ChevronRight, Droplet, Plus, Trash2, Utensils, Syringe, Calculator, Save, AlertCircle, Clock, Target, Flame } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
@@ -29,9 +29,13 @@ import {
   calculateModuleNutrition,
   createNutritionAccumulator,
   finalizeNutritionTotals,
+  calculateUnintentionalCalories,
+  getWeightConfig,
 } from "@/lib/prescriptionCalculations";
+import type { UnintentionalCaloriesInput } from "@/lib/prescriptionCalculations";
 import { calculateOpenStageRate } from "@/lib/prescriptionInfusion";
-import { ParenteralStep } from "@/components/prescription/ParenteralStep";
+import { ParenteralStep, deriveParenteralValues } from "@/components/prescription/ParenteralStep";
+import type { ParenteralValues, GlucoseConcentration } from "@/components/prescription/ParenteralStep";
 import {
   DEFAULT_SCHEDULE_TIMES,
   areScheduleTimesEqual,
@@ -49,6 +53,7 @@ interface FormulaEntry {
   volume: string;
   diluteTo: string;
   times: string[];
+  manipulationTimes: string[];
 }
 
 interface ModuleEntry {
@@ -322,6 +327,7 @@ const toFormulaCalculationInput = (formula: ExtendedCatalogFormula) => ({
 const collectPrescriptionScheduleTimes = (prescription: Prescription): string[] => {
   const closedFormulaTimes = Object.keys(prescription.enteralDetails?.closedFormula?.bagQuantities || {});
   const openFormulaTimes = (prescription.enteralDetails?.openFormulas || []).flatMap((formula) => formula.times || []);
+  const openManipulationTimes = (prescription.enteralDetails?.openFormulas || []).flatMap((formula) => formula.manipulationTimes || []);
   const enteralModuleTimes = (prescription.enteralDetails?.modules || []).flatMap((module) => module.times || []);
   const hydrationTimes = prescription.enteralDetails?.hydration?.times || prescription.hydrationSchedules || [];
   const oralThickenerTimes = prescription.oralDetails?.thickenerTimes || [];
@@ -331,6 +337,7 @@ const collectPrescriptionScheduleTimes = (prescription: Prescription): string[] 
   return sanitizeScheduleTimes([
     ...closedFormulaTimes,
     ...openFormulaTimes,
+    ...openManipulationTimes,
     ...enteralModuleTimes,
     ...hydrationTimes,
     ...oralThickenerTimes,
@@ -462,7 +469,7 @@ const PrescriptionNew = () => {
   // Open System
   const [openInfusionMode, setOpenInfusionMode] = useState<"pump" | "gravity" | "bolus" | "">("");
   const [openDurationPerStep, setOpenDurationPerStep] = useState("");
-  const [openFormulas, setOpenFormulas] = useState<FormulaEntry[]>([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
+  const [openFormulas, setOpenFormulas] = useState<FormulaEntry[]>([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
 
   // Modules
   const [modules, setModules] = useState<ModuleEntry[]>([]);
@@ -575,6 +582,17 @@ const PrescriptionNew = () => {
     }
   }, [availableFormulas, feedingRoutes.enteral, openFormulas, systemType]);
 
+  useEffect(() => {
+    if (!feedingRoutes.enteral || enteralAccess !== "VO") return;
+
+    setSystemType("open");
+    setOpenInfusionMode("bolus");
+    setClosedFormula({ formulaId: "", infusionMode: "", rate: "", duration: "", bagQuantities: {} });
+    if (currentStep === 5) {
+      setCurrentStep(6);
+    }
+  }, [currentStep, enteralAccess, feedingRoutes.enteral]);
+
   // --- Oral Inline State (Step 8) ---
   const [oralDietConsistency, setOralDietConsistency] = useState('');
   const [oralDietCharacteristics, setOralDietCharacteristics] = useState('');
@@ -597,29 +615,96 @@ const PrescriptionNew = () => {
   const [oralObservations, setOralObservations] = useState('');
 
   // --- Parenteral Inline State (Step 9) ---
-  const [parenteralAccess, setParenteralAccess] = useState<'central' | 'peripheral' | 'picc'>('central');
-  const [parenteralInfusionTime, setParenteralInfusionTime] = useState<number>(24);
-  const [parenteralAminoacids, setParenteralAminoacids] = useState<number>(0);
-  const [parenteralLipids, setParenteralLipids] = useState<number>(0);
-  const [parenteralGlucose, setParenteralGlucose] = useState<number>(0);
-  const [parenteralObservations, setParenteralObservations] = useState('');
+  const [parenteralValues, setParenteralValues] = useState<ParenteralValues>({
+    aminoacidsMl: 0,
+    lipidsMl: 0,
+    glucoseMl: 0,
+    glucoseConc: 50 as GlucoseConcentration,
+    multivitamin: false,
+    traceElements: false,
+    access: 'central',
+    infusionTime: 24,
+    observations: '',
+  });
 
-  // Parenteral VET auto-calc
-  const parenteralVET = useMemo(() => {
-    return (parenteralAminoacids * 4) + (parenteralLipids * 9) + (parenteralGlucose * 3.4);
-  }, [parenteralAminoacids, parenteralLipids, parenteralGlucose]);
+  const handleParenteralChange = (partial: Partial<ParenteralValues>) => {
+    setParenteralValues(prev => ({ ...prev, ...partial }));
+  };
 
-  const parenteralPerKg = useMemo(() => {
-    const w = selectedPatient?.weight || 0;
-    if (!w) return { kcal: 0, amino: 0, lipids: 0, glucose: 0, tig: 0 };
-    return {
-      kcal: parenteralVET / w,
-      amino: parenteralAminoacids / w,
-      lipids: parenteralLipids / w,
-      glucose: parenteralGlucose / w,
-      tig: parenteralInfusionTime > 0 ? (parenteralGlucose * 1000) / (w * 60 * parenteralInfusionTime) : 0,
-    };
-  }, [parenteralVET, parenteralAminoacids, parenteralLipids, parenteralGlucose, parenteralInfusionTime, selectedPatient?.weight]);
+  // --- Unintentional Calories State ---
+  const [unintentionalCal, setUnintentionalCal] = useState<UnintentionalCaloriesInput>({});
+
+  // --- Nutrition Goals State ---
+  const [goalTargetKcalPerKg, setGoalTargetKcalPerKg] = useState<number | undefined>();
+  const [goalTargetProteinPerKgActual, setGoalTargetProteinPerKgActual] = useState<number | undefined>();
+  const [goalTargetProteinPerKgIdeal, setGoalTargetProteinPerKgIdeal] = useState<number | undefined>();
+
+  // --- Weight Config Override (per patient) ---
+  type WeightChoice = 'actual' | 'ideal';
+  const [weightChoice, setWeightChoice] = useState<WeightChoice | null>(null); // null = auto
+
+  // Parenteral derived values (auto-calc from ml inputs)
+  const parenteralDerived = useMemo(
+    () => deriveParenteralValues(parenteralValues, selectedPatient?.weight),
+    [parenteralValues, selectedPatient?.weight],
+  );
+
+  // Shorthand aliases for backward compat in save handler
+  const parenteralVET = parenteralDerived.vet;
+  const parenteralAminoacids = parenteralDerived.aminoacidsG;
+  const parenteralLipids = parenteralDerived.lipidsG;
+  const parenteralGlucose = parenteralDerived.glucoseG;
+  const parenteralPerKg = parenteralDerived.perKg;
+  const parenteralAccess = parenteralValues.access;
+  const parenteralInfusionTime = parenteralValues.infusionTime;
+  const parenteralObservations = parenteralValues.observations;
+
+  // Unintentional calories calculation
+  const unintentionalResult = useMemo(
+    () => calculateUnintentionalCalories(unintentionalCal),
+    [unintentionalCal],
+  );
+
+  // Weight config auto-determined by BMI (computed from patient data directly)
+  const autoWeightConfig = useMemo(() => {
+    const w = selectedPatient?.weight;
+    const h = selectedPatient?.height;
+    if (!w || !h || h <= 0) return getWeightConfig(null, null);
+    const heightM = h > 3 ? h / 100 : h;
+    const patientBmi = w / (heightM * heightM);
+    const patientIdealWeight = 25 * heightM * heightM;
+    return getWeightConfig(patientBmi, patientIdealWeight);
+  }, [selectedPatient?.weight, selectedPatient?.height]);
+
+  // Effective weight config = manual override > auto suggestion
+  const effectiveWeight = weightChoice || autoWeightConfig.energyWeight;
+  const weightConfig = useMemo(() => ({
+    energyWeight: effectiveWeight,
+    proteinWeight: effectiveWeight,
+    label: autoWeightConfig.label,
+  }), [effectiveWeight, autoWeightConfig]);
+
+  // Calculated weights for display
+  const calculatedIdealWeight = useMemo(() => {
+    const h = selectedPatient?.height;
+    if (!h || h <= 0) return null;
+    const heightM = h > 3 ? h / 100 : h;
+    return 25 * heightM * heightM;
+  }, [selectedPatient?.height]);
+
+  // Selected reference weight value
+  const referenceWeight = useMemo(() => {
+    if (effectiveWeight === 'ideal' && calculatedIdealWeight) return calculatedIdealWeight;
+    return selectedPatient?.weight || 0;
+  }, [effectiveWeight, calculatedIdealWeight, selectedPatient?.weight]);
+
+  const calculatedBmi = useMemo(() => {
+    const w = selectedPatient?.weight;
+    const h = selectedPatient?.height;
+    if (!w || !h || h <= 0) return null;
+    const heightM = h > 3 ? h / 100 : h;
+    return w / (heightM * heightM);
+  }, [selectedPatient?.weight, selectedPatient?.height]);
 
   const ORAL_MEAL_SCHEDULES = useMemo(() => [
     { key: 'breakfast', label: 'Desjejum' },
@@ -898,6 +983,7 @@ const PrescriptionNew = () => {
       current.map((formula) => ({
         ...formula,
         times: sortScheduleTimes(formula.times.filter((time) => nextTimes.includes(time))),
+        manipulationTimes: sortScheduleTimes(formula.manipulationTimes.filter((time) => nextTimes.includes(time))),
       })),
     );
     setModules((current) =>
@@ -954,16 +1040,17 @@ const PrescriptionNew = () => {
   // --- DYNAMIC STEP DEFINITIONS ---
   const STEP_DEFS: { id: number; title: string; condition: () => boolean }[] = useMemo(() => [
     { id: 1, title: "Selecionar Paciente", condition: () => true },
-    { id: 2, title: "Via de Alimentação", condition: () => true },
-    { id: 3, title: "Acesso Enteral", condition: () => feedingRoutes.enteral },
-    { id: 4, title: "Tipo de Sistema", condition: () => feedingRoutes.enteral },
-    { id: 5, title: "Configurar Dieta", condition: () => feedingRoutes.enteral },
-    { id: 6, title: "Módulos (Opcional)", condition: () => feedingRoutes.enteral },
-    { id: 7, title: "Hidratação", condition: () => feedingRoutes.enteral },
-    { id: 8, title: "Prescrição Oral", condition: () => feedingRoutes.oral },
-    { id: 9, title: "Prescrição Parenteral", condition: () => feedingRoutes.parenteral },
-    { id: 10, title: "Resumo", condition: () => true },
-  ], [feedingRoutes]);
+    { id: 2, title: "Metas e Calorias NI", condition: () => true },
+    { id: 3, title: "Via de Alimentação", condition: () => true },
+    { id: 4, title: "Acesso Enteral", condition: () => feedingRoutes.enteral },
+    { id: 5, title: "Tipo de Sistema", condition: () => feedingRoutes.enteral && enteralAccess !== "VO" },
+    { id: 6, title: "Configurar Dieta", condition: () => feedingRoutes.enteral },
+    { id: 7, title: "Módulos (Opcional)", condition: () => feedingRoutes.enteral },
+    { id: 8, title: "Hidratação", condition: () => feedingRoutes.enteral },
+    { id: 9, title: "Prescrição Oral", condition: () => feedingRoutes.oral },
+    { id: 10, title: "Prescrição Parenteral", condition: () => feedingRoutes.parenteral },
+    { id: 11, title: "Resumo", condition: () => true },
+  ], [enteralAccess, feedingRoutes]);
 
   const activeSteps = useMemo(() => STEP_DEFS.filter(s => s.condition()), [STEP_DEFS]);
 
@@ -1022,24 +1109,18 @@ const PrescriptionNew = () => {
 
       if ((enteralDetails?.systemType || prescription.systemType) === "closed") {
         const firstFormula = prescription.formulas?.[0];
-        const bagQuantities = enteralDetails?.closedFormula?.bagQuantities || (firstFormula?.schedules || []).reduce((acc, time) => {
-          acc[time] = (acc[time] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
 
         setClosedFormula({
           formulaId: enteralDetails?.closedFormula?.formulaId || firstFormula?.formulaId || "",
           infusionMode: enteralDetails?.closedFormula?.infusionMode || (prescription.infusionMode === "gravity" ? "gravity" : prescription.infusionMode === "pump" ? "pump" : ""),
           rate: enteralDetails?.closedFormula?.rate || (prescription.infusionRateMlH ? String(prescription.infusionRateMlH) : ""),
           duration: enteralDetails?.closedFormula?.duration || (prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : ""),
-          bagQuantities: Object.fromEntries(
-            Object.entries(bagQuantities).filter(([time, quantity]) => typeof quantity === "number" && quantity > 0),
-          ),
+          bagQuantities: {},
         });
 
         setOpenInfusionMode("");
         setOpenDurationPerStep("");
-        setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
+        setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
       } else {
         setOpenInfusionMode(enteralDetails?.infusionMode || (prescription.infusionMode as "pump" | "gravity" | "bolus" | "") || "");
         setOpenDurationPerStep(enteralDetails?.openDurationPerStep || (prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : ""));
@@ -1051,6 +1132,7 @@ const PrescriptionNew = () => {
               volume: formula.volume || "",
               diluteTo: formula.diluteTo || "",
               times: sanitizeScheduleTimes(formula.times || []),
+              manipulationTimes: sanitizeScheduleTimes(formula.manipulationTimes || formula.times || []),
             }))
             : prescription.formulas && prescription.formulas.length > 0
             ? prescription.formulas.map((formula, index) => ({
@@ -1059,8 +1141,9 @@ const PrescriptionNew = () => {
               volume: formula.volume ? String(formula.volume) : "",
               diluteTo: "",
               times: sanitizeScheduleTimes(formula.schedules || []),
+              manipulationTimes: sanitizeScheduleTimes(formula.schedules || []),
             }))
-            : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }],
+            : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }],
         );
 
         setClosedFormula({
@@ -1157,13 +1240,22 @@ const PrescriptionNew = () => {
     }
 
     if (prescription.therapyType === "parenteral") {
-      const parenteralDetails = prescription.parenteralDetails;
-      setParenteralAccess(parenteralDetails?.access || (prescription.feedingRoute as "central" | "peripheral" | "picc") || "central");
-      setParenteralInfusionTime(Math.round(parenteralDetails?.infusionTime || prescription.infusionHoursPerDay || 24));
-      setParenteralAminoacids(parenteralDetails?.aminoacidsG ?? prescription.totalProtein ?? 0);
-      setParenteralLipids(parenteralDetails?.lipidsG ?? prescription.totalFat ?? 0);
-      setParenteralGlucose(parenteralDetails?.glucoseG ?? prescription.totalCarbs ?? 0);
-      setParenteralObservations(parenteralDetails?.observations || prescription.notes || "");
+      const pd = prescription.parenteralDetails;
+      const aaG = pd?.aminoacidsG ?? prescription.totalProtein ?? 0;
+      const lipG = pd?.lipidsG ?? prescription.totalFat ?? 0;
+      const gluG = pd?.glucoseG ?? prescription.totalCarbs ?? 0;
+      const gluConc = (pd as any)?.glucoseConc || 50;
+      setParenteralValues({
+        aminoacidsMl: (pd as any)?.aminoacidsMl || (aaG / 0.10),
+        lipidsMl: (pd as any)?.lipidsMl || (lipG / 0.20),
+        glucoseMl: (pd as any)?.glucoseMl || (gluG / (gluConc / 100)),
+        glucoseConc: gluConc as GlucoseConcentration,
+        multivitamin: !!(pd as any)?.multivitamin,
+        traceElements: !!(pd as any)?.traceElements,
+        access: pd?.access || (prescription.feedingRoute as "central" | "peripheral" | "picc") || "central",
+        infusionTime: Math.round(pd?.infusionTime || prescription.infusionHoursPerDay || 24),
+        observations: pd?.observations || prescription.notes || "",
+      });
     }
 
     setCompletedSteps([1, 2]);
@@ -1298,9 +1390,9 @@ const PrescriptionNew = () => {
   const canProceed = (step: number): boolean => {
     switch (step) {
       case 1: return !!selectedPatient;
-      case 2: return feedingRoutes.oral || feedingRoutes.enteral || feedingRoutes.parenteral || hasExistingActiveRoute;
-      case 3: return !!enteralAccess;
-      case 4: return !!systemType;
+      case 3: return feedingRoutes.oral || feedingRoutes.enteral || feedingRoutes.parenteral || hasExistingActiveRoute;
+      case 4: return !feedingRoutes.enteral || !!enteralAccess;
+      case 5: return enteralAccess === "VO" || !!systemType;
       default: return true;
     }
   };
@@ -1362,8 +1454,22 @@ const PrescriptionNew = () => {
       totals.fat += parenteralLipids;
     }
 
+    // Integrate unintentional calories
+    const niCalc = calculateUnintentionalCalories(unintentionalCal);
+    if (niCalc.propofolKcal > 0) {
+      totals.calories += niCalc.propofolKcal;
+      totals.fat += niCalc.propofolLipidsG;
+    }
+    if (niCalc.glucoseKcal > 0) {
+      totals.calories += niCalc.glucoseKcal;
+      totals.carbs += niCalc.glucoseCarbsG;
+    }
+    if (niCalc.citrateKcal > 0) {
+      totals.calories += niCalc.citrateKcal; // VET only, no macronutrient
+    }
+
     return finalizeNutritionTotals(totals, selectedPatient);
-  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, buildOralNutritionAccumulator, parenteralVET, parenteralAminoacids, parenteralGlucose, parenteralLipids]);
+  }, [systemType, closedFormula, openFormulas, modules, hydration, selectedPatient, availableFormulas, availableModules, feedingRoutes, buildOralNutritionAccumulator, parenteralVET, parenteralAminoacids, parenteralGlucose, parenteralLipids, unintentionalCal]);
 
   // Bag calculation (closed system)
   const bagCalculation = useMemo(() => {
@@ -1381,7 +1487,7 @@ const PrescriptionNew = () => {
   const chartNoteSuggestion = useMemo(() => {
     if (!feedingRoutes.enteral || !systemType) return "";
 
-    const lines: string[] = ["Sugestao de Registro em Prontuario:"];
+    const lines: string[] = ["Registro em Prontuário:"];
     const routeLabel = formatEnteralAccessLabel(enteralAccess);
 
     if (systemType === "closed" && closedFormula.formulaId) {
@@ -1482,7 +1588,7 @@ const PrescriptionNew = () => {
   ]);
 
   const sidebarSummary = useMemo(() => {
-    if (currentStep === 8 && feedingRoutes.oral) {
+    if (currentStep === 9 && feedingRoutes.oral) {
       return {
         title: "Resumo da via oral",
         calories: oralTotals.vet.toFixed(0),
@@ -1494,7 +1600,7 @@ const PrescriptionNew = () => {
       };
     }
 
-    if (currentStep === 9 && feedingRoutes.parenteral) {
+    if (currentStep === 10 && feedingRoutes.parenteral) {
       return {
         title: "Resumo da parenteral",
         calories: parenteralVET.toFixed(0),
@@ -1508,7 +1614,7 @@ const PrescriptionNew = () => {
 
     if (feedingRoutes.enteral) {
       return {
-        title: currentStep === 10 ? "Resumo das vias selecionadas" : "Resumo da Terapia Nutricional",
+        title: currentStep === 11 ? "Resumo das vias selecionadas" : "Resumo da Terapia Nutricional",
         calories: String(nutritionSummary.vet),
         caloriesPerKg: String(nutritionSummary.vetPerKg),
         protein: `${nutritionSummary.protein}`,
@@ -1530,7 +1636,7 @@ const PrescriptionNew = () => {
   }, [currentStep, feedingRoutes, oralTotals, parenteralVET, parenteralPerKg, parenteralAminoacids, nutritionSummary]);
 
   // Handlers
-  const addOpenFormula = () => setOpenFormulas([...openFormulas, { id: Date.now().toString(), formulaId: "", volume: "", diluteTo: "", times: [] }]);
+  const addOpenFormula = () => setOpenFormulas([...openFormulas, { id: Date.now().toString(), formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
   const removeOpenFormula = (id: string) => { if (openFormulas.length > 1) setOpenFormulas(openFormulas.filter(f => f.id !== id)); };
   const updateOpenFormula = (id: string, field: keyof FormulaEntry, value: any) => setOpenFormulas(openFormulas.map(f => f.id === id ? { ...f, [field]: value } : f));
   const toggleFormulaTime = (formulaId: string, time: string) => {
@@ -1546,7 +1652,20 @@ const PrescriptionNew = () => {
     }
   };
 
-  const addModule = () => { if (modules.length < 3) setModules([...modules, { id: Date.now().toString(), moduleId: "", quantity: "", unit: "g", times: [] }]); else toast.error("Máximo de 3 módulos"); };
+  const toggleFormulaManipulationTime = (formulaId: string, time: string) => {
+    const formula = openFormulas.find((item) => item.id === formulaId);
+    if (!formula) return;
+
+    updateOpenFormula(
+      formulaId,
+      "manipulationTimes",
+      formula.manipulationTimes.includes(time)
+        ? sortScheduleTimes(formula.manipulationTimes.filter((item) => item !== time))
+        : sortScheduleTimes([...formula.manipulationTimes, time]),
+    );
+  };
+
+  const addModule = () => { if (modules.length < 4) setModules([...modules, { id: Date.now().toString(), moduleId: "", quantity: "", unit: "g", times: [] }]); else toast.error("Máximo de 4 módulos"); };
   const removeModule = (id: string) => setModules(modules.filter(m => m.id !== id));
   const updateModule = (id: string, field: keyof ModuleEntry, value: any) => setModules(modules.map(m => m.id === id ? { ...m, [field]: value } : m));
   const toggleModuleTime = (moduleId: string, time: string) => {
@@ -1811,6 +1930,7 @@ const PrescriptionNew = () => {
                 volume: formula.volume || undefined,
                 diluteTo: formula.diluteTo || undefined,
                 times: formula.times,
+                manipulationTimes: formula.manipulationTimes.length > 0 ? formula.manipulationTimes : formula.times,
               }))
               : undefined,
             modules: modules.map((module) => ({
@@ -1881,8 +2001,14 @@ const PrescriptionNew = () => {
             access: parenteralAccess,
             infusionTime: parenteralInfusionTime,
             aminoacidsG: parenteralAminoacids,
+            aminoacidsMl: parenteralValues.aminoacidsMl,
             lipidsG: parenteralLipids,
+            lipidsMl: parenteralValues.lipidsMl,
             glucoseG: parenteralGlucose,
+            glucoseMl: parenteralValues.glucoseMl,
+            glucoseConc: parenteralValues.glucoseConc,
+            multivitamin: parenteralValues.multivitamin || undefined,
+            traceElements: parenteralValues.traceElements || undefined,
             vetKcal: parenteralVET,
             tigMgKgMin: parenteralPerKg.tig || undefined,
             observations: parenteralObservations || undefined,
@@ -1994,33 +2120,50 @@ const PrescriptionNew = () => {
                     <strong>{selectedPatient.name}</strong>
                     <br />Peso: {selectedPatient.weight || '-'}kg
                     {bmi && <span> | IMC: {bmi.toFixed(1)}</span>}
-                    {bmi && bmi > 30 && idealWeight && <span> | Peso ideal (IMC 25): {idealWeight.toFixed(1)}kg</span>}
+                    {bmi && bmi > 30 && idealWeight && <span> | PI: {idealWeight.toFixed(1)}kg</span>}
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Carboidratos</p><p>{nutritionSummary.carbs} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.carbsPerKgIdeal !== null ? `${nutritionSummary.carbsPerKg} g/kg PA | ${nutritionSummary.carbsPerKgIdeal} g/kg PI` : `${nutritionSummary.carbsPerKg} g/kg`} | {nutritionSummary.carbsPct}% VET</p></div>
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Lipidios</p><p>{nutritionSummary.fat} g/dia</p><p className="text-muted-foreground">{nutritionSummary.weightMetrics.isObese && nutritionSummary.fatPerKgIdeal !== null ? `${nutritionSummary.fatPerKg} g/kg PA | ${nutritionSummary.fatPerKgIdeal} g/kg PI` : `${nutritionSummary.fatPerKg} g/kg`} | {nutritionSummary.fatPct}% VET</p></div>
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Fibras</p><p>{nutritionSummary.fiber} g/dia</p><p className="text-muted-foreground">Resumo global das vias</p></div>
-                    <div className="rounded-lg border bg-muted/30 p-3"><p className="font-semibold">Micronutrientes</p><p>Na {nutritionSummary.sodium} | K {nutritionSummary.potassium}</p><p className="text-muted-foreground">Ca {nutritionSummary.calcium} | P {nutritionSummary.phosphorus} mg/dia</p></div>
-                  </div>
+                  {weightConfig.label && (
+                    <div className="text-xs px-2 py-1 rounded bg-amber-100 text-amber-800 font-medium">
+                      {weightConfig.label}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-lg font-bold text-orange-600">
                         {sidebarSummary.calories}
                       </div>
-                      <div className="text-xs text-muted-foreground">kcal</div>
+                      <div className="text-xs text-muted-foreground">kcal total</div>
                       <div className="text-xs font-semibold text-orange-700">
                         {nutritionSummary.weightMetrics.isObese && nutritionSummary.caloriesPerKgIdeal !== null ? `${sidebarSummary.caloriesPerKg} kcal/kg PA | ${nutritionSummary.caloriesPerKgIdeal} kcal/kg PI` : `${sidebarSummary.caloriesPerKg} kcal/kg`}
                       </div>
+                      {unintentionalResult.totalKcal > 0 && (
+                        <div className="text-xs text-amber-600 mt-0.5">NI: {unintentionalResult.totalKcal.toFixed(0)} kcal</div>
+                      )}
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-lg font-bold text-blue-600">
                         {sidebarSummary.protein}g
                       </div>
-                      <div className="text-xs text-muted-foreground">proteínas</div>
+                      <div className="text-xs text-muted-foreground">proteínas ({nutritionSummary.proteinPct}% VET)</div>
                       <div className="text-xs font-semibold text-blue-700">
                         {nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${sidebarSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${sidebarSummary.proteinPerKg} g/kg`}
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                    <div className="bg-white rounded p-1.5 text-center shadow-sm">
+                      <div className="font-bold text-amber-600">{nutritionSummary.carbs}g</div>
+                      <div className="text-muted-foreground">Carb {nutritionSummary.carbsPct}%</div>
+                    </div>
+                    <div className="bg-white rounded p-1.5 text-center shadow-sm">
+                      <div className="font-bold text-red-500">{nutritionSummary.fat}g</div>
+                      <div className="text-muted-foreground">Lip {nutritionSummary.fatPct}%</div>
+                    </div>
+                    <div className="bg-white rounded p-1.5 text-center shadow-sm">
+                      <div className="font-bold text-green-600">{nutritionSummary.fiber}g</div>
+                      <div className="text-muted-foreground">Fibras</div>
                     </div>
                   </div>
 
@@ -2030,6 +2173,9 @@ const PrescriptionNew = () => {
                         {sidebarSummary.freeWater}
                       </div>
                       <div className="text-xs text-muted-foreground">água livre</div>
+                      {selectedPatient.weight && nutritionSummary.freeWater > 0 && (
+                        <div className="text-xs font-semibold text-cyan-700">{nutritionSummary.freeWaterPerKg} ml/kg</div>
+                      )}
                     </div>
                     <div className="bg-white rounded p-2 text-center shadow-sm">
                       <div className="text-sm font-bold text-green-600">
@@ -2063,93 +2209,7 @@ const PrescriptionNew = () => {
 
           {/* Main Content */}
           <div className="xl:col-span-3 space-y-6">
-            {selectedPatient && currentStep > 1 && canConfigurePrescriptionSchedules && (
-              <Card className="border-primary/30 bg-primary/5">
-                <CardHeader className="space-y-2">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Clock className="h-4 w-4" />
-                        Horarios da prescricao
-                      </CardTitle>
-                      <CardDescription>
-                        A gestao define o padrao inicial e pode ajustar a grade de horarios disponivel para esta prescricao.
-                      </CardDescription>
-                    </div>
-                    <Badge variant="secondary" className="w-fit">
-                      {currentScheduleStatus}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    {prescriptionScheduleTimes.map((time) => (
-                      <div
-                        key={time}
-                        className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-sm"
-                      >
-                        <span>{time}</span>
-                        {prescriptionScheduleTimes.length > 1 && (
-                          <button
-                            type="button"
-                            className="text-muted-foreground transition-colors hover:text-destructive"
-                            onClick={() => removePrescriptionTime(time)}
-                            aria-label={`Remover horario ${time}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-[180px_1fr]">
-                    <Input
-                      type="time"
-                      value={customScheduleInput}
-                      onChange={(event) => setCustomScheduleInput(event.target.value)}
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" onClick={addCustomPrescriptionTime}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Adicionar horario
-                      </Button>
-                      <Button type="button" variant="outline" onClick={restoreBaseScheduleTimes}>
-                        Restaurar base
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => {
-                          void savePatientSchedulePattern().catch((error) => {
-                            console.error("Erro ao salvar padrao do paciente:", error);
-                            toast.error("Nao foi possivel salvar o padrao deste paciente.");
-                          });
-                        }}
-                      >
-                        Salvar no paciente
-                      </Button>
-                      {patientDefaultScheduleTimes.length > 0 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            void clearPatientSchedulePattern().catch((error) => {
-                              console.error("Erro ao limpar padrao do paciente:", error);
-                              toast.error("Nao foi possivel remover o padrao do paciente.");
-                            });
-                          }}
-                        >
-                          Limpar padrao do paciente
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Padrao atual da ala: {wardScheduleTimes.join(", ")}.
-                    {patientDefaultScheduleTimes.length > 0 && ` Padrao salvo no paciente: ${patientDefaultScheduleTimes.join(", ")}.`}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+
             {/* Step 1 */}
             {currentStep === 1 && (
               <Card>
@@ -2182,7 +2242,7 @@ const PrescriptionNew = () => {
                           setClosedFormula({ formulaId: "", infusionMode: "", rate: "", duration: "", bagQuantities: {} });
                           setOpenInfusionMode("");
                           setOpenDurationPerStep("");
-                          setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [] }]);
+                          setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
                           setModules([]);
                           setHydration({ volume: "", times: [] });
                           setEquipmentVolume("");
@@ -2207,12 +2267,22 @@ const PrescriptionNew = () => {
                             setOralSupplements([]);
                             setOralTherapyModules([]);
                             setOralObservations(p.observation || "");
-                          setParenteralAccess("central");
-                          setParenteralInfusionTime(24);
-                          setParenteralAminoacids(0);
-                          setParenteralLipids(0);
-                          setParenteralGlucose(0);
-                          setParenteralObservations("");
+                          setParenteralValues({
+                            aminoacidsMl: 0,
+                            lipidsMl: 0,
+                            glucoseMl: 0,
+                            glucoseConc: 50 as GlucoseConcentration,
+                            multivitamin: false,
+                            traceElements: false,
+                            access: 'central',
+                            infusionTime: 24,
+                            observations: '',
+                          });
+                          setUnintentionalCal({});
+                          setGoalTargetKcalPerKg(undefined);
+                          setGoalTargetProteinPerKgActual(undefined);
+                          setGoalTargetProteinPerKgIdeal(undefined);
+                          setWeightChoice(null);
                         }}>
                           <CardContent className="p-4">
                             <div className="flex justify-between"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-muted-foreground">{p.record} - {p.bed || 'Sem leito'}</p></div>{selectedPatient?.id === p.id && <Check className="h-5 w-5 text-primary" />}</div>
@@ -2249,10 +2319,128 @@ const PrescriptionNew = () => {
               </Card>
             )}
 
-            {/* Step 2 */}
-            {currentStep === 2 && (
+            {/* Step 2 — Metas Nutricionais + Calorias Não Intencionais */}
+            {currentStep === 2 && selectedPatient && (
+              <div className="space-y-6">
+                {/* Metas Nutricionais */}
+                <Card className="border-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-emerald-700">
+                        <Target className="h-5 w-5" />Metas Nutricionais
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {calculatedBmi && <Badge variant="outline" className="text-xs">IMC {calculatedBmi.toFixed(1)}</Badge>}
+                        <div className="flex rounded-lg border overflow-hidden">
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                              effectiveWeight === 'actual'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white text-muted-foreground hover:bg-gray-50'
+                            }`}
+                            onClick={() => setWeightChoice('actual')}
+                          >
+                            PA {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                              effectiveWeight === 'ideal'
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-white text-muted-foreground hover:bg-gray-50'
+                            }`}
+                            onClick={() => setWeightChoice('ideal')}
+                          >
+                            PI {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
+                          </button>
+                        </div>
+                      </div>
+                    </CardTitle>
+                    <CardDescription>
+                      Peso de referência: <strong>{effectiveWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'}</strong> ({referenceWeight.toFixed(1)}kg)
+                      {autoWeightConfig.label && <span className="ml-2 text-xs text-blue-600">• Sugestão: {autoWeightConfig.label}</span>}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Meta kcal/kg ({effectiveWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <Input type="number" step="0.1" value={goalTargetKcalPerKg || ''} onChange={e => setGoalTargetKcalPerKg(parseFloat(e.target.value) || undefined)} placeholder="Ex: 25" />
+                        {goalTargetKcalPerKg && (
+                          <p className="text-xs text-muted-foreground">
+                            Meta: {(goalTargetKcalPerKg * referenceWeight).toFixed(0)} kcal/dia
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Meta proteínas g/kg ({effectiveWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <Input type="number" step="0.1" value={goalTargetProteinPerKgActual || ''} onChange={e => setGoalTargetProteinPerKgActual(parseFloat(e.target.value) || undefined)} placeholder="Ex: 1.2" />
+                        {goalTargetProteinPerKgActual && (
+                          <p className="text-xs text-muted-foreground">
+                            Meta: {(goalTargetProteinPerKgActual * referenceWeight).toFixed(1)}g/dia
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Meta proteínas g/kg (peso ideal)</Label>
+                        <p className="text-xs text-muted-foreground">Para IMC &gt; 30 — referência adicional</p>
+                        <Input type="number" step="0.1" value={goalTargetProteinPerKgIdeal || ''} onChange={e => setGoalTargetProteinPerKgIdeal(parseFloat(e.target.value) || undefined)} placeholder="Ex: 2.0" disabled={!calculatedBmi || calculatedBmi <= 30} />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Calorias Não Intencionais */}
+                <Card className="border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-yellow-50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-amber-700">
+                      <Flame className="h-5 w-5" />Calorias Não Intencionais
+                    </CardTitle>
+                    <CardDescription>Infusões que contribuem calorias sem objetivo nutricional direto. São somadas ao VET total.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2 p-3 rounded-lg border bg-white">
+                        <Label>Propofol (ml/h)</Label>
+                        <Input type="number" step="0.1" value={unintentionalCal.propofolMlH || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, propofolMlH: parseFloat(e.target.value) || undefined })} placeholder="Ex: 10" />
+                        <p className="text-xs text-muted-foreground">= {unintentionalResult.propofolKcal.toFixed(0)} kcal/dia</p>
+                        <p className="text-xs text-muted-foreground">= {unintentionalResult.propofolLipidsG.toFixed(1)} g lipídeos</p>
+                      </div>
+                      <div className="space-y-2 p-3 rounded-lg border bg-white">
+                        <Label>Glicose (g/dia)</Label>
+                        <Input type="number" step="1" value={unintentionalCal.glucoseGDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, glucoseGDay: parseFloat(e.target.value) || undefined })} placeholder="Ex: 50" />
+                        <p className="text-xs text-muted-foreground">= {unintentionalResult.glucoseKcal.toFixed(0)} kcal/dia</p>
+                        <p className="text-xs text-muted-foreground">Distribuído como carboidrato</p>
+                      </div>
+                      <div className="space-y-2 p-3 rounded-lg border bg-white">
+                        <Label>Citrato (kcal/dia)</Label>
+                        <Input type="number" step="1" value={unintentionalCal.citrateKcalDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, citrateKcalDay: parseFloat(e.target.value) || undefined })} placeholder="Ex: 100" />
+                        <p className="text-xs text-muted-foreground">Somente no VET, sem macronutriente</p>
+                      </div>
+                    </div>
+                    {unintentionalResult.totalKcal > 0 && (
+                      <div className="mt-4 p-3 bg-amber-100 rounded-lg border border-amber-300">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-amber-800">Subtotal Calorias Não Intencionais:</span>
+                          <Badge variant="secondary" className="text-lg">{unintentionalResult.totalKcal.toFixed(0)} kcal/dia</Badge>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-between">
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>Voltar</Button>
+                  <Button onClick={() => completeStep(2)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — Via de Alimentação */}
+            {currentStep === 3 && (
               <Card>
-                <CardHeader><CardTitle>2. Via de Alimentação</CardTitle><CardDescription>Selecione a(s) via(s) de alimentação. Enteral pode ser combinada com Oral e/ou Parenteral.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>3. Via de Alimentação</CardTitle><CardDescription>Selecione a(s) via(s) de alimentação. Enteral pode ser combinada com Oral e/ou Parenteral.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[{ key: "oral", icon: SupplementIcon, label: "Oral", colorClass: "text-sky-600" }, { key: "enteral", icon: EnteralIcon, label: "Enteral", colorClass: "text-violet-600" }, { key: "parenteral", icon: Syringe, label: "Parenteral", colorClass: "text-orange-600" }].map(r => (
@@ -2293,20 +2481,20 @@ const PrescriptionNew = () => {
                     <p className="text-xs text-muted-foreground">Via Enteral ativa — Oral e Parenteral podem ser combinadas.</p>
                   )}
                   <div className="flex justify-between">
-                    <Button variant="outline" onClick={() => setCurrentStep(1)}>Voltar</Button>
+                    <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(currentStep))}>Voltar</Button>
                     <Button onClick={() => {
-                      if (!completedSteps.includes(2)) setCompletedSteps([...completedSteps, 2]);
-                      setCurrentStep(getNextStep(2));
-                    }} disabled={!canProceed(2)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
+                      if (!completedSteps.includes(currentStep)) setCompletedSteps([...completedSteps, currentStep]);
+                      setCurrentStep(getNextStep(currentStep));
+                    }} disabled={!canProceed(currentStep)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Step 3 - Enteral Access */}
-            {currentStep === 3 && (
+            {/* Step 4 - Enteral Access */}
+            {currentStep === 4 && (
               <Card>
-                <CardHeader><CardTitle>3. Acesso Enteral</CardTitle></CardHeader>
+                <CardHeader><CardTitle>4. Acesso Enteral</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {[{ v: "SNE", l: "Sonda Nasoenteral (SNE)" }, { v: "SNG", l: "Sonda Nasogástrica (SNG)" }, { v: "SOG", l: "Sonda Orogástrica (SOG)" }, { v: "GTT", l: "Gastrostomia (GTT)" }, { v: "JTT", l: "Jejunostomia (JTT)" }, { v: "VO", l: "Via Oral (VO - fórmulas infantis/suplementos)" }].map(a => (
@@ -2315,15 +2503,15 @@ const PrescriptionNew = () => {
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(3))}>Voltar</Button><Button onClick={() => completeStep(3)} disabled={!canProceed(3)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(4))}>Voltar</Button><Button onClick={() => completeStep(4)} disabled={!canProceed(4)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Step 4 - System Type */}
-            {currentStep === 4 && (
+            {/* Step 5 - System Type */}
+            {currentStep === 5 && (
               <Card>
-                <CardHeader><CardTitle>4. Tipo de Sistema</CardTitle></CardHeader>
+                <CardHeader><CardTitle>5. Tipo de Sistema</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className={`p-6 border-2 rounded-lg cursor-pointer ${systemType === "closed" ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setSystemType("closed")}>
@@ -2335,13 +2523,13 @@ const PrescriptionNew = () => {
 
                     </div>
                   </div>
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(4))}>Voltar</Button><Button onClick={() => completeStep(4)} disabled={!canProceed(4)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(5))}>Voltar</Button><Button onClick={() => completeStep(5)} disabled={!canProceed(5)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
             {/* Step 5 - Closed System */}
-            {currentStep === 5 && systemType === "closed" && (
+            {currentStep === 6 && systemType === "closed" && (
               <Card>
                 <CardHeader><CardTitle>5. Sistema Fechado</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
@@ -2380,13 +2568,13 @@ const PrescriptionNew = () => {
                       Total de bolsas selecionadas: {Object.values(closedFormula.bagQuantities).reduce((sum, val) => sum + val, 0)} / {bagCalculation.numBags} necessárias
                     </p>
                   </div>}
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(5))}>Voltar</Button><Button onClick={() => completeStep(5)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
             {/* Step 5 - Open System */}
-            {currentStep === 5 && systemType === "open" && (
+            {currentStep === 6 && systemType === "open" && (
               <Card>
                 <CardHeader><CardTitle>5. Sistema Aberto</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
@@ -2440,22 +2628,37 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
                         <p className="text-sm text-muted-foreground">Preencher volume total somente se for necessário adicionar água para diluição da fórmula. A velocidade de infusão será baseada no volume total.</p>
-                        <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}</div></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>Horários de manipulação/preparo</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.manipulationTimes.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaManipulationTime(f.id, t)}>{t}</Button>)}
+                            </div>
+                            <p className="text-xs text-muted-foreground">Usado para orientar produção/manipulação da dieta aberta.</p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Horários de infusão/administração</Label>
+                            <div className="flex flex-wrap gap-2">
+                              {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
+                            </div>
+                            <p className="text-xs text-muted-foreground">Usado para cálculo nutricional, mapa e faturamento.</p>
+                          </div>
+                        </div>
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(5))}>Voltar</Button><Button onClick={() => completeStep(5)} disabled={!openInfusionMode || openFormulas.every(f => !f.formulaId)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!openInfusionMode || openFormulas.every(f => !f.formulaId)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Step 6 - Modules */}
-            {currentStep === 6 && (
+            {/* Step 7 - Modules */}
+            {currentStep === 7 && (
               <Card>
-                <CardHeader><CardTitle>6. Módulos para Nutrição Enteral (Opcional)</CardTitle><CardDescription>Caso necessário, adicione módulos à agua para hidratação. Caso não acrescente água para hidratação, o módulo será enviado à parte (máx. 3).</CardDescription></CardHeader>
+                <CardHeader><CardTitle>6. Módulos para Nutrição Enteral (Opcional)</CardTitle><CardDescription>Caso necessário, adicione módulos à agua para hidratação. Caso não acrescente água para hidratação, o módulo será enviado à parte (máx. 4).</CardDescription></CardHeader>
                 <CardContent className="space-y-6">
-                  <Button variant="outline" onClick={addModule} disabled={modules.length >= 3}><Plus className="h-4 w-4 mr-2" />Adicionar Módulo</Button>
+                  <Button variant="outline" onClick={addModule} disabled={modules.length >= 4}><Plus className="h-4 w-4 mr-2" />Adicionar Módulo</Button>
                   {modules.map((m, i) => (
                     <div key={m.id} className="p-4 border rounded-lg space-y-4">
                       <div className="flex justify-between"><h4 className="font-semibold">Módulo {i + 1}</h4><Button variant="ghost" size="sm" onClick={() => removeModule(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
@@ -2469,30 +2672,33 @@ const PrescriptionNew = () => {
                     </div>
                   ))}
                   {modules.length === 0 && <p className="text-center text-muted-foreground py-4">Nenhum módulo adicionado</p>}
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Step 7 - Hydration */}
-            {currentStep === 7 && (
+            {/* Step 8 - Hydration */}
+            {currentStep === 8 && (
               <Card>
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
                   <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
                   {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(7))}>Voltar</Button><Button onClick={() => completeStep(7)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(8))}>Voltar</Button><Button onClick={() => completeStep(8)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Step 8 - Oral Prescription (FULL) */}
-            {currentStep === 8 && feedingRoutes.oral && (
+            {/* Step 9 - Oral Prescription (FULL) */}
+            {currentStep === 9 && feedingRoutes.oral && (
               <div className="space-y-6">
                 {/* Total Ofertado Via Oral */}
                 <Card className="border-2 border-orange-300 bg-gradient-to-r from-orange-50 to-amber-50">
-                  <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-orange-700"><Calculator className="h-5 w-5" />Total Ofertado Via Oral</CardTitle></CardHeader>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-orange-700"><Calculator className="h-5 w-5" />Total Ofertado Via Oral</CardTitle>
+                    <CardDescription className="text-amber-600 font-medium">Aporte oferecido sem considerar módulos e suplementos</CardDescription>
+                  </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="text-center p-4 bg-white rounded-lg shadow-sm">
@@ -2595,8 +2801,14 @@ const PrescriptionNew = () => {
 
                 {/* Estimativas da Dieta */}
                 <Card>
-                  <CardHeader><CardTitle>Estimativas da Dieta</CardTitle><CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription></CardHeader>
+                  <CardHeader>
+                    <CardTitle>Estimativas da Dieta</CardTitle>
+                    <CardDescription>Aporte oferecido sem considerar módulos e suplementos</CardDescription>
+                  </CardHeader>
                   <CardContent>
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      O valor calórico e a quantidade de macronutrientes serão adicionados ao aporte total de acordo com os valores preenchidos. Caso não sejam especificados valores, estes não serão somados ao aporte total.
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                       <div className="space-y-2"><Label>Valor energetico total estimado (kcal)</Label><Input type="number" value={oralEstimatedVET || ''} onChange={e => setOralEstimatedVET(parseInt(e.target.value) || 0)} placeholder="Ex: 1500" /></div>
                       <div className="space-y-2"><Label>Quantidade de proteinas (g/dia)</Label><Input type="number" value={oralEstimatedProtein || ''} onChange={e => setOralEstimatedProtein(parseInt(e.target.value) || 0)} placeholder="Ex: 60" /></div>
@@ -2695,44 +2907,38 @@ const PrescriptionNew = () => {
                     )}
 
                     {/* Observações */}
-                    <div className="space-y-2 pt-4"><Label>Observações</Label><Textarea value={oralObservations} onChange={e => setOralObservations(e.target.value)} placeholder="Anotações sobre a dieta oral..." rows={3} /></div>
+                    <div className="space-y-2 pt-4">
+                      <Label>Orientações ao manipulador</Label>
+                      <Textarea
+                        value={oralObservations}
+                        onChange={e => setOralObservations(e.target.value)}
+                        placeholder="Ex: enviar em copo, mamadeira, xuca, bico adaptado ou outra orientação necessária."
+                        rows={3}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
 
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(8))}>Voltar</Button>
-                  <Button onClick={() => completeStep(8)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
+                  <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(9))}>Voltar</Button>
+                  <Button onClick={() => completeStep(9)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button>
                 </div>
               </div>
             )}
 
-            {/* Step 9 - Parenteral Prescription */}
-            {currentStep === 9 && feedingRoutes.parenteral && (
+            {/* Step 10 - Parenteral Prescription */}
+            {currentStep === 10 && feedingRoutes.parenteral && (
               <ParenteralStep
-                values={{
-                  aminoacids: parenteralAminoacids,
-                  lipids: parenteralLipids,
-                  glucose: parenteralGlucose,
-                  access: parenteralAccess,
-                  infusionTime: parenteralInfusionTime,
-                  observations: parenteralObservations,
-                  vet: parenteralVET,
-                  perKg: parenteralPerKg,
-                }}
+                values={parenteralValues}
                 selectedPatient={selectedPatient}
-                onAminoacidsChange={setParenteralAminoacids}
-                onLipidsChange={setParenteralLipids}
-                onGlucoseChange={setParenteralGlucose}
-                onAccessChange={setParenteralAccess}
-                onInfusionTimeChange={setParenteralInfusionTime}
-                onObservationsChange={setParenteralObservations}
-                onBack={() => setCurrentStep(getPrevStep(9))}
-                onNext={() => completeStep(9)}
+                onValuesChange={handleParenteralChange}
+                onBack={() => setCurrentStep(getPrevStep(10))}
+                onNext={() => completeStep(10)}
               />
             )}
 
-            {/* Step 10 - Summary */}
-            {currentStep === 10 && (
+            {/* Step 11 - Summary */}
+            {currentStep === 11 && (
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Calculator className="h-6 w-6 text-primary" />Resumo da Prescrição Nutricional</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
@@ -2793,7 +2999,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Sugestão de Registro em Prontuário</h4>
+                            <h4 className="font-semibold mb-2">Registro em Prontuário</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {chartNoteSuggestion}
                             </div>
@@ -2850,7 +3056,7 @@ const PrescriptionNew = () => {
                     </CollapsibleContent>
                   </Collapsible>
                   <div className="flex justify-between">
-                    <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(10))}>Voltar</Button>
+                    <Button variant="outline" onClick={() => setCurrentStep(getPrevStep(11))}>Voltar</Button>
                     <Button onClick={handleSave} disabled={isSaving} className="bg-green-600 hover:bg-green-700"><Save className="h-4 w-4 mr-2" />{isSaving ? "Salvando..." : "Salvar Prescrição"}</Button>
                   </div>
                 </CardContent>

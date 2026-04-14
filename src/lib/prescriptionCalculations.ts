@@ -538,3 +538,72 @@ export const calculateStoredPrescriptionNutrition = ({
 
   return finalizeNutritionTotals(totals, patient);
 };
+
+// --- Unintentional Calories ---
+
+export interface UnintentionalCaloriesInput {
+  propofolMlH?: number;
+  glucoseGDay?: number;
+  citrateKcalDay?: number;
+  citrateGDay?: number;
+}
+
+export interface UnintentionalCaloriesResult {
+  propofolKcal: number;
+  propofolLipidsG: number;
+  glucoseKcal: number;
+  glucoseCarbsG: number;
+  citrateKcal: number;
+  totalKcal: number;
+}
+
+export const calculateUnintentionalCalories = (
+  input: UnintentionalCaloriesInput,
+): UnintentionalCaloriesResult => {
+  const propofolKcal = (input.propofolMlH || 0) * 1.1 * 24;
+  const propofolLipidsG = propofolKcal / 9;
+
+  const glucoseCarbsG = input.glucoseGDay || 0;
+  const glucoseKcal = glucoseCarbsG * 3.4;
+
+  const citrateKcal = (input.citrateKcalDay || 0)
+    + (input.citrateGDay || 0) * 3.0;
+
+  return {
+    propofolKcal,
+    propofolLipidsG,
+    glucoseKcal,
+    glucoseCarbsG,
+    citrateKcal,
+    totalKcal: propofolKcal + glucoseKcal + citrateKcal,
+  };
+};
+
+export interface WeightConfigResult {
+  energyWeight: "actual" | "ideal";
+  proteinWeight: "actual" | "ideal";
+  label: string;
+}
+
+export const getWeightConfig = (bmi?: number | null, idealWeight?: number | null): WeightConfigResult => {
+  if (!bmi || !idealWeight) return { energyWeight: "actual", proteinWeight: "actual", label: "" };
+  if (bmi > 50) return { energyWeight: "ideal", proteinWeight: "ideal", label: "IMC > 50: Energia e Proteína com Peso Ideal" };
+  if (bmi > 30) return { energyWeight: "actual", proteinWeight: "ideal", label: "IMC > 30: Energia com PA, Proteína com PI" };
+  return { energyWeight: "actual", proteinWeight: "actual", label: "" };
+};
+
+// Parenteral ml→g→kcal conversion utilities
+export const parenteralAminoacidsFromMl = (ml: number, concPct = 10) => {
+  const g = ml * (concPct / 100);
+  return { g, kcal: g * 4 };
+};
+
+export const parenteralGlucoseFromMl = (ml: number, concPct: number) => {
+  const g = ml * (concPct / 100);
+  return { g, kcal: g * 3.4 };
+};
+
+export const parenteralLipidsFromMl = (ml: number, concPct = 20) => {
+  const g = ml * (concPct / 100);
+  return { g, kcal: ml * 2 };
+};

@@ -6,12 +6,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Printer, Users } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
-import { usePatients, usePrescriptions } from "@/hooks/useDatabase";
+import { usePatients, usePrescriptions, useSettings } from "@/hooks/useDatabase";
 import { compareBedLabels, formatBirthDateForDisplay } from "@/lib/patientDisplay";
+import { printElementInPopup } from "@/lib/printPopup";
 
 const OralMap = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading } = usePrescriptions();
+    const { settings } = useSettings();
     const [selectedClinic, setSelectedClinic] = useState<string>("all");
 
     const activeOralPrescriptionsByPatientId = useMemo(() => {
@@ -70,7 +72,7 @@ const OralMap = () => {
     const getDietCharacteristics = (observation?: string) => observation || "Nao informado";
 
     const handlePrint = () => {
-        window.print();
+        printElementInPopup("oral-map-print-document", "Mapa da copa");
     };
 
     return (
@@ -185,8 +187,9 @@ const OralMap = () => {
                 </div>
             </div>
 
-            <div className="hidden print:block p-4 text-black bg-white">
+            <div id="oral-map-print-document" className="hidden print:block p-4 text-black bg-white">
                 <h1 className="text-xl font-bold mb-1">Mapa da Copa - Dietas e Suplementos</h1>
+                <h2 className="text-sm font-semibold mb-2">{settings?.hospitalName || "Hospital não informado"}</h2>
                 <p className="text-sm mb-4">Setor: {mapTitle} | Total de pacientes: {printPatients.length}</p>
 
                 <table className="w-full border-collapse text-sm">

@@ -13,6 +13,8 @@ import { FileText, Printer, ShieldCheck } from "lucide-react";
 import { can, getCurrentRole } from "@/lib/permissions";
 import { toast } from "sonner";
 import { compareBedLabels } from "@/lib/patientDisplay";
+import { useSettings } from "@/hooks/useDatabase";
+import { printElementInPopup } from "@/lib/printPopup";
 
 interface ProtocolItem {
   ward: string;
@@ -37,6 +39,7 @@ interface DeliveryProtocolProps {
 
 const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtocolProps) => {
   const role = getCurrentRole();
+  const { settings } = useSettings();
   const canGenerate = can(role, "manage_billing") || can(role, "manage_labels");
 
   const groupedByWard = useMemo(() => {
@@ -55,7 +58,7 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
       toast.error("Sem permissão para gerar o protocolo de entrega. Solicite acesso ao gestor.");
       return;
     }
-    window.print();
+    printElementInPopup("delivery-protocol-print", "Protocolo diário de entrega");
   };
 
   return (
@@ -81,7 +84,8 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
         <div id="delivery-protocol-print" className="space-y-4">
           {/* Cabeçalho de impressão */}
           <div className="text-center border-b pb-3 print:block hidden">
-            <h2 className="text-lg font-bold uppercase">Protocolo Diário de Entrega de Dietas</h2>
+            <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital não informado"}</h1>
+            <h2 className="text-lg font-bold uppercase mt-1">Protocolo Diário de Entrega de Dietas</h2>
             <p className="text-sm">{unitName} — {date}</p>
           </div>
 

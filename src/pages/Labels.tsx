@@ -13,6 +13,7 @@ import LabelPreview, { LabelData } from "@/components/LabelPreview";
 import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings, useWards } from "@/hooks/useDatabase";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes } from "@/lib/scheduleTimes";
+import { printElementInPopup } from "@/lib/printPopup";
 
 const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
 
@@ -219,7 +220,7 @@ const Labels = () => {
             const details = [];
             if (isPowder && formula.volume) details.push(`${Math.round(formula.volume)} g`);
             if (!isPowder && formula.volume) details.push(`${Math.round(formula.volume)} mL`);
-            if (formula.diluteTo) details.push(`Agua para diluicao ${Math.round(formula.diluteTo)} mL`);
+            if (formula.diluteTo) details.push(`Água para diluição ${Math.round(formula.diluteTo)} mL`);
             if (meta?.classification) details.push(meta.classification);
             return truncate(details.join(", "), 180);
         };
@@ -241,7 +242,7 @@ const Labels = () => {
                     prescription.oralDetails?.thickenerGrams ? `${Math.round(prescription.oralDetails.thickenerGrams)} g` : "",
                     prescription.oralDetails?.thickenerVolume ? `${Math.round(prescription.oralDetails.thickenerVolume)} mL de agua` : "",
                 ].filter(Boolean);
-                details.push(`Agua espessada: ${thickenerParts.join(", ")}`);
+                details.push(`Água espessada: ${thickenerParts.join(", ")}`);
             }
             return truncate(details.join(" | "), 120);
         };
@@ -371,7 +372,7 @@ const Labels = () => {
                                             volumeText: buildFormulaVolumeText(formula),
                                             manipulationDate: prescriptionDateText,
                                             manipulationTime: undefined,
-                                            validityText: "Validade: 24h apos abertura.",
+                                            validityText: "Validade: 24h após abertura.",
                                             controlText: buildControl(prescription.id, time, "FE"),
                                             conservationText: conservationClosed,
                                             rtName,
@@ -400,7 +401,7 @@ const Labels = () => {
                                         volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
                                         manipulationDate: prescriptionDateText,
                                         manipulationTime: undefined,
-                                        validityText: "Validade: 24h apos abertura.",
+                                        validityText: "Validade: 24h após abertura.",
                                         controlText: buildControl(prescription.id, time, "FE"),
                                         conservationText: conservationClosed,
                                         rtName,
@@ -501,7 +502,7 @@ const Labels = () => {
                                             : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao.",
+                                        validityText: "Validade: 4h após manipulação.",
                                         controlText: buildControl(prescription.id, time, "AG"),
                                         conservationText: conservationOpen,
                                         rtName,
@@ -522,7 +523,7 @@ const Labels = () => {
                                 {
                                     clinic: clinicName,
                                     templateTitle: prescription.oralDetails?.administrationRoute === "translactation"
-                                        ? "MODULOS de translactacao"
+                                        ? "MÓDULOS de translactação"
                                         : "MODULOS de via oral",
                                     patientName,
                                     bed,
@@ -537,7 +538,7 @@ const Labels = () => {
                                     ].filter(Boolean).join(" | ") || undefined,
                                     manipulationDate: activeDateText,
                                     manipulationTime: time,
-                                    validityText: "Validade: 4h apos manipulacao.",
+                                    validityText: "Validade: 4h após manipulação.",
                                     controlText: buildControl(prescription.id, time, "VO"),
                                     conservationText: conservationOpen,
                                     rtName,
@@ -563,13 +564,13 @@ const Labels = () => {
                                     {
                                         clinic: clinicName,
                                         templateTitle: isTranslactation
-                                            ? "DIETA por translactacao"
+                                            ? "DIETA por translactação"
                                             : isInfantFormula
                                                 ? "DIETA formula infantil"
                                                 : isLiquidSupplement
                                             ? "Suplementos via oral liquidos"
                                             : isPowder
-                                                ? "DIETA - Suplementos via oral em po"
+                                                ? "DIETA - Suplementos via oral em pó"
                                                 : "DIETA via oral",
                                         patientName,
                                         bed,
@@ -585,7 +586,7 @@ const Labels = () => {
                                         volumeText: buildFormulaVolumeText(formula),
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao.",
+                                        validityText: "Validade: 4h após manipulação.",
                                         controlText: buildControl(prescription.id, time, "OR"),
                                         conservationText: conservationOpen,
                                         rtName,
@@ -625,7 +626,7 @@ const Labels = () => {
                                             : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
-                                        validityText: "Validade: 4h apos manipulacao.",
+                                        validityText: "Validade: 4h após manipulação.",
                                         controlText: buildControl(prescription.id, time, "ES"),
                                         conservationText: conservationOpen,
                                         rtName,
@@ -674,7 +675,7 @@ const Labels = () => {
     const clearAllLabels = () => setSelectedLabels([]);
 
     const handlePrint = () => {
-        window.print();
+        printElementInPopup("labels-print-document", "Etiquetas clínicas de nutrição");
     };
 
     return (
@@ -691,7 +692,7 @@ const Labels = () => {
                         </h1>
                         <p className="text-muted-foreground flex items-center gap-2">
                             <Database className="h-4 w-4" />
-                            Impressao alinhada ao padrao operacional da RDC 503/2021
+                            Impressão alinhada ao padrão operacional da RDC 503/2021
                         </p>
                     </div>
                     <Button variant="outline" onClick={handlePrint} disabled={selectedLabels.length === 0}>
@@ -701,14 +702,14 @@ const Labels = () => {
                 </div>
 
                 <div className="print:hidden">
-                    {/* Campos obrigatorios card removido */}
+                    {/* Campos obrigatórios card removido */}
                 </div>
 
                 <div className="print:hidden">
                     <Card className="border-primary/10 bg-card/90 backdrop-blur">
                         <CardHeader>
                             <CardTitle>Filtros</CardTitle>
-                            <CardDescription>Selecione os criterios para gerar as etiquetas</CardDescription>
+                            <CardDescription>Selecione os critérios para gerar as etiquetas</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {/* Content omitted for brevity, logic remains the same */}
@@ -750,7 +751,7 @@ const Labels = () => {
                                 <div className="space-y-2">
                                     <Label className="flex items-center gap-2">
                                         <CalendarIcon className="h-4 w-4" />
-                                        Data de manipulacao
+                                        Data de manipulação
                                     </Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
@@ -770,7 +771,7 @@ const Labels = () => {
                                 <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
                                         <Clock className="h-4 w-4 text-muted-foreground" />
-                                        <Label className="font-semibold">Horarios</Label>
+                                        <Label className="font-semibold">Horários</Label>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button variant="outline" size="sm" onClick={selectAllTimes}>Todos</Button>
@@ -802,23 +803,23 @@ const Labels = () => {
                         <CardHeader>
                             <div className="flex justify-between items-center gap-3">
                                 <div>
-                                    <CardTitle>Etiquetas disponiveis</CardTitle>
+                                    <CardTitle>Etiquetas disponíveis</CardTitle>
                                     <CardDescription>
                                         {prescriptionsLoading
-                                            ? "Carregando prescricoes..."
-                                            : `${filteredLabels.length} etiqueta(s) pronta(s) para impressao`
+                                            ? "Carregando prescrições..."
+                                            : `${filteredLabels.length} etiqueta(s) pronta(s) para impressão`
                                         }
                                     </CardDescription>
                                 </div>
                                 <div className="flex gap-2">
                                     <Button variant="outline" size="sm" onClick={selectAllLabels}>Selecionar todas</Button>
-                                    <Button variant="outline" size="sm" onClick={clearAllLabels}>Limpar selecao</Button>
+                                    <Button variant="outline" size="sm" onClick={clearAllLabels}>Limpar seleção</Button>
                                 </div>
                             </div>
                         </CardHeader>
                         <CardContent>
                             {prescriptionsLoading ? (
-                                <div className="text-center py-8 text-muted-foreground">Carregando prescricoes do banco...</div>
+                                <div className="text-center py-8 text-muted-foreground">Carregando prescrições do banco...</div>
                             ) : filteredLabels.length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground">
                                     Nenhuma etiqueta encontrada para os filtros selecionados.
@@ -847,7 +848,7 @@ const Labels = () => {
                     </Card>
                 </div>
 
-                <div className="hidden print:block">
+                <div id="labels-print-document" className="hidden print:block">
                     <div className="print:grid print:grid-cols-2 print:gap-[3.2mm]">
                         {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))

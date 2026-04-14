@@ -630,10 +630,10 @@ export const PrescriptionDetails = ({
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5" />
-                            Sugestão de Registro em Prontuário
+                            Registro em Prontuário
                         </DialogTitle>
                         <DialogDescription>
-                            Visualize o texto sugerido para registrar esta prescricao no prontuario do paciente.
+                            Visualize o texto para registrar esta prescrição no prontuário do paciente.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="mt-4">

@@ -51,6 +51,7 @@ export interface TNEInterruptions {
         unplannedRemoval?: boolean;
     };
     other?: string;
+    doi?: string;
 }
 
 export interface UnintentionalCalories {
@@ -308,6 +309,7 @@ export interface Prescription {
             volume?: string;
             diluteTo?: string;
             times?: string[];
+            manipulationTimes?: string[];
         }>;
         modules?: Array<{
             moduleId?: string;
@@ -1470,7 +1472,16 @@ export const appToolsService = {
         const hospitalId = resolveSessionHospitalId();
         const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : '';
         return (await apiClient.get(`/app-tools${query}`).catch(() => [])) as AppTool[];
-    }
+    },
+    async create(data: Omit<AppTool, "id" | "createdAt" | "updatedAt">) {
+        return (await apiClient.post('/app-tools', data)) as AppTool;
+    },
+    async update(id: string, data: Partial<Omit<AppTool, "id" | "createdAt" | "updatedAt">>) {
+        return (await apiClient.put(`/app-tools/${id}`, data)) as AppTool;
+    },
+    async delete(id: string) {
+        await apiClient.delete(`/app-tools/${id}`);
+    },
 };
 
 const SETTINGS_STORAGE_PREFIX = 'enterall-smart-rx:settings:';

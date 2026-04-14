@@ -35,17 +35,17 @@ interface PredictiveEquation {
 
 const DEFAULT_EQUATIONS: PredictiveEquation[] = [
   // Chumlea - White Male
-  { id: "chumlea_w_m_h", name: "Chumlea (Homem Branco) - Altura", type: "height", sex: "male", race: "white", minAge: 60, maxAge: 120, coefKnee: 1.88, coefArm: 0, coefAge: 0, constant: 71.85, isActive: true },
-  { id: "chumlea_w_m_w", name: "Chumlea (Homem Branco) - Peso", type: "weight", sex: "male", race: "white", minAge: 60, maxAge: 120, coefKnee: 1.19, coefArm: 3.21, coefAge: 0, constant: -86.82, isActive: true },
+  { id: "chumlea_w_m_h", name: "Chumlea (Homem Branco) - Altura", type: "height", sex: "male", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.88, coefArm: 0, coefAge: 0, constant: 71.85, isActive: true },
+  { id: "chumlea_w_m_w", name: "Chumlea (Homem Branco) - Peso", type: "weight", sex: "male", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.19, coefArm: 3.21, coefAge: 0, constant: -86.82, isActive: true },
   // Chumlea - Black Male
-  { id: "chumlea_b_m_h", name: "Chumlea (Homem Negro) - Altura", type: "height", sex: "male", race: "black", minAge: 60, maxAge: 120, coefKnee: 1.79, coefArm: 0, coefAge: 0, constant: 73.42, isActive: true },
-  { id: "chumlea_b_m_w", name: "Chumlea (Homem Negro) - Peso", type: "weight", sex: "male", race: "black", minAge: 60, maxAge: 120, coefKnee: 1.09, coefArm: 3.14, coefAge: 0, constant: -83.72, isActive: true },
+  { id: "chumlea_b_m_h", name: "Chumlea (Homem Negro) - Altura", type: "height", sex: "male", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.79, coefArm: 0, coefAge: 0, constant: 73.42, isActive: true },
+  { id: "chumlea_b_m_w", name: "Chumlea (Homem Negro) - Peso", type: "weight", sex: "male", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.09, coefArm: 3.14, coefAge: 0, constant: -83.72, isActive: true },
   // Chumlea - White Female
-  { id: "chumlea_w_f_h", name: "Chumlea (Mulher Branca) - Altura", type: "height", sex: "female", race: "white", minAge: 60, maxAge: 120, coefKnee: 1.87, coefArm: 0, coefAge: -0.06, constant: 70.25, isActive: true },
-  { id: "chumlea_w_f_w", name: "Chumlea (Mulher Branca) - Peso", type: "weight", sex: "female", race: "white", minAge: 60, maxAge: 120, coefKnee: 1.01, coefArm: 2.81, coefAge: 0, constant: -66.04, isActive: true },
+  { id: "chumlea_w_f_h", name: "Chumlea (Mulher Branca) - Altura", type: "height", sex: "female", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.87, coefArm: 0, coefAge: -0.06, constant: 70.25, isActive: true },
+  { id: "chumlea_w_f_w", name: "Chumlea (Mulher Branca) - Peso", type: "weight", sex: "female", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.01, coefArm: 2.81, coefAge: 0, constant: -66.04, isActive: true },
   // Chumlea - Black Female
-  { id: "chumlea_b_f_h", name: "Chumlea (Mulher Negra) - Altura", type: "height", sex: "female", race: "black", minAge: 60, maxAge: 120, coefKnee: 1.86, coefArm: 0, coefAge: -0.06, constant: 68.1, isActive: true },
-  { id: "chumlea_b_f_w", name: "Chumlea (Mulher Negra) - Peso", type: "weight", sex: "female", race: "black", minAge: 60, maxAge: 120, coefKnee: 1.24, coefArm: 2.97, coefAge: 0, constant: -82.48, isActive: true },
+  { id: "chumlea_b_f_h", name: "Chumlea (Mulher Negra) - Altura", type: "height", sex: "female", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.86, coefArm: 0, coefAge: -0.06, constant: 68.1, isActive: true },
+  { id: "chumlea_b_f_w", name: "Chumlea (Mulher Negra) - Peso", type: "weight", sex: "female", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.24, coefArm: 2.97, coefAge: 0, constant: -82.48, isActive: true },
 ];
 
 const numberOrZero = (value: string | number): number => {
@@ -115,23 +115,23 @@ const GIDS_SEVERE_DISPLAY_OPTIONS: Array<{ key: GidsSevereKey; label: string }> 
 const GIDS_RESULT_COPY: Record<number, { title: string; description: string }> = {
   0: {
     title: "GIDS 0 - Sem risco imediato",
-    description: "Sem sintomas, ou apenas um sintoma leve com ingestao oral mantida.",
+    description: "Sem sintomas, ou apenas um sintoma leve com ingestão oral mantida.",
   },
   1: {
     title: "GIDS 1 - Risco aumentado",
-    description: "Acumulo inicial de sinais gastrointestinais ou ausencia de ingestao oral.",
+    description: "Acúmulo inicial de sinais gastrointestinais ou ausência de ingestão oral.",
   },
   2: {
     title: "GIDS 2 - Disfuncao gastrointestinal",
-    description: "Tres ou mais criterios leves/de risco ou ate dois criterios maiores.",
+    description: "Três ou mais critérios leves/de risco ou até dois critérios maiores.",
   },
   3: {
     title: "GIDS 3 - Falencia gastrointestinal",
-    description: "Tres ou mais criterios maiores, sugerindo perda importante de funcao.",
+    description: "Três ou mais critérios maiores, sugerindo perda importante de função.",
   },
   4: {
-    title: "GIDS 4 - Ameaca a vida",
-    description: "Ha criterio gastrointestinal imediatamente ameacador a vida.",
+    title: "GIDS 4 - Ameaça à vida",
+    description: "Há critério gastrointestinal imediatamente ameaçador à vida.",
   },
 };
 
@@ -144,17 +144,17 @@ const NRS_NUTRITION_OPTIONS = [
   {
     value: "1",
     title: "1 - Leve",
-    description: "Perda de peso > 5% em 3 meses ou ingestao entre 50% e 75% da necessidade na ultima semana.",
+    description: "Perda de peso > 5% em 3 meses ou ingestão entre 50% e 75% da necessidade na última semana.",
   },
   {
     value: "2",
     title: "2 - Moderado",
-    description: "Perda de peso > 5% em 2 meses, IMC entre 18,5 e 20,5 com condicao geral comprometida, ou ingestao entre 25% e 60%.",
+    description: "Perda de peso > 5% em 2 meses, IMC entre 18,5 e 20,5 com condição geral comprometida, ou ingestão entre 25% e 60%.",
   },
   {
     value: "3",
     title: "3 - Grave",
-    description: "Perda de peso > 5% em 1 mes ou > 15% em 3 meses, IMC < 18,5 com condicao geral comprometida, ou ingestao entre 0% e 25%.",
+    description: "Perda de peso > 5% em 1 mês ou > 15% em 3 meses, IMC < 18,5 com condição geral comprometida, ou ingestão entre 0% e 25%.",
   },
 ] as const;
 
@@ -167,17 +167,17 @@ const NRS_DISEASE_OPTIONS = [
   {
     value: "1",
     title: "1 - Leve",
-    description: "Fratura de quadril ou doenca cronica com complicacao aguda, como cirrose, DPOC, hemodialise, diabetes ou oncologia.",
+    description: "Fratura de quadril ou doença crônica com complicação aguda, como cirrose, DPOC, hemodiálise, diabetes ou oncologia.",
   },
   {
     value: "2",
     title: "2 - Moderado",
-    description: "Cirurgia abdominal de grande porte, AVC, pneumonia grave ou malignidade hematologica.",
+    description: "Cirurgia abdominal de grande porte, AVC, pneumonia grave ou malignidade hematológica.",
   },
   {
     value: "3",
     title: "3 - Grave",
-    description: "TCE, transplante de medula ou paciente critico em UTI com APACHE > 10.",
+    description: "TCE, transplante de medula ou paciente crítico em UTI com APACHE > 10.",
   },
 ] as const;
 
@@ -190,7 +190,8 @@ const Tools = () => {
   // --- PREDICTIVE EQUATIONS STATE ---
   const [equations] = useState<PredictiveEquation[]>(() => {
     const saved = localStorage.getItem('predictive_equations');
-    return saved ? JSON.parse(saved) : DEFAULT_EQUATIONS;
+    const source = saved ? JSON.parse(saved) as PredictiveEquation[] : DEFAULT_EQUATIONS;
+    return source.map((equation) => equation.id.startsWith("chumlea_") ? { ...equation, minAge: Math.min(equation.minAge, 18) } : equation);
   });
 
   // Form inputs for Prediction
