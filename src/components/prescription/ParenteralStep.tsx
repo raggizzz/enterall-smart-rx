@@ -17,10 +17,12 @@ import {
 import type { Patient } from "@/lib/database";
 
 export type GlucoseConcentration = 5 | 10 | 50;
+export type LipidType = "tcm-tcl" | "complex-fish-oil";
 
 export interface ParenteralValues {
   aminoacidsMl: number;
   lipidsMl: number;
+  lipidType: LipidType;
   glucoseMl: number;
   glucoseConc: GlucoseConcentration;
   multivitamin: boolean;
@@ -243,6 +245,18 @@ export function ParenteralStep({ values, selectedPatient, onValuesChange, onBack
             {/* Lipídeos */}
             <div className="space-y-2 p-4 rounded-lg border bg-amber-50/50">
               <Label className="text-amber-700 font-semibold">Lipídeos (concentração fixa 20%)</Label>
+              <Select
+                value={values.lipidType}
+                onValueChange={v => onValuesChange({ lipidType: v as LipidType })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tcm-tcl">TCM/TCL</SelectItem>
+                  <SelectItem value="complex-fish-oil">Lipídeos complexos com óleo de peixe</SelectItem>
+                </SelectContent>
+              </Select>
               <div className="flex items-center gap-2">
                 <Input
                   type="number" step="1"

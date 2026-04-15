@@ -309,16 +309,39 @@ export const PrescriptionDetails = ({
                 lines.push(`Agua espessada com ${prescription.oralDetails?.thickenerProduct || 'espessante nao informado'}, ${prescription.oralDetails?.thickenerGrams || '?'} g + ${prescription.oralDetails?.thickenerVolume || '?'} ml de agua por oferta, horarios: ${prescription.oralDetails?.thickenerTimes?.join(', ') || '-'}.`);
             }
         } else if (prescription.therapyType === 'parenteral') {
-            lines.push(`Terapia parenteral prescrita por acesso ${prescription.parenteralDetails?.access || 'nao informado'}.`);
-            lines.push(`Tempo de infusao: ${prescription.parenteralDetails?.infusionTime || prescription.infusionHoursPerDay || '?'} horas.`);
-            lines.push(`Aminoacidos: ${prescription.parenteralDetails?.aminoacidsG || 0} g/dia.`);
-            lines.push(`Lipideos: ${prescription.parenteralDetails?.lipidsG || 0} g/dia.`);
-            lines.push(`Glicose: ${prescription.parenteralDetails?.glucoseG || 0} g/dia.`);
-            if (prescription.parenteralDetails?.tigMgKgMin) {
-                lines.push(`TIG: ${prescription.parenteralDetails.tigMgKgMin.toFixed(2)} mg/kg/min.`);
+            const details = prescription.parenteralDetails;
+            const accessLabel = details?.access === 'peripheral'
+                ? 'periférico'
+                : details?.access === 'picc'
+                    ? 'PICC'
+                    : details?.access === 'central'
+                        ? 'central'
+                        : 'não informado';
+            const lipidTypeLabel = details?.lipidType === 'complex-fish-oil'
+                ? 'lipídeos complexos com óleo de peixe'
+                : 'TCM/TCL';
+            const infusionTime = details?.infusionTime || prescription.infusionHoursPerDay || 24;
+            const aminoMl = details?.aminoacidsMl;
+            const glucoseMl = details?.glucoseMl;
+            const lipidsMl = details?.lipidsMl;
+            const glucoseConc = details?.glucoseConc || 50;
+            const aminoG = details?.aminoacidsG || 0;
+            const glucoseG = details?.glucoseG || 0;
+            const lipidsG = details?.lipidsG || 0;
+
+            lines.push(`Terapia nutricional parenteral por acesso ${accessLabel}, infundida em ${infusionTime} horas.`);
+            lines.push(`${aminoMl ? `${aminoMl} ml de ` : ''}aminoácidos a 10% - ${aminoG.toFixed(1)} g de aminoácidos/dia${weight > 0 ? ` (${(aminoG / weight).toFixed(2)} g/kg)` : ''}.`);
+            lines.push(`${glucoseMl ? `${glucoseMl} ml de ` : ''}glicose a ${glucoseConc}% - ${glucoseG.toFixed(1)} g de glicose/dia${weight > 0 ? ` (${(glucoseG / weight).toFixed(2)} g/kg)` : ''}${details?.tigMgKgMin ? ` - TIG: ${details.tigMgKgMin.toFixed(2)} mg/kg/min` : ''}.`);
+            lines.push(`${lipidsMl ? `${lipidsMl} ml de ` : ''}emulsão lipídica 20% (${lipidTypeLabel}) - ${lipidsG.toFixed(1)} g de lipídeos/dia${weight > 0 ? ` (${(lipidsG / weight).toFixed(2)} g/kg)` : ''}.`);
+            if (details?.multivitamin) {
+                lines.push(`1 ampola de polivitamínico padrão.`);
             }
-            if (prescription.parenteralDetails?.observations) {
-                lines.push(`Observacoes: ${prescription.parenteralDetails.observations}`);
+            if (details?.traceElements) {
+                lines.push(`1 ampola de oligoelementos padrão.`);
+            }
+            lines.push(`Ofertando: VET ${(details?.vetKcal || prescription.totalCalories || 0).toFixed(0)} kcal/dia${weight > 0 ? ` (${((details?.vetKcal || prescription.totalCalories || 0) / weight).toFixed(1)} kcal/kg/dia)` : ''}.`);
+            if (details?.observations) {
+                lines.push(`Observações: ${details.observations}`);
             }
         } else if (prescription.systemType === 'closed') {
             lines.push(`Dieta enteral administrada por ${prescription.feedingRoute || 'sonda nasoenteral'}.`);

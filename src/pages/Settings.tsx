@@ -924,11 +924,21 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingHospital, setEditingHospital] = useState<Hospital | null>(null);
     const [newHospital, setNewHospital] = useState({ name: "" });
-    const [selectedHospitalForWards, setSelectedHospitalForWards] = useState<Hospital | null>(null);
+    const sessionHospitalFallback: Hospital | null = (() => {
+        if (hospitals.length > 0 || !canManageWards || typeof window === "undefined") return null;
+        const id = localStorage.getItem("userHospitalId");
+        if (!id) return null;
+        return {
+            id,
+            name: localStorage.getItem("userHospitalName") || "Unidade atual",
+            isActive: true,
+        };
+    })();
+    const hospitalsToRender = hospitals.length > 0 ? hospitals : sessionHospitalFallback ? [sessionHospitalFallback] : [];
 
     const handleSave = async () => {
         if (!canManageUnits) {
-            toast.error("Sem permissao para gerenciar hospitais");
+            toast.error("Sem permissão para gerenciar hospitais");
             return;
         }
         if (!newHospital.name) {
@@ -954,7 +964,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
         } catch (e) {
             if (e instanceof ApiError) {
                 if (e.status === 401) {
-                    toast.error("Sessao expirada. Entre novamente para salvar a unidade.");
+                    toast.error("Sessão expirada. Entre novamente para salvar a unidade.");
                     return;
                 }
                 if (e.status === 403) {
@@ -972,7 +982,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
 
     const handleDelete = async (id: string) => {
         if (!canManageUnits) {
-            toast.error("Sem permissao para gerenciar hospitais");
+            toast.error("Sem permissão para gerenciar hospitais");
             return;
         }
         if (!confirm("Excluir hospital? Isso não excluirá as alas automaticamente (ainda).")) return;
@@ -990,7 +1000,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
                 <div>
                     <CardTitle className="flex items-center gap-2">
                         <Building2 className="h-5 w-5" />
-                        Gestao de Unidades e Setores
+                        Gestão de Unidades e Setores
                     </CardTitle>
                     <CardDescription>Cadastre unidades e gerencie seus setores</CardDescription>
                 </div>
@@ -1000,7 +1010,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
             </CardHeader>
             <CardContent>
                 <div className="space-y-4">
-                    {hospitals.map(hospital => (
+                    {hospitalsToRender.map(hospital => (
                         <div key={hospital.id} className="border rounded-lg p-4">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
@@ -1030,7 +1040,7 @@ const HospitalList = ({ canManageUnits, canManageWards }: { canManageUnits: bool
                             </div>
                         </div>
                     ))}
-                    {hospitals.length === 0 && (
+                    {hospitalsToRender.length === 0 && (
                         <p className="text-center text-muted-foreground py-4">Nenhum hospital cadastrado.</p>
                     )}
                 </div>
@@ -1090,7 +1100,7 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
 
     const handleSave = async () => {
         if (!canManageWards) {
-            toast.error("Sem permissao para gerenciar alas");
+            toast.error("Sem permissão para gerenciar alas");
             return;
         }
         if (!newWard.name) return;
@@ -1117,11 +1127,11 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
         } catch (e) {
             if (e instanceof ApiError) {
                 if (e.status === 401) {
-                    toast.error("Sessao expirada. Entre novamente para salvar a ala.");
+                    toast.error("Sessão expirada. Entre novamente para salvar a ala.");
                     return;
                 }
                 if (e.status === 403) {
-                    toast.error("Seu perfil nao pode editar alas nesta unidade.");
+                    toast.error("Seu perfil não pode editar alas nesta unidade.");
                     return;
                 }
                 if (e.body && typeof e.body === "object" && "error" in (e.body as Record<string, unknown>)) {
@@ -1183,7 +1193,7 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="uti-adulto">UTI Adulto</SelectItem>
-                                    <SelectItem value="uti-pediatrica">UTI Pediatrica</SelectItem>
+                                    <SelectItem value="uti-pediatrica">UTI Pediátrica</SelectItem>
                                     <SelectItem value="enfermaria">Enfermaria</SelectItem>
                                     <SelectItem value="ambulatorio">Ambulatorio</SelectItem>
                                     <SelectItem value="other">Outro</SelectItem>

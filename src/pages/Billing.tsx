@@ -19,7 +19,7 @@ import { prescriptionsService, Prescription } from "@/lib/database";
 import { RequisitionData } from "@/types/requisition";
 import { generateRequisitionData } from "@/utils/requisitionGenerator";
 import { toast } from "sonner";
-import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
+import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes, sanitizeScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
 import { createPrintPopup, printElementInPopup } from "@/lib/printPopup";
 import { addManualBillingAdjustment, ManualAdjustmentCategory } from "@/lib/manualAdjustments";
 
@@ -46,6 +46,20 @@ const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style:
 
 type ManualRequestMode = "cancellation" | "extra";
 
+const collectPrescriptionTimes = (prescription: Prescription): string[] => [
+    ...prescription.formulas.flatMap((formula) => formula.schedules || []),
+    ...prescription.modules.flatMap((moduleItem) => moduleItem.schedules || []),
+    ...(prescription.hydrationSchedules || []),
+    ...Object.keys(prescription.enteralDetails?.closedFormula?.bagQuantities || {}),
+    ...(prescription.enteralDetails?.openFormulas || []).flatMap((formula) => [
+        ...(formula.times || []),
+        ...(formula.manipulationTimes || []),
+    ]),
+    ...(prescription.enteralDetails?.modules || []).flatMap((moduleItem) => moduleItem.times || []),
+    ...(prescription.enteralDetails?.hydration?.times || []),
+    ...(prescription.oralDetails?.thickenerTimes || []),
+];
+
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading, refetch: refetchPrescriptions } = usePrescriptions();
@@ -65,6 +79,7 @@ const Billing = () => {
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [cancelTarget, setCancelTarget] = useState<Prescription | null>(null);
     const [cancelEffectiveDate, setCancelEffectiveDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [cancelSelectedTimes, setCancelSelectedTimes] = useState<string[]>([]);
     const [isCancelling, setIsCancelling] = useState(false);
     const [manualCancelOpen, setManualCancelOpen] = useState(false);
     const [manualRequestMode, setManualRequestMode] = useState<ManualRequestMode>("cancellation");
@@ -99,10 +114,19 @@ const Billing = () => {
     }, [patients]);
 
     const availableScheduleTimes = useMemo(() => {
-        if (unit === "all") return resolveConfiguredScheduleTimes({ settings });
-        const wardObj = findWardByReference(wardObjects, undefined, unit);
-        return resolveConfiguredScheduleTimes({ settings, ward: wardObj });
-    }, [settings, unit, wardObjects]);
+        const wardObj = unit === "all" ? undefined : findWardByReference(wardObjects, undefined, unit);
+        const configuredTimes = resolveConfiguredScheduleTimes({ settings, ward: wardObj });
+        const prescriptionTimes = prescriptions
+            .filter((prescription) => {
+                if (prescription.status !== "active") return false;
+                if (unit !== "all" && prescription.patientWard !== unit) return false;
+                if (therapyFilter !== "all" && prescription.therapyType !== therapyFilter) return false;
+                return true;
+            })
+            .flatMap(collectPrescriptionTimes);
+
+        return sanitizeScheduleTimes([...configuredTimes, ...prescriptionTimes]);
+    }, [prescriptions, settings, therapyFilter, unit, wardObjects]);
 
     useEffect(() => {
         setSelectedTimes([...availableScheduleTimes]);
@@ -427,7 +451,7 @@ const Billing = () => {
                         : "Parenteral",
             startDate: effectiveDate,
             endDate: effectiveDate,
-            selectedTimes: [...availableScheduleTimes],
+            selectedTimes: cancelSelectedTimes.length > 0 ? cancelSelectedTimes : [...availableScheduleTimes],
             signatures: {
                 prescriber: signatureConfig.signature1,
                 technician: signatureConfig.signature2,
@@ -445,13 +469,14 @@ const Billing = () => {
     const openTechnicalCancelDialog = (prescription: Prescription) => {
         setCancelTarget(prescription);
         setCancelEffectiveDate(new Date().toISOString().split("T")[0]);
+        setCancelSelectedTimes([...availableScheduleTimes]);
         setCancelDialogOpen(true);
     };
 
     const handleTechnicalCancel = async () => {
         if (!cancelTarget?.id) return;
 
-        const changedBy = typeof window !== "undefined" ? localStorage.getItem("userName") || "Usuario do sistema" : "Usuario do sistema";
+        const changedBy = typeof window !== "undefined" ? localStorage.getItem("userName") || "Usuário do sistema" : "Usuário do sistema";
         const cancellationDocument = buildCancellationRequisition(cancelTarget);
         const popup = createPrintPopup("Requisição de cancelamento");
 
@@ -465,14 +490,14 @@ const Billing = () => {
             await refetchPrescriptions();
             setRequisitionData(cancellationDocument);
             setCancelDialogOpen(false);
-            toast.success("Prescricao suspensa e requisicao de cancelamento gerada.");
+            toast.success("Prescrição suspensa e requisição de cancelamento gerada.");
             setTimeout(() => {
                 printElementInPopup("requisition-print-document", "Requisição de cancelamento", popup);
                 setCancelTarget(null);
             }, 350);
         } catch (error) {
             console.error("Failed to cancel prescription technically", error);
-            toast.error("Nao foi possivel registrar o cancelamento tecnico.");
+            toast.error("Não foi possível registrar o cancelamento técnico.");
         } finally {
             setIsCancelling(false);
         }
@@ -480,6 +505,14 @@ const Billing = () => {
 
     const toggleTime = (time: string) => {
         setSelectedTimes((current) =>
+            current.includes(time)
+                ? sortScheduleTimes(current.filter((item) => item !== time))
+                : sortScheduleTimes([...current, time]),
+        );
+    };
+
+    const toggleCancelTime = (time: string) => {
+        setCancelSelectedTimes((current) =>
             current.includes(time)
                 ? sortScheduleTimes(current.filter((item) => item !== time))
                 : sortScheduleTimes([...current, time]),
@@ -911,9 +944,9 @@ const Billing = () => {
             <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
                 <DialogContent className="print:hidden">
                     <DialogHeader>
-                        <DialogTitle>Cancelamento tecnico da prescricao</DialogTitle>
+                        <DialogTitle>Cancelamento técnico da prescrição</DialogTitle>
                         <DialogDescription>
-                            Isso suspende a prescricao ativa e gera uma requisicao de cancelamento nos mesmos moldes da dieta, sem horarios.
+                            Isso suspende a prescrição ativa e gera uma requisição de cancelamento nos mesmos moldes da dieta, com os horários selecionados.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -926,7 +959,7 @@ const Billing = () => {
                                     : cancelTarget?.therapyType === "oral"
                                         ? "Via oral"
                                         : "Parenteral"}{" "}
-                                | Inicio {cancelTarget?.startDate ? formatDate(cancelTarget.startDate) : "-"}
+                                | Início {cancelTarget?.startDate ? formatDate(cancelTarget.startDate) : "-"}
                             </p>
                         </div>
                         <div className="space-y-2">
@@ -937,6 +970,48 @@ const Billing = () => {
                                 value={cancelEffectiveDate}
                                 onChange={(event) => setCancelEffectiveDate(event.target.value)}
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <Label>Horários a cancelar</Label>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCancelSelectedTimes([...availableScheduleTimes])}
+                                    >
+                                        Todos
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setCancelSelectedTimes([])}
+                                    >
+                                        Limpar
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                                {availableScheduleTimes.map((time) => (
+                                    <button
+                                        key={time}
+                                        type="button"
+                                        onClick={() => toggleCancelTime(time)}
+                                        className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                                            cancelSelectedTimes.includes(time)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background hover:border-primary/50"
+                                        }`}
+                                    >
+                                        {time}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Se nenhum horário for selecionado, a guia usará todos os horários configurados.
+                            </p>
                         </div>
                     </div>
 

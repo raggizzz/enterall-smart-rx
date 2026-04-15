@@ -35,7 +35,7 @@ import {
 import type { UnintentionalCaloriesInput } from "@/lib/prescriptionCalculations";
 import { calculateOpenStageRate } from "@/lib/prescriptionInfusion";
 import { ParenteralStep, deriveParenteralValues } from "@/components/prescription/ParenteralStep";
-import type { ParenteralValues, GlucoseConcentration } from "@/components/prescription/ParenteralStep";
+import type { ParenteralValues, GlucoseConcentration, LipidType } from "@/components/prescription/ParenteralStep";
 import {
   DEFAULT_SCHEDULE_TIMES,
   areScheduleTimesEqual,
@@ -391,9 +391,9 @@ const buildGenericFormulaDescriptor = (formula?: ExtendedCatalogFormula): string
 
   const complexity =
     formula?.macronutrientComplexity === "oligomeric"
-      ? "oligomerica"
+      ? "oligomérica"
       : formula?.macronutrientComplexity === "polymeric"
-        ? "polimerica"
+        ? "polimérica"
         : "";
   const fiberText = formula?.fiberPerUnit && formula.fiberPerUnit > 0
     ? formula.fiberSources
@@ -415,7 +415,7 @@ const buildGenericFormulaDescriptor = (formula?: ExtendedCatalogFormula): string
 };
 
 const buildGenericModuleDescriptor = (moduleItem?: ExtendedCatalogModule): string =>
-  cleanNoteText(moduleItem?.description) || moduleItem?.name || "Modulo";
+  cleanNoteText(moduleItem?.description) || moduleItem?.name || "Módulo";
 
 const PrescriptionNew = () => {
   const navigate = useNavigate();
@@ -618,6 +618,7 @@ const PrescriptionNew = () => {
   const [parenteralValues, setParenteralValues] = useState<ParenteralValues>({
     aminoacidsMl: 0,
     lipidsMl: 0,
+    lipidType: "tcm-tcl",
     glucoseMl: 0,
     glucoseConc: 50 as GlucoseConcentration,
     multivitamin: false,
@@ -1069,6 +1070,15 @@ const PrescriptionNew = () => {
     const resetRoutes = options?.resetRoutes ?? false;
     const loadedScheduleTimes = collectPrescriptionScheduleTimes(prescription);
 
+    if (prescription.tneGoals) {
+      setGoalTargetKcalPerKg(prescription.tneGoals.targetKcalPerKg);
+      setGoalTargetProteinPerKgActual(prescription.tneGoals.targetProteinPerKgActual);
+      setGoalTargetProteinPerKgIdeal(prescription.tneGoals.targetProteinPerKgIdeal);
+    }
+    if (prescription.unintentionalCalories) {
+      setUnintentionalCal(prescription.unintentionalCalories);
+    }
+
     if (loadedScheduleTimes.length > 0) {
       setPrescriptionScheduleTimes((current) => (
         resetRoutes
@@ -1248,6 +1258,7 @@ const PrescriptionNew = () => {
       setParenteralValues({
         aminoacidsMl: (pd as any)?.aminoacidsMl || (aaG / 0.10),
         lipidsMl: (pd as any)?.lipidsMl || (lipG / 0.20),
+        lipidType: ((pd as any)?.lipidType || "tcm-tcl") as LipidType,
         glucoseMl: (pd as any)?.glucoseMl || (gluG / (gluConc / 100)),
         glucoseConc: gluConc as GlucoseConcentration,
         multivitamin: !!(pd as any)?.multivitamin,
@@ -1481,14 +1492,82 @@ const PrescriptionNew = () => {
     const bagSize = formula?.presentations[0] || 1000;
     return { totalVolume: Math.round(totalVolume), bagSize, numBags: Math.ceil(totalVolume / bagSize) };
   }, [closedFormula, systemType, availableFormulas]);
+  const selectedBagTotal = useMemo(
+    () => Object.values(closedFormula.bagQuantities).reduce((sum, value) => sum + (Number(value) || 0), 0),
+    [closedFormula.bagQuantities],
+  );
+  const hasRequiredClosedBags = !bagCalculation || selectedBagTotal === bagCalculation.numBags;
 
   const bmi = nutritionSummary.weightMetrics.bmi;
   const idealWeight = nutritionSummary.weightMetrics.idealWeight;
+  const goalSummary = useMemo(() => {
+    const energyGoal = goalTargetKcalPerKg && referenceWeight > 0
+      ? goalTargetKcalPerKg * referenceWeight
+      : undefined;
+    const proteinGoal = goalTargetProteinPerKgActual && referenceWeight > 0
+      ? goalTargetProteinPerKgActual * referenceWeight
+      : undefined;
+    const idealProteinGoal = goalTargetProteinPerKgIdeal && calculatedIdealWeight
+      ? goalTargetProteinPerKgIdeal * calculatedIdealWeight
+      : undefined;
+
+    return {
+      energyGoal,
+      proteinGoal,
+      idealProteinGoal,
+      energyPct: energyGoal ? (nutritionSummary.vet / energyGoal) * 100 : undefined,
+      proteinPct: proteinGoal ? (nutritionSummary.protein / proteinGoal) * 100 : undefined,
+      label: effectiveWeight === "ideal" ? "PI" : "PA",
+    };
+  }, [
+    calculatedIdealWeight,
+    effectiveWeight,
+    goalTargetKcalPerKg,
+    goalTargetProteinPerKgActual,
+    goalTargetProteinPerKgIdeal,
+    nutritionSummary.protein,
+    nutritionSummary.vet,
+    referenceWeight,
+  ]);
+
+  const unintentionalNoteLines = useMemo(() => {
+    const lines: string[] = [];
+    if (unintentionalResult.propofolKcal > 0) {
+      lines.push(`propofol ${formatDecimalValue(unintentionalResult.propofolKcal)} kcal (${formatDecimalValue(unintentionalResult.propofolLipidsG)} g de lipídeos)`);
+    }
+    if (unintentionalResult.glucoseKcal > 0) {
+      lines.push(`glicose ${formatDecimalValue(unintentionalResult.glucoseKcal)} kcal (${formatDecimalValue(unintentionalResult.glucoseCarbsG)} g de carboidratos)`);
+    }
+    if (unintentionalResult.citrateKcal > 0) {
+      lines.push(`citrato ${formatDecimalValue(unintentionalResult.citrateKcal)} kcal`);
+    }
+    return lines;
+  }, [
+    unintentionalResult.citrateKcal,
+    unintentionalResult.glucoseCarbsG,
+    unintentionalResult.glucoseKcal,
+    unintentionalResult.propofolKcal,
+    unintentionalResult.propofolLipidsG,
+  ]);
+
   const chartNoteSuggestion = useMemo(() => {
     if (!feedingRoutes.enteral || !systemType) return "";
 
     const lines: string[] = ["Registro em Prontuário:"];
     const routeLabel = formatEnteralAccessLabel(enteralAccess);
+
+    if (goalSummary.energyGoal || goalSummary.proteinGoal || goalSummary.idealProteinGoal) {
+      lines.push("Metas nutricionais:");
+      if (goalSummary.energyGoal) {
+        lines.push(`- Energia: ${formatDecimalValue(goalSummary.energyGoal)} kcal/dia (${goalTargetKcalPerKg} kcal/kg ${goalSummary.label});`);
+      }
+      if (goalSummary.proteinGoal) {
+        lines.push(`- Proteínas: ${formatDecimalValue(goalSummary.proteinGoal)} g/dia (${goalTargetProteinPerKgActual} g/kg ${goalSummary.label});`);
+      }
+      if (goalSummary.idealProteinGoal && goalSummary.label !== "PI") {
+        lines.push(`- Proteínas por peso ideal: ${formatDecimalValue(goalSummary.idealProteinGoal)} g/dia (${goalTargetProteinPerKgIdeal} g/kg PI);`);
+      }
+    }
 
     if (systemType === "closed" && closedFormula.formulaId) {
       const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
@@ -1498,9 +1577,9 @@ const PrescriptionNew = () => {
         : `${closedFormula.rate} gotas/min`;
 
       lines.push("SISTEMA FECHADO:");
-      lines.push(`Dieta enteral em sistema fechado, administrada atraves de ${routeLabel}:`);
+      lines.push(`Dieta enteral em sistema fechado, administrada através de ${routeLabel}:`);
       lines.push(
-        `- ${buildGenericFormulaDescriptor(formula)}, com velocidade de infusao de ${rateLabel}, totalizando ${formatDecimalValue(totalVolume)} ml/dia;`,
+        `- ${buildGenericFormulaDescriptor(formula)}, com velocidade de infusão de ${rateLabel}, totalizando ${formatDecimalValue(totalVolume)} ml/dia;`,
       );
     }
 
@@ -1521,16 +1600,16 @@ const PrescriptionNew = () => {
 
           const derivedRate = calculateOpenStageRate(stageVolume, openInfusionMode, durationHours);
           const rateLabel = openInfusionMode === "gravity"
-            ? (derivedRate.dropsPerMin ? `${formatDecimalValue(derivedRate.dropsPerMin)} gotas/min` : "velocidade nao calculada")
-            : (derivedRate.mlPerHour ? `${formatDecimalValue(derivedRate.mlPerHour)} ml/h` : "velocidade nao calculada");
+            ? (derivedRate.dropsPerMin ? `${formatDecimalValue(derivedRate.dropsPerMin)} gotas/min` : "velocidade não calculada")
+            : (derivedRate.mlPerHour ? `${formatDecimalValue(derivedRate.mlPerHour)} ml/h` : "velocidade não calculada");
 
-          return `- ${buildGenericFormulaDescriptor(formula)}, fracionada em ${stageCount} etapas de ${formatDecimalValue(stageVolume)} ml, com velocidade de infusao de ${rateLabel};`;
+          return `- ${buildGenericFormulaDescriptor(formula)}, fracionada em ${stageCount} etapas de ${formatDecimalValue(stageVolume)} ml, com velocidade de infusão de ${rateLabel};`;
         })
         .filter(Boolean);
 
       if (openFormulaLines.length > 0) {
         lines.push("SISTEMA ABERTO:");
-        lines.push(`Dieta enteral em sistema aberto, administrada atraves de ${routeLabel}:`);
+        lines.push(`Dieta enteral em sistema aberto, administrada através de ${routeLabel}:`);
         lines.push(...openFormulaLines);
       }
     }
@@ -1546,18 +1625,28 @@ const PrescriptionNew = () => {
       .filter(Boolean);
 
     if (moduleLines.length > 0) {
-      lines.push(`- Modulos: ${moduleLines.join("; ")};`);
+      lines.push(`- Módulos: ${moduleLines.join("; ")};`);
     }
 
     if (hydration.volume && hydration.times.length > 0) {
-      lines.push(`- Agua para hidratacao: ${hydration.volume} ml, ${hydration.times.length} vezes ao dia;`);
+      lines.push(`- Água para hidratação: ${hydration.volume} ml, ${hydration.times.length} vezes ao dia;`);
+    }
+
+    if (unintentionalNoteLines.length > 0) {
+      lines.push(`- Kcal não intencionais: ${unintentionalNoteLines.join("; ")};`);
     }
 
     lines.push("Oferecendo:");
+    const vetLabel = unintentionalResult.totalKcal > 0
+      ? "VET (nutrição enteral + kcal não intencionais)"
+      : "VET";
     lines.push(
-      `VET: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteinas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`,
+      `${vetLabel}: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`,
     );
-    lines.push(`Agua livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia).`);
+    lines.push(`Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia).`);
+    if (goalSummary.energyPct || goalSummary.proteinPct) {
+      lines.push(`A prescrição atual atende ${goalSummary.energyPct ? `${formatDecimalValue(goalSummary.energyPct)}% das metas de energia` : "meta de energia não informada"} e ${goalSummary.proteinPct ? `${formatDecimalValue(goalSummary.proteinPct)}% das metas de proteínas` : "meta de proteínas não informada"}.`);
+    }
 
     return lines.join("\n");
   }, [
@@ -1569,6 +1658,15 @@ const PrescriptionNew = () => {
     closedFormula.rate,
     enteralAccess,
     feedingRoutes.enteral,
+    goalSummary.energyGoal,
+    goalSummary.energyPct,
+    goalSummary.idealProteinGoal,
+    goalSummary.label,
+    goalSummary.proteinGoal,
+    goalSummary.proteinPct,
+    goalTargetKcalPerKg,
+    goalTargetProteinPerKgActual,
+    goalTargetProteinPerKgIdeal,
     hydration.times,
     hydration.volume,
     modules,
@@ -1585,6 +1683,136 @@ const PrescriptionNew = () => {
     openFormulas,
     openInfusionMode,
     systemType,
+    unintentionalNoteLines,
+    unintentionalResult.totalKcal,
+  ]);
+
+  const parenteralChartNoteSuggestion = useMemo(() => {
+    if (!feedingRoutes.parenteral) return "";
+
+    const accessLabel: Record<typeof parenteralAccess, string> = {
+      central: "central",
+      peripheral: "periférico",
+      picc: "PICC",
+    };
+    const lipidTypeLabel = parenteralValues.lipidType === "complex-fish-oil"
+      ? "lipídeos complexos com óleo de peixe"
+      : "TCM/TCL";
+    const lines = [
+      "Registro em Prontuário:",
+      `Terapia nutricional parenteral por acesso ${accessLabel[parenteralAccess] || parenteralAccess}, infundida em ${parenteralInfusionTime || 24} horas.`,
+      `${formatDecimalValue(parenteralValues.aminoacidsMl)} ml de aminoácidos a 10% - ${formatDecimalValue(parenteralAminoacids)} g de aminoácidos/dia${parenteralPerKg.amino ? ` (${formatDecimalValue(parenteralPerKg.amino)} g/kg)` : ""}.`,
+      `${formatDecimalValue(parenteralValues.glucoseMl)} ml de glicose a ${parenteralValues.glucoseConc}% - ${formatDecimalValue(parenteralGlucose)} g de glicose/dia${parenteralPerKg.glucose ? ` (${formatDecimalValue(parenteralPerKg.glucose)} g/kg)` : ""} - TIG: ${formatDecimalValue(parenteralPerKg.tig)} mg/kg/min.`,
+      `${formatDecimalValue(parenteralValues.lipidsMl)} ml de emulsão lipídica 20% (${lipidTypeLabel}) - ${formatDecimalValue(parenteralLipids)} g de lipídeos/dia${parenteralPerKg.lipids ? ` (${formatDecimalValue(parenteralPerKg.lipids)} g/kg)` : ""}.`,
+    ];
+
+    if (parenteralValues.multivitamin) {
+      lines.push("1 ampola de polivitamínico padrão.");
+    }
+    if (parenteralValues.traceElements) {
+      lines.push("1 ampola de oligoelementos padrão.");
+    }
+
+    lines.push(`Ofertando: VET ${formatDecimalValue(parenteralVET)} kcal/dia${parenteralPerKg.kcal ? ` (${formatDecimalValue(parenteralPerKg.kcal)} kcal/kg/dia)` : ""}.`);
+
+    if (parenteralObservations) {
+      lines.push(`Observações: ${parenteralObservations}`);
+    }
+
+    return lines.join("\n");
+  }, [
+    feedingRoutes.parenteral,
+    parenteralAccess,
+    parenteralAminoacids,
+    parenteralGlucose,
+    parenteralInfusionTime,
+    parenteralLipids,
+    parenteralObservations,
+    parenteralPerKg.amino,
+    parenteralPerKg.glucose,
+    parenteralPerKg.kcal,
+    parenteralPerKg.lipids,
+    parenteralPerKg.tig,
+    parenteralVET,
+    parenteralValues.aminoacidsMl,
+    parenteralValues.glucoseConc,
+    parenteralValues.glucoseMl,
+    parenteralValues.lipidType,
+    parenteralValues.lipidsMl,
+    parenteralValues.multivitamin,
+    parenteralValues.traceElements,
+  ]);
+
+  const oralChartNoteSuggestion = useMemo(() => {
+    if (!feedingRoutes.oral) return "";
+
+    const lines = ["Registro em Prontuário:"];
+    const kcalSuffix = [
+      oralTotals.vetPerKg > 0 ? `${formatDecimalValue(oralTotals.vetPerKg)} kcal/kg PA` : "",
+      oralTotals.vetPerKgIdeal ? `${formatDecimalValue(oralTotals.vetPerKgIdeal)} kcal/kg PI` : "",
+    ].filter(Boolean);
+    const proteinSuffix = [
+      oralTotals.proteinPerKg > 0 ? `${formatDecimalValue(oralTotals.proteinPerKg)} g/kg PA` : "",
+      oralTotals.proteinPerKgIdeal ? `${formatDecimalValue(oralTotals.proteinPerKgIdeal)} g/kg PI` : "",
+    ].filter(Boolean);
+
+    lines.push(
+      `Dieta oral em consistência ${oralDietConsistency || "-"}, fracionada em ${oralMealsPerDay || "-"} refeições/dia${oralDietCharacteristics ? `, ${oralDietCharacteristics}` : ""}, com VET estimado de ${formatDecimalValue(oralTotals.vet)} kcal${kcalSuffix.length ? ` (${kcalSuffix.join(" / ")})` : ""}, proteínas ${formatDecimalValue(oralTotals.protein)} g${proteinSuffix.length ? ` (${proteinSuffix.join(" / ")})` : ""}, ${formatDecimalValue(oralTotals.carbs)} g de carboidratos e ${formatDecimalValue(oralTotals.fat)} g de lipídeos.`,
+    );
+
+    if (oralSupplements.length > 0) {
+      oralSupplements
+        .filter((supplement) => supplement.supplementName || supplement.supplementId)
+        .forEach((supplement) => {
+          const schedules = Object.entries(supplement.schedules || {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([key]) => ORAL_MEAL_SCHEDULES.find((meal) => meal.key === key)?.label || key);
+          lines.push(`- Suplemento oral ${supplement.supplementName || "não informado"}, ${formatDecimalValue(Number(supplement.amount || 0))} ${supplement.unit || "ml"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
+        });
+    }
+
+    if (oralTherapyModules.length > 0) {
+      oralTherapyModules
+        .filter((moduleItem) => moduleItem.moduleName || moduleItem.moduleId)
+        .forEach((moduleItem) => {
+          const schedules = Object.entries(moduleItem.schedules || {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([key]) => ORAL_MEAL_SCHEDULES.find((meal) => meal.key === key)?.label || key);
+          lines.push(`- Módulo ${moduleItem.moduleName || "não informado"}, ${formatDecimalValue(Number(moduleItem.amount || 0))} ${moduleItem.unit || "g"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
+        });
+    }
+
+    if (oralNeedsThickener) {
+      lines.push(`- Água espessada com ${oralThickenerProduct || "espessante não informado"}, ${oralThickenerGrams || "-"} g para ${oralThickenerVolume || "-"} ml de água, horários: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}.`);
+    }
+
+    if (oralObservations) {
+      lines.push(`Orientações ao manipulador: ${oralObservations}`);
+    }
+
+    return lines.join("\n");
+  }, [
+    ORAL_MEAL_SCHEDULES,
+    feedingRoutes.oral,
+    oralDietCharacteristics,
+    oralDietConsistency,
+    oralMealsPerDay,
+    oralNeedsThickener,
+    oralObservations,
+    oralSupplements,
+    oralTherapyModules,
+    oralThickenerGrams,
+    oralThickenerProduct,
+    oralThickenerTimes,
+    oralThickenerVolume,
+    oralTotals.carbs,
+    oralTotals.fat,
+    oralTotals.protein,
+    oralTotals.proteinPerKg,
+    oralTotals.proteinPerKgIdeal,
+    oralTotals.vet,
+    oralTotals.vetPerKg,
+    oralTotals.vetPerKgIdeal,
   ]);
 
   const sidebarSummary = useMemo(() => {
@@ -1752,7 +1980,7 @@ const PrescriptionNew = () => {
         ? (systemType === 'closed' && closedFormula.formulaId ? [{
           formulaId: closedFormula.formulaId,
           formulaName: availableFormulas.find(f => f.id === closedFormula.formulaId)?.name || '',
-          volume: parseFloat(closedFormula.rate) * parseFloat(closedFormula.duration) || 0,
+          volume: bagCalculation?.totalVolume || 0,
           timesPerDay: Object.keys(closedFormula.bagQuantities).length || 1,
           schedules: Object.keys(closedFormula.bagQuantities)
         }] : openFormulas.filter(f => isPersistedDbId(f.formulaId)).map(f => ({
@@ -1849,10 +2077,20 @@ const PrescriptionNew = () => {
       };
 
       const today = new Date().toISOString().split('T')[0];
+      const tneGoalsPayload = goalTargetKcalPerKg || goalTargetProteinPerKgActual || goalTargetProteinPerKgIdeal
+        ? {
+          targetKcalPerKg: goalTargetKcalPerKg,
+          targetProteinPerKgActual: goalTargetProteinPerKgActual,
+          targetProteinPerKgIdeal: goalTargetProteinPerKgIdeal,
+        }
+        : undefined;
+      const unintentionalCaloriesPayload = unintentionalResult.totalKcal > 0 ? unintentionalCal : undefined;
       const persistPrescription = async (therapyType: TherapyType, data: Record<string, unknown>) => {
         const payload = {
           ...basePrescriptionData,
           ...data,
+          tneGoals: tneGoalsPayload,
+          unintentionalCalories: unintentionalCaloriesPayload,
           therapyType,
           startDate: editingStartDates[therapyType] || today,
         };
@@ -2004,6 +2242,7 @@ const PrescriptionNew = () => {
             aminoacidsMl: parenteralValues.aminoacidsMl,
             lipidsG: parenteralLipids,
             lipidsMl: parenteralValues.lipidsMl,
+            lipidType: parenteralValues.lipidType,
             glucoseG: parenteralGlucose,
             glucoseMl: parenteralValues.glucoseMl,
             glucoseConc: parenteralValues.glucoseConc,
@@ -2270,6 +2509,7 @@ const PrescriptionNew = () => {
                           setParenteralValues({
                             aminoacidsMl: 0,
                             lipidsMl: 0,
+                            lipidType: "tcm-tcl",
                             glucoseMl: 0,
                             glucoseConc: 50 as GlucoseConcentration,
                             multivitamin: false,
@@ -2565,10 +2805,15 @@ const PrescriptionNew = () => {
                       ))}
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Total de bolsas selecionadas: {Object.values(closedFormula.bagQuantities).reduce((sum, val) => sum + val, 0)} / {bagCalculation.numBags} necessárias
+                      Total de bolsas selecionadas: {selectedBagTotal} / {bagCalculation.numBags} necessárias
                     </p>
+                    {!hasRequiredClosedBags && (
+                      <p className="text-sm text-destructive">
+                        Distribua exatamente {bagCalculation.numBags} bolsa(s) nos horários antes de avançar.
+                      </p>
+                    )}
                   </div>}
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration || !hasRequiredClosedBags}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
@@ -3010,14 +3255,24 @@ const PrescriptionNew = () => {
                       {feedingRoutes.oral && (
                         <>
                           <Separator />
-                          <p><strong>Oral:</strong> Via oral | {oralDietConsistency || 'Consistência não definida'} - {oralMealsPerDay} refeições/dia</p>
+                          <div>
+                            <h4 className="font-semibold mb-2">Registro em Prontuário - Via Oral</h4>
+                            <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
+                              {oralChartNoteSuggestion}
+                            </div>
+                          </div>
                         </>
                       )}
 
                       {feedingRoutes.parenteral && (
                         <>
                           <Separator />
-                          <p><strong>Parenteral:</strong> Acesso {parenteralAccess} - VET {parenteralVET.toFixed(0)} kcal - {parenteralInfusionTime}h infusão</p>
+                          <div>
+                            <h4 className="font-semibold mb-2">Registro em Prontuário - Parenteral</h4>
+                            <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
+                              {parenteralChartNoteSuggestion}
+                            </div>
+                          </div>
                         </>
                       )}
 

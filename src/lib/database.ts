@@ -291,6 +291,8 @@ export interface Prescription {
     nursingCostTotal?: number;
     materialCostTotal?: number;
     totalCost?: number;
+    tneGoals?: TNEGoals;
+    unintentionalCalories?: UnintentionalCalories;
     enteralDetails?: {
         access?: string;
         systemType?: 'open' | 'closed';
@@ -350,8 +352,15 @@ export interface Prescription {
         access?: 'central' | 'peripheral' | 'picc';
         infusionTime?: number;
         aminoacidsG?: number;
+        aminoacidsMl?: number;
         lipidsG?: number;
+        lipidsMl?: number;
+        lipidType?: 'tcm-tcl' | 'complex-fish-oil';
         glucoseG?: number;
+        glucoseMl?: number;
+        glucoseConc?: 5 | 10 | 50;
+        multivitamin?: boolean;
+        traceElements?: boolean;
         vetKcal?: number;
         tigMgKgMin?: number;
         observations?: string;
@@ -850,6 +859,8 @@ const normalizePrescription = (raw: any): Prescription => {
         nursingCostTotal: toNumber(raw.nursingCostTotal),
         materialCostTotal: toNumber(raw.materialCostTotal),
         totalCost: toNumber(raw.totalCost),
+        tneGoals: raw.tneGoals,
+        unintentionalCalories: raw.unintentionalCalories,
         enteralDetails: raw.enteralDetails,
         oralDetails: raw.oralDetails,
         parenteralDetails: raw.parenteralDetails,
@@ -989,6 +1000,8 @@ const mapPrescriptionPayload = (data: any) => ({
     notes: firstNonEmptyString(data.notes),
     startDate: toDateOnly(data.startDate),
     endDate: toDateOnly(data.endDate),
+    tneGoals: data.tneGoals,
+    unintentionalCalories: data.unintentionalCalories,
     enteralDetails: data.enteralDetails,
     oralDetails: data.oralDetails,
     parenteralDetails: data.parenteralDetails,

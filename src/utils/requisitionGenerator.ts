@@ -46,6 +46,56 @@ const formatDateTime = (date: Date): string => {
     }).format(date);
 };
 
+const countInclusiveDays = (startDate: Date, endDate: Date): number => {
+    const start = startOfDay(startDate);
+    const end = startOfDay(endDate);
+    const msPerDay = 1000 * 60 * 60 * 24;
+
+    if (end < start) return 1;
+
+    return Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
+};
+
+const safeDateTime = (date?: string | null): number => {
+    if (!date) return 0;
+    const parsed = new Date(date).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const comparePrescriptionRecency = (left: Prescription, right: Prescription): number => {
+    const leftRank = [
+        safeDateTime(left.startDate),
+        safeDateTime(left.createdAt),
+        safeDateTime(left.updatedAt),
+    ];
+    const rightRank = [
+        safeDateTime(right.startDate),
+        safeDateTime(right.createdAt),
+        safeDateTime(right.updatedAt),
+    ];
+
+    for (let index = 0; index < leftRank.length; index += 1) {
+        if (leftRank[index] !== rightRank[index]) return leftRank[index] - rightRank[index];
+    }
+
+    return 0;
+};
+
+const pickLatestPrescriptionPerPatientAndRoute = (prescriptions: Prescription[]) => {
+    const latestByKey = new Map<string, Prescription>();
+
+    prescriptions.forEach((prescription) => {
+        const key = `${prescription.patientId || prescription.patientName}:${prescription.therapyType}`;
+        const current = latestByKey.get(key);
+
+        if (!current || comparePrescriptionRecency(prescription, current) >= 0) {
+            latestByKey.set(key, prescription);
+        }
+    });
+
+    return Array.from(latestByKey.values());
+};
+
 interface GenerateOptions {
     prescriptions: Prescription[];
     patients: Patient[];
@@ -140,7 +190,7 @@ export const generateRequisitionData = ({
     const findSupplyByCategory = (category: Supply['category']) =>
         supplies.find((s) => s.category === category && s.isActive && s.isBillable !== false);
 
-    const activePrescriptions = prescriptions.filter(p => {
+    const eligiblePrescriptions = prescriptions.filter(p => {
         if (p.status !== 'active') return false;
         if (unitName !== 'all' && p.patientWard !== unitName) return false;
         const pStart = parseISO(p.startDate);
@@ -151,9 +201,10 @@ export const generateRequisitionData = ({
         if (pEnd && pEnd < rangeStart) return false;
         return true;
     });
+    const activePrescriptions = pickLatestPrescriptionPerPatientAndRoute(eligiblePrescriptions);
 
-    // Duration in days
-    const dayDiff = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    // Inclusive period: 14/04-14/04 = 1 day, 14/04-15/04 = 2 days.
+    const dayDiff = countInclusiveDays(startDate, endDate);
 
     activePrescriptions.forEach(p => {
         const patient = patientsById.get(p.patientId);
