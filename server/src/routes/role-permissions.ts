@@ -1,18 +1,12 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireRole } from '../lib/auth-middleware';
+import { requireScopedHospitalId } from '../lib/hospital-scope';
 
 const router = Router();
 const prisma = new PrismaClient({
     datasourceUrl: process.env.DATABASE_URL
 });
-
-const normalizeHospitalId = (value: unknown): string | null | undefined => {
-    if (typeof value !== 'string') return undefined;
-    const trimmed = value.trim();
-    if (!trimmed) return undefined;
-    if (trimmed === 'global') return null;
-    return trimmed;
-};
 
 const mapRolePermissionToClient = (permission: any) => ({
     id: permission.id,
@@ -26,27 +20,22 @@ const mapRolePermissionToClient = (permission: any) => ({
 
 router.get('/', async (req, res) => {
     try {
-        const hospitalId = normalizeHospitalId(req.query.hospitalId);
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const permissions = await prisma.rolePermission.findMany({
-            where: hospitalId === undefined
-                ? undefined
-                : {
-                    OR: [
-                        { hospitalId },
-                        { hospitalId: null },
-                    ],
-                },
+            where: {
+                OR: [
+                    { hospitalId },
+                    { hospitalId: null },
+                ],
+            },
             orderBy: [
                 { hospitalId: 'desc' },
                 { role: 'asc' },
                 { permissionKey: 'asc' },
             ],
         });
-
-        if (hospitalId === undefined || hospitalId === null) {
-            res.json(permissions.map(mapRolePermissionToClient));
-            return;
-        }
 
         const merged = new Map<string, any>();
         for (const permission of permissions) {
@@ -63,14 +52,16 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.put('/', async (req, res) => {
+router.put('/', requireRole('general_manager', 'local_manager'), async (req, res) => {
     try {
-        const hospitalId = normalizeHospitalId(req.query.hospitalId ?? req.body?.hospitalId);
+        const hospitalId = requireScopedHospitalId(req, res);
+        if (!hospitalId) return;
+
         const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
 
         await prisma.$transaction(async (tx) => {
             await tx.rolePermission.deleteMany({
-                where: hospitalId === undefined ? { hospitalId: null } : { hospitalId },
+                where: { hospitalId },
             });
 
             if (rows.length === 0) {
@@ -81,7 +72,7 @@ router.put('/', async (req, res) => {
                 data: rows
                     .filter((row: any) => row?.role && row?.permissionKey)
                     .map((row: any) => ({
-                        hospitalId: hospitalId === undefined ? null : hospitalId,
+                        hospitalId,
                         role: String(row.role),
                         permissionKey: String(row.permissionKey),
                         allowed: Boolean(row.allowed),
@@ -90,7 +81,7 @@ router.put('/', async (req, res) => {
         });
 
         const permissions = await prisma.rolePermission.findMany({
-            where: hospitalId === undefined ? { hospitalId: null } : { hospitalId },
+            where: { hospitalId },
             orderBy: [{ role: 'asc' }, { permissionKey: 'asc' }],
         });
 

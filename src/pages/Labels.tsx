@@ -125,6 +125,7 @@ const Labels = () => {
             manufacturer?: string;
             classification?: string;
             density?: number;
+            caloriesPerUnit?: number;
             proteinPerUnit?: number;
             carbPerUnit?: number;
             fatPerUnit?: number;
@@ -144,6 +145,7 @@ const Labels = () => {
                     manufacturer: formula.manufacturer,
                     classification: formula.classification,
                     density: formula.density,
+                    caloriesPerUnit: formula.caloriesPerUnit,
                     proteinPerUnit: formula.proteinPerUnit,
                     carbPerUnit: formula.carbPerUnit,
                     fatPerUnit: formula.fatPerUnit,
@@ -241,15 +243,23 @@ const Labels = () => {
             return `${Number(value.toFixed(1)).toLocaleString("pt-BR")} g`;
         };
 
+        const calculateNutrientGrams = (valuePerUnit?: number, volume = 0, usePerMlUnits = false) => {
+            if (!Number.isFinite(valuePerUnit) || !valuePerUnit || !volume) return undefined;
+            const numericValue = Number(valuePerUnit);
+            const factor = usePerMlUnits ? volume : volume / 100;
+            return numericValue * factor;
+        };
+
         const buildFormulaComposition = (formula: any, extraLines: string[] = []) => {
             const meta = formula.formulaId ? formulaMap.get(formula.formulaId) : undefined;
             const volume = Number(formula.volume || 0);
+            const usesLegacyPerMlUnits = !meta?.density && Boolean(meta?.caloriesPerUnit && meta.caloriesPerUnit <= 10);
             const formulaDetails = describeFormula(formula);
             const quantitative = [
-                meta?.proteinPerUnit ? `Prot. ${formatGrams(meta.proteinPerUnit * volume)}` : "",
-                meta?.carbPerUnit ? `Carb. ${formatGrams(meta.carbPerUnit * volume)}` : "",
-                meta?.fatPerUnit ? `Lip. ${formatGrams(meta.fatPerUnit * volume)}` : "",
-                meta?.fiberPerUnit ? `Fibra ${formatGrams(meta.fiberPerUnit * volume)}` : "",
+                meta?.proteinPerUnit ? `Prot. ${formatGrams(calculateNutrientGrams(meta.proteinPerUnit, volume, usesLegacyPerMlUnits))}` : "",
+                meta?.carbPerUnit ? `Carb. ${formatGrams(calculateNutrientGrams(meta.carbPerUnit, volume, usesLegacyPerMlUnits))}` : "",
+                meta?.fatPerUnit ? `Lip. ${formatGrams(calculateNutrientGrams(meta.fatPerUnit, volume, usesLegacyPerMlUnits))}` : "",
+                meta?.fiberPerUnit ? `Fibra ${formatGrams(calculateNutrientGrams(meta.fiberPerUnit, volume, usesLegacyPerMlUnits))}` : "",
             ].filter(Boolean);
             const sources = [
                 meta?.proteinSources ? `Fonte prot.: ${meta.proteinSources}` : "",

@@ -277,6 +277,13 @@ const getFormulaByName = (formulas: Formula[], formulaName?: string) => {
   return formulas.find((formula) => formula.name.trim().toLowerCase() === normalized);
 };
 
+const getFormulaCaloriesPerMl = (formula?: Formula): number => {
+  if (!formula) return 0;
+  if (formula.density && formula.density > 0) return formula.density;
+  const caloriesPerUnit = formula.caloriesPerUnit || 0;
+  return caloriesPerUnit > 10 ? caloriesPerUnit / 100 : caloriesPerUnit;
+};
+
 const getModuleByName = (modules: Module[], moduleName?: string) => {
   if (!moduleName) return undefined;
   const normalized = moduleName.trim().toLowerCase();
@@ -605,8 +612,8 @@ const Reports = () => {
           }
         }
 
-        const caloriesPerUnit = formula?.caloriesPerUnit || 0;
-        const totalCalories = totalVolumeMl * caloriesPerUnit;
+        const caloriesPerMl = getFormulaCaloriesPerMl(formula);
+        const totalCalories = totalVolumeMl * caloriesPerMl;
 
         const item = getOrCreateAccumulator(
           usageMap,

@@ -70,6 +70,22 @@ const sortByMostRecentStartDate = (left: Prescription, right: Prescription): num
     return right.startDate.localeCompare(left.startDate);
 };
 
+const getEvolutionTimestamp = (evolution: DailyEvolution): number => {
+    const value = evolution.updatedAt || evolution.createdAt || evolution.date;
+    const timestamp = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const pickLatestEvolutionForDate = (
+    evolutions: DailyEvolution[],
+    patientId: string,
+    date: string,
+): DailyEvolution | undefined => {
+    return evolutions
+        .filter((evolution) => evolution.patientId === patientId && evolution.date === date)
+        .sort((left, right) => getEvolutionTimestamp(right) - getEvolutionTimestamp(left))[0];
+};
+
 const pickPrescriptionForType = (
     prescriptions: Prescription[],
     therapyType: Prescription["therapyType"],
@@ -209,9 +225,7 @@ export default function PatientMonitoringPage() {
         if (!selectedPatient?.id) return undefined;
 
         const targetDate = getPreviousDay();
-        return evolutions.find(
-            (evolution) => evolution.patientId === selectedPatient.id && evolution.date === targetDate,
-        );
+        return pickLatestEvolutionForDate(evolutions, selectedPatient.id, targetDate);
     }, [selectedPatient, evolutions]);
 
     const chartData = useMemo<ChartRow[]>(() => {
@@ -230,9 +244,7 @@ export default function PatientMonitoringPage() {
 
         const patientIdValue = selectedPatient.id;
         return days.map((day) => {
-            const evolutionOnDay = evolutions.find(
-                (evolution) => evolution.patientId === patientIdValue && evolution.date === day,
-            );
+            const evolutionOnDay = pickLatestEvolutionForDate(evolutions, patientIdValue, day);
 
             const prescriptionsOnDay = prescriptions.filter(
                 (prescription) =>
@@ -304,14 +316,7 @@ export default function PatientMonitoringPage() {
                 "enteral",
             );
             const referencePrescription = enteralPrescription || [...allPatientPrescriptions].sort(sortByMostRecentStartDate)[0];
-            const existingEvolution = evolutions.find(
-                (evolution) =>
-                    evolution.patientId === selectedPatient.id &&
-                    evolution.date === targetDate &&
-                    (!referencePrescription?.id || evolution.prescriptionId === referencePrescription.id),
-            ) || evolutions.find(
-                (evolution) => evolution.patientId === selectedPatient.id && evolution.date === targetDate,
-            );
+            const existingEvolution = pickLatestEvolutionForDate(evolutions, selectedPatient.id, targetDate);
 
             await updatePatient(selectedPatient.id, {
                 tneGoals: data.tneGoals,
