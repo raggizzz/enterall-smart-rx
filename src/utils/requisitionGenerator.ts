@@ -255,7 +255,8 @@ export const generateRequisitionData = ({
                             : 'Sistema aberto')
                 });
 
-                const totalVol = f.volume * matchingTimes.length * dayDiff;
+                const administrationsForVolume = p.systemType === 'closed' ? 1 : matchingTimes.length;
+                const totalVol = f.volume * administrationsForVolume * dayDiff;
                 const price = getFormulaPrice(f.formulaId);
                 const equipmentVolumePerAdministration = p.systemType === 'open' && p.therapyType === 'enteral'
                     ? (p.equipmentVolume || 0)
@@ -280,9 +281,11 @@ export const generateRequisitionData = ({
                 if (p.systemType === 'closed') {
                     const bagSize = formulaObj?.presentations?.[0] || 1000;
                     const bagQuantities = p.enteralDetails?.closedFormula?.bagQuantities || {};
+                    const hasExplicitBagQuantities = Boolean(p.enteralDetails?.closedFormula?.bagQuantitiesProvided)
+                        || Object.keys(bagQuantities).length > 0;
                     const bagQtyFromPrescription = Object.values(bagQuantities).reduce((sum: number, qty: unknown) => sum + (Number(qty) || 0), 0);
-                    const dailyVolume = f.volume * matchingTimes.length;
-                    const dailyBags = bagQtyFromPrescription > 0
+                    const dailyVolume = f.volume;
+                    const dailyBags = hasExplicitBagQuantities
                         ? bagQtyFromPrescription
                         : Math.ceil(dailyVolume / bagSize);
                     const totalBags = dailyBags * dayDiff;

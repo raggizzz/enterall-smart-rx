@@ -547,7 +547,10 @@ const Reports = () => {
 
       prescription.formulas.forEach((entry) => {
         const formula = formulasById.get(entry.formulaId) || getFormulaByName(formulas, entry.formulaName);
-        const administrationsPerDay = getAdministrationCount(entry.schedules, entry.timesPerDay);
+        const isClosedEnteralFormula = prescription.therapyType === "enteral" && prescription.systemType === "closed";
+        const administrationsPerDay = isClosedEnteralFormula
+          ? 1
+          : getAdministrationCount(entry.schedules, entry.timesPerDay);
         const dailyVolumeMl = entry.volume * administrationsPerDay;
         const totalVolumeMl = dailyVolumeMl * overlapDays;
         const equipmentVolumePerDay = prescription.systemType === "open" && prescription.therapyType === "enteral"
@@ -580,6 +583,26 @@ const Reports = () => {
         } else if (billableUnit === "ml" && bagSize > 0) {
           const dailyUnits = Math.ceil((dailyVolumeMl + equipmentVolumePerDay) / bagSize);
           estimatedUnits = dailyUnits * overlapDays;
+        }
+
+        if (isClosedEnteralFormula) {
+          const bagQuantities = prescription.enteralDetails?.closedFormula?.bagQuantities || {};
+          const hasExplicitBagQuantities = Boolean(prescription.enteralDetails?.closedFormula?.bagQuantitiesProvided)
+            || Object.keys(bagQuantities).length > 0;
+
+          if (hasExplicitBagQuantities) {
+            const dailyBags = Object.values(bagQuantities).reduce((sum, quantity) => sum + (Number(quantity) || 0), 0);
+            const totalBags = dailyBags * overlapDays;
+            estimatedUnits = totalBags;
+
+            if (billableUnit === "ml" && bagSize > 0) {
+              totalQuantity = totalBags * bagSize;
+              totalCost = totalQuantity * billingPrice;
+            } else {
+              totalQuantity = totalBags;
+              totalCost = totalQuantity * billingPrice;
+            }
+          }
         }
 
         const caloriesPerUnit = formula?.caloriesPerUnit || 0;

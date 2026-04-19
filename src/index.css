@@ -250,8 +250,7 @@ All colors MUST be HSL.
   }
 
   .no-print,
-  nav,
-  header {
+  nav {
     display: none !important;
   }
 

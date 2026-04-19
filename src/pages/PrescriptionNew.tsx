@@ -1496,7 +1496,8 @@ const PrescriptionNew = () => {
     () => Object.values(closedFormula.bagQuantities).reduce((sum, value) => sum + (Number(value) || 0), 0),
     [closedFormula.bagQuantities],
   );
-  const hasRequiredClosedBags = !bagCalculation || selectedBagTotal === bagCalculation.numBags;
+  const hasClosedBagShortage = Boolean(bagCalculation && selectedBagTotal < bagCalculation.numBags);
+  const hasClosedBagExcess = Boolean(bagCalculation && selectedBagTotal > bagCalculation.numBags);
 
   const bmi = nutritionSummary.weightMetrics.bmi;
   const idealWeight = nutritionSummary.weightMetrics.idealWeight;
@@ -1976,13 +1977,17 @@ const PrescriptionNew = () => {
         return;
       }
 
+      const closedBagSchedules = Object.keys(closedFormula.bagQuantities);
+      const closedFormulaSchedules = closedBagSchedules.length > 0
+        ? closedBagSchedules
+        : prescriptionScheduleTimes.slice(0, 1);
       const enteralFormulas = feedingRoutes.enteral
         ? (systemType === 'closed' && closedFormula.formulaId ? [{
           formulaId: closedFormula.formulaId,
           formulaName: availableFormulas.find(f => f.id === closedFormula.formulaId)?.name || '',
           volume: bagCalculation?.totalVolume || 0,
-          timesPerDay: Object.keys(closedFormula.bagQuantities).length || 1,
-          schedules: Object.keys(closedFormula.bagQuantities)
+          timesPerDay: 1,
+          schedules: closedFormulaSchedules
         }] : openFormulas.filter(f => isPersistedDbId(f.formulaId)).map(f => ({
           formulaId: f.formulaId,
           formulaName: availableFormulas.find(af => af.id === f.formulaId)?.name || '',
@@ -2160,6 +2165,7 @@ const PrescriptionNew = () => {
                 rate: closedFormula.rate || undefined,
                 duration: closedFormula.duration || undefined,
                 bagQuantities: closedFormula.bagQuantities,
+                bagQuantitiesProvided: true,
               }
               : undefined,
             openFormulas: systemType === "open"
@@ -2807,13 +2813,18 @@ const PrescriptionNew = () => {
                     <p className="text-sm text-muted-foreground">
                       Total de bolsas selecionadas: {selectedBagTotal} / {bagCalculation.numBags} necessárias
                     </p>
-                    {!hasRequiredClosedBags && (
+                    {hasClosedBagShortage && (
+                      <p className="text-sm text-amber-700">
+                        Bolsas abaixo do calculado. A prescrição pode seguir e o faturamento usará apenas as bolsas informadas.
+                      </p>
+                    )}
+                    {hasClosedBagExcess && (
                       <p className="text-sm text-destructive">
-                        Distribua exatamente {bagCalculation.numBags} bolsa(s) nos horários antes de avançar.
+                        O total informado passa de {bagCalculation.numBags} bolsa(s) calculada(s). Reduza a distribuição antes de avançar.
                       </p>
                     )}
                   </div>}
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration || !hasRequiredClosedBags}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration || hasClosedBagExcess}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
