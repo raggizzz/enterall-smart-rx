@@ -33,6 +33,12 @@ const THERAPY_OPTIONS = [
 
 type TherapyFilter = (typeof THERAPY_OPTIONS)[number]["value"];
 
+const SIGNATURE_CONFIG = {
+    signature1: "Nutricionista prescritor",
+    signature2: "Tecnico responsavel",
+    signature3: "Nutricionista RT ou da concessionaria",
+};
+
 const formatDate = (date: Date | string | undefined | null) => {
     if (!date) return "-";
 
@@ -85,6 +91,7 @@ const Billing = () => {
     const [manualRequestMode, setManualRequestMode] = useState<ManualRequestMode>("cancellation");
     const [manualCancelPatientId, setManualCancelPatientId] = useState("");
     const [manualCancelDate, setManualCancelDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [manualSelectedTimes, setManualSelectedTimes] = useState<string[]>([]);
     const [manualCancelSelectedItems, setManualCancelSelectedItems] = useState<string[]>([]);
     const [manualFreeItem, setManualFreeItem] = useState({
         ward: "",
@@ -98,12 +105,6 @@ const Billing = () => {
         subtotal: "",
         observation: "",
     });
-
-    const signatureConfig = {
-        signature1: "Nutricionista prescritor",
-        signature2: "Tecnico responsavel",
-        signature3: "Nutricionista RT ou da concessionaria",
-    };
 
     const wards = useMemo(() => {
         const uniqueWards = new Set<string>();
@@ -215,12 +216,35 @@ const Billing = () => {
             endDate,
             selectedTimes,
             signatures: {
-                prescriber: signatureConfig.signature1,
-                technician: signatureConfig.signature2,
-                manager: signatureConfig.signature3,
+                prescriber: SIGNATURE_CONFIG.signature1,
+                technician: SIGNATURE_CONFIG.signature2,
+                manager: SIGNATURE_CONFIG.signature3,
             },
         });
-    }, [endDate, filteredPrescriptions, formulas, modules, patients, selectedTimes, startDate, supplies, unit]);
+    }, [endDate, filteredPrescriptions, formulas, modules, patients, selectedTimes, startDate, supplies, therapyFilter, unit]);
+
+    const manualPreviewRequisitionData = useMemo(() => {
+        const effectiveDate = new Date(`${manualCancelDate}T00:00:00`);
+        if (Number.isNaN(effectiveDate.getTime())) return null;
+
+        return generateRequisitionData({
+            prescriptions: filteredPrescriptions,
+            patients,
+            formulas,
+            modules,
+            supplies,
+            unitName: unit,
+            therapyLabel: THERAPY_OPTIONS.find((option) => option.value === therapyFilter)?.label || "Todas as vias",
+            startDate: effectiveDate,
+            endDate: effectiveDate,
+            selectedTimes: manualSelectedTimes,
+            signatures: {
+                prescriber: SIGNATURE_CONFIG.signature1,
+                technician: SIGNATURE_CONFIG.signature2,
+                manager: SIGNATURE_CONFIG.signature3,
+            },
+        });
+    }, [filteredPrescriptions, formulas, manualCancelDate, manualSelectedTimes, modules, patients, supplies, therapyFilter, unit]);
 
     const totalEstimated = useMemo(() => {
         if (!previewRequisitionData) return 0;
@@ -228,34 +252,29 @@ const Billing = () => {
     }, [previewRequisitionData]);
 
     const manualCancelCandidates = useMemo(() => {
-        if (!previewRequisitionData || !manualCancelPatientId) return [];
-        return previewRequisitionData.dietMap
+        if (!manualPreviewRequisitionData || !manualCancelPatientId) return [];
+        return manualPreviewRequisitionData.dietMap
             .filter((item) => item.patientId === manualCancelPatientId)
             .map((item, index) => ({
                 key: `${item.patientId}-${item.productCode || item.productName}-${index}`,
                 item,
             }));
-    }, [manualCancelPatientId, previewRequisitionData]);
+    }, [manualCancelPatientId, manualPreviewRequisitionData]);
 
     const manualSelectablePatients = useMemo(() => {
-        if (!previewRequisitionData) return [];
-        const ids = Array.from(new Set(previewRequisitionData.dietMap.map((item) => item.patientId)));
+        const patientIdsWithPrescriptions = new Set(filteredPrescriptions.map((prescription) => prescription.patientId));
 
-        return ids
-            .map((patientId) => {
-                const patient = patients.find((item) => item.id === patientId);
-                const mapItem = previewRequisitionData.dietMap.find((item) => item.patientId === patientId);
-
-                return {
-                    id: patientId,
-                    name: patient?.name || mapItem?.patientName || "Paciente sem nome",
-                    bed: patient?.bed || mapItem?.bed || "",
-                    ward: patient?.ward || mapItem?.ward || "",
-                    status: patient?.status || "active",
-                };
-            })
+        return patients
+            .filter((patient) => patient.status === "active" && patientIdsWithPrescriptions.has(patient.id || ""))
+            .map((patient) => ({
+                id: patient.id || "",
+                name: patient.name || "Paciente sem nome",
+                bed: patient.bed || "",
+                ward: patient.ward || "",
+                status: patient.status || "active",
+            }))
             .sort((left, right) => left.name.localeCompare(right.name));
-    }, [patients, previewRequisitionData]);
+    }, [filteredPrescriptions, patients]);
 
     const manualProductOptions = useMemo(() => {
         const formulaOptions = formulas
@@ -319,6 +338,7 @@ const Billing = () => {
     const openManualRequestDialog = (mode: ManualRequestMode) => {
         setManualRequestMode(mode);
         setManualCancelPatientId("");
+        setManualSelectedTimes([]);
         setManualCancelSelectedItems([]);
         setManualFreeItem({ ward: unit === "all" ? "" : unit, productKey: "", productCode: "", productName: "", category: "diet", quantity: "", unit: "un", unitPrice: "", subtotal: "", observation: "" });
         setManualCancelDate(new Date().toISOString().split("T")[0]);
@@ -334,7 +354,12 @@ const Billing = () => {
     };
 
     const handleGenerateManualCancellation = () => {
-        if (!previewRequisitionData) return;
+        if (!previewRequisitionData || !manualPreviewRequisitionData) return;
+
+        if (manualSelectedTimes.length === 0) {
+            toast.error("Selecione ao menos um horário dentro da guia manual.");
+            return;
+        }
 
         const selectedDietMap = manualCancelPatientId
             ? manualCancelCandidates
@@ -371,7 +396,7 @@ const Billing = () => {
                 productName: manualFreeItem.productName.trim(),
                 volumeOrAmount: Number(manualFreeItem.quantity) || 0,
                 unit: manualFreeItem.unit || "un",
-                times: [],
+                times: manualSelectedTimes,
                 observation: manualFreeItem.observation || "Lancamento manual sem vinculo com paciente",
                 unitPrice: manualUnitPrice,
                 subtotal: manualSubtotal,
@@ -422,7 +447,7 @@ const Billing = () => {
         setRequisitionData({
             ...previewRequisitionData,
             unitName: manualWard,
-            selectedTimes: [],
+            selectedTimes: manualSelectedTimes,
             documentType,
             effectiveDate: manualCancelDate,
             dietMap: selectedDietMap.length > 0 ? selectedDietMap : freeDietMap,
@@ -453,9 +478,9 @@ const Billing = () => {
             endDate: effectiveDate,
             selectedTimes: cancelSelectedTimes.length > 0 ? cancelSelectedTimes : [...availableScheduleTimes],
             signatures: {
-                prescriber: signatureConfig.signature1,
-                technician: signatureConfig.signature2,
-                manager: signatureConfig.signature3,
+                prescriber: SIGNATURE_CONFIG.signature1,
+                technician: SIGNATURE_CONFIG.signature2,
+                manager: SIGNATURE_CONFIG.signature3,
             },
         });
 
@@ -543,6 +568,15 @@ const Billing = () => {
                 ? current.filter((item) => item !== key)
                 : [...current, key],
         );
+    };
+
+    const toggleManualTime = (time: string) => {
+        setManualSelectedTimes((current) =>
+            current.includes(time)
+                ? sortScheduleTimes(current.filter((item) => item !== time))
+                : sortScheduleTimes([...current, time]),
+        );
+        setManualCancelSelectedItems([]);
     };
 
     const manualActionLabel = manualRequestMode === "cancellation" ? "cancelamento manual" : "requisicao extra";
@@ -1078,6 +1112,62 @@ const Billing = () => {
                         </div>
 
                         <div className="rounded-md border p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <div>
+                                    <Label>Horários da guia manual</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Estes horários são independentes dos filtros principais da tela.
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setManualSelectedTimes([...availableScheduleTimes]);
+                                            setManualCancelSelectedItems([]);
+                                        }}
+                                    >
+                                        Todos
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setManualSelectedTimes([]);
+                                            setManualCancelSelectedItems([]);
+                                        }}
+                                    >
+                                        Limpar
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                                {availableScheduleTimes.map((time) => (
+                                    <button
+                                        key={time}
+                                        type="button"
+                                        onClick={() => toggleManualTime(time)}
+                                        className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                                            manualSelectedTimes.includes(time)
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background hover:border-primary/50"
+                                        }`}
+                                    >
+                                        {time}
+                                    </button>
+                                ))}
+                            </div>
+                            {manualSelectedTimes.length === 0 && (
+                                <p className="text-xs text-destructive">
+                                    Selecione ao menos um horário para gerar a guia manual.
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="rounded-md border p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="font-medium">Itens selecionaveis do paciente</p>
@@ -1093,8 +1183,10 @@ const Billing = () => {
 
                             {!manualCancelPatientId ? (
                                 <p className="text-sm text-muted-foreground">Escolha um paciente para listar os itens disponiveis.</p>
+                            ) : manualSelectedTimes.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">Selecione os horários da guia manual para listar os itens do paciente.</p>
                             ) : manualCancelCandidates.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">Nenhum item disponivel para o paciente com os filtros atuais.</p>
+                                <p className="text-sm text-muted-foreground">Nenhum item disponível para o paciente nos horários selecionados.</p>
                             ) : (
                                 <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
                                     {manualCancelCandidates.map(({ key, item }) => (

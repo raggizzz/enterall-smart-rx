@@ -6,11 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database, ShieldCheck } from "lucide-react";
+import { Calendar as CalendarIcon, Printer, Search, Tag, Clock, Building, User, Database } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import Header from "@/components/Header";
 import LabelPreview, { LabelData } from "@/components/LabelPreview";
 import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings, useWards } from "@/hooks/useDatabase";
+import type { Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes } from "@/lib/scheduleTimes";
 import { printElementInPopup } from "@/lib/printPopup";
@@ -47,6 +48,38 @@ const truncate = (text: string, limit: number): string => {
     return `${text.slice(0, limit - 3)}...`;
 };
 
+const safeDateTime = (date?: string | null): number => {
+    if (!date) return 0;
+    const parsed = new Date(date).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const comparePrescriptionRecency = (left: Prescription, right: Prescription): number => {
+    const leftRank = [safeDateTime(left.startDate), safeDateTime(left.createdAt), safeDateTime(left.updatedAt)];
+    const rightRank = [safeDateTime(right.startDate), safeDateTime(right.createdAt), safeDateTime(right.updatedAt)];
+
+    for (let index = 0; index < leftRank.length; index += 1) {
+        if (leftRank[index] !== rightRank[index]) return leftRank[index] - rightRank[index];
+    }
+
+    return 0;
+};
+
+const pickLatestPrescriptionPerPatientAndRoute = (prescriptions: Prescription[]) => {
+    const latestByKey = new Map<string, Prescription>();
+
+    prescriptions.forEach((prescription) => {
+        const key = `${prescription.patientId || prescription.patientName}:${prescription.therapyType}`;
+        const current = latestByKey.get(key);
+
+        if (!current || comparePrescriptionRecency(prescription, current) >= 0) {
+            latestByKey.set(key, prescription);
+        }
+    });
+
+    return Array.from(latestByKey.values());
+};
+
 const Labels = () => {
     const [date, setDate] = useState<Date | undefined>(new Date());
     const [clinic, setClinic] = useState("all");
@@ -72,14 +105,16 @@ const Labels = () => {
         return map;
     }, [patients]);
 
-    // Deduplicate prescriptions to avoid double labels if database returns duplicates
-    const pIds = new Set();
     const uniquePrescriptions = useMemo(() => {
-        return prescriptions.filter(p => {
-            if (pIds.has(p.id)) return false;
-            pIds.add(p.id);
+        const seenIds = new Set<string>();
+        const uniqueById = prescriptions.filter((prescription) => {
+            if (!prescription.id) return true;
+            if (seenIds.has(prescription.id)) return false;
+            seenIds.add(prescription.id);
             return true;
         });
+
+        return pickLatestPrescriptionPerPatientAndRoute(uniqueById);
     }, [prescriptions]);
 
     const formulaMap = useMemo(() => {
@@ -124,36 +159,6 @@ const Labels = () => {
         return map;
     }, [formulas]);
 
-    const moduleMap = useMemo(() => {
-        const map = new Map<string, {
-            calories?: number;
-            protein?: number;
-            carbs?: number;
-            fat?: number;
-            fiber?: number;
-            proteinSources?: string;
-            carbSources?: string;
-            fatSources?: string;
-            fiberSources?: string;
-        }>();
-        modules.forEach((module) => {
-            if (module.id) {
-                map.set(module.id, {
-                    calories: module.calories,
-                    protein: module.protein,
-                    carbs: module.carbs,
-                    fat: module.fat,
-                    fiber: module.fiber,
-                    proteinSources: module.proteinSources,
-                    carbSources: module.carbSources,
-                    fatSources: module.fatSources,
-                    fiberSources: module.fiberSources,
-                });
-            }
-        });
-        return map;
-    }, [modules]);
-
     const clinicOptions = useMemo(() => {
         const fromData = new Set<string>();
         prescriptions.forEach((p) => {
@@ -188,16 +193,22 @@ const Labels = () => {
 
     const labels = useMemo<LabelData[]>(() => {
         const list: LabelData[] = [];
+        const generatedLabelKeys = new Set<string>();
 
         const rtName = settings?.defaultSignatures?.rtName || "RT não cadastrado";
         const rtCrn = settings?.defaultSignatures?.rtCrn || "CRN não cadastrado";
-        const conservationOpen =
+        const normalizeConservationText = (value: string) =>
+            value.replace(/^conserva[çc][aã]o:\s*/i, "").trim();
+
+        const conservationOpen = normalizeConservationText(
             settings?.labelSettings?.openConservation ||
             settings?.labelSettings?.defaultConservation ||
-            "Conservação: usar em até 4h após manipulação, em temperatura ambiente.";
-        const conservationClosed =
+            "usar em até 4h após manipulação, em temperatura ambiente.",
+        );
+        const conservationClosed = normalizeConservationText(
             settings?.labelSettings?.closedConservation ||
-            "Conservação: em temperatura ambiente.";
+            "em temperatura ambiente.",
+        );
 
         const getRate = (prescription: any, stageVolume?: number): string | undefined =>
             getPrescriptionRateLabel(prescription, stageVolume);
@@ -225,6 +236,37 @@ const Labels = () => {
             return truncate(details.join(", "), 180);
         };
 
+        const formatGrams = (value?: number) => {
+            if (!Number.isFinite(value) || !value) return undefined;
+            return `${Number(value.toFixed(1)).toLocaleString("pt-BR")} g`;
+        };
+
+        const buildFormulaComposition = (formula: any, extraLines: string[] = []) => {
+            const meta = formula.formulaId ? formulaMap.get(formula.formulaId) : undefined;
+            const volume = Number(formula.volume || 0);
+            const formulaDetails = describeFormula(formula);
+            const quantitative = [
+                meta?.proteinPerUnit ? `Prot. ${formatGrams(meta.proteinPerUnit * volume)}` : "",
+                meta?.carbPerUnit ? `Carb. ${formatGrams(meta.carbPerUnit * volume)}` : "",
+                meta?.fatPerUnit ? `Lip. ${formatGrams(meta.fatPerUnit * volume)}` : "",
+                meta?.fiberPerUnit ? `Fibra ${formatGrams(meta.fiberPerUnit * volume)}` : "",
+            ].filter(Boolean);
+            const sources = [
+                meta?.proteinSources ? `Fonte prot.: ${meta.proteinSources}` : "",
+                meta?.carbSources ? `Fonte carb.: ${meta.carbSources}` : "",
+                meta?.fatSources ? `Fonte lip.: ${meta.fatSources}` : "",
+                meta?.fiberSources ? `Fonte fibra: ${meta.fiberSources}` : "",
+            ].filter(Boolean);
+            const lines = [
+                formulaDetails,
+                quantitative.join(", "),
+                sources.join("; "),
+                ...extraLines,
+            ].filter(Boolean);
+
+            return truncate(lines.join("\n"), 260) || undefined;
+        };
+
         const describeModules = (entries: any[]) => truncate(
             entries
                 .map((module) => {
@@ -240,7 +282,7 @@ const Labels = () => {
                 const thickenerParts = [
                     prescription.oralDetails?.thickenerProduct || "espessante",
                     prescription.oralDetails?.thickenerGrams ? `${Math.round(prescription.oralDetails.thickenerGrams)} g` : "",
-                    prescription.oralDetails?.thickenerVolume ? `${Math.round(prescription.oralDetails.thickenerVolume)} mL de agua` : "",
+                    prescription.oralDetails?.thickenerVolume ? `${Math.round(prescription.oralDetails.thickenerVolume)} mL de água` : "",
                 ].filter(Boolean);
                 details.push(`Água espessada: ${thickenerParts.join(", ")}`);
             }
@@ -268,13 +310,23 @@ const Labels = () => {
         };
 
         uniquePrescriptions
-            .filter((prescription) => prescription.status === "active")
+            .filter((prescription) => {
+                if (prescription.status !== "active") return false;
+
+                const prescriptionStart = new Date(`${prescription.startDate}T00:00:00`);
+                const prescriptionEnd = prescription.endDate ? new Date(`${prescription.endDate}T23:59:59`) : null;
+
+                if (!Number.isNaN(prescriptionStart.getTime()) && prescriptionStart > activeDate) return false;
+                if (prescriptionEnd && !Number.isNaN(prescriptionEnd.getTime()) && prescriptionEnd < activeDate) return false;
+
+                return true;
+            })
             .forEach((prescription) => {
                 const patient = patientsById.get(prescription.patientId);
 
                 const patientName = normalize(prescription.patientName || patient?.name);
                 const bed = normalize(prescription.patientBed || patient?.bed);
-                const record = "";
+                const record = normalize(prescription.patientRecord || patient?.record);
                 const dob = patient?.dob ? toDateOnly(new Date(patient.dob)) : "-";
                 const clinicName = normalize(prescription.patientWard || patient?.ward || "Sem setor");
                 const route = normalize(
@@ -288,19 +340,21 @@ const Labels = () => {
                 const moduleEntries = prescription.modules || [];
 
                 const getSafeSchedules = (val: any): string[] => {
+                    const dedupe = (items: string[]) => Array.from(new Set(items.map((item) => normalizeScheduleTime(item)).filter(Boolean)));
+
                     if (!val) return [];
-                    if (Array.isArray(val)) return val.map((item) => normalizeScheduleTime(String(item))).filter(Boolean);
+                    if (Array.isArray(val)) return dedupe(val.map(String));
                     if (typeof val === 'string') {
                         try {
                             const parsed = JSON.parse(val);
-                            if (Array.isArray(parsed)) return parsed.map((item) => normalizeScheduleTime(String(item))).filter(Boolean);
+                            if (Array.isArray(parsed)) return dedupe(parsed.map(String));
                         } catch (e) {
                             // If it's a comma-separated string
-                            if (val.includes(',')) return val.split(',').map((s: string) => normalizeScheduleTime(s)).filter(Boolean);
-                            return [normalizeScheduleTime(val)].filter(Boolean);
+                            if (val.includes(',')) return dedupe(val.split(','));
+                            return dedupe([val]);
                         }
                     }
-                    return [normalizeScheduleTime(String(val))].filter(Boolean);
+                    return dedupe([String(val)]);
                 };
 
                 const formulaSchedules = Array.from(
@@ -343,6 +397,20 @@ const Labels = () => {
 
                 const pushLabel = (data: Omit<LabelData, "id">, key: string) => {
                     const scheduleKey = data.scheduleTime || "00:00";
+                    const labelKey = [
+                        prescription.patientId || prescription.patientName,
+                        prescription.therapyType,
+                        key,
+                        scheduleKey,
+                        data.templateTitle,
+                        data.formulaText,
+                        data.volumeText,
+                        data.route,
+                    ].join("|");
+
+                    if (generatedLabelKeys.has(labelKey)) return;
+                    generatedLabelKeys.add(labelKey);
+
                     list.push({
                         ...data,
                         id: `${prescription.id || "sem-id"}-${key}-${scheduleKey}`,
@@ -368,11 +436,11 @@ const Labels = () => {
                                             infusionRate: getRate(prescription, formula.volume),
                                             route,
                                             formulaText: buildFormulaNameText(formula),
-                                            compositionText: describeFormula(formula),
+                                            compositionText: buildFormulaComposition(formula),
                                             volumeText: buildFormulaVolumeText(formula),
                                             manipulationDate: prescriptionDateText,
                                             manipulationTime: undefined,
-                                            validityText: "Validade: 24h após abertura.",
+                                            validityText: "Validade: 24h após conexão com equipo.",
                                             controlText: buildControl(prescription.id, time, "FE"),
                                             conservationText: conservationClosed,
                                             rtName,
@@ -396,12 +464,12 @@ const Labels = () => {
                                         scheduleTime: time,
                                         infusionRate: getRate(prescription),
                                         route,
-                                        formulaText: "Formula enteral",
+                                        formulaText: "Fórmula enteral",
                                         compositionText: undefined,
-                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} mL` : undefined,
                                         manipulationDate: prescriptionDateText,
                                         manipulationTime: undefined,
-                                        validityText: "Validade: 24h após abertura.",
+                                        validityText: "Validade: 24h após conexão com equipo.",
                                         controlText: buildControl(prescription.id, time, "FE"),
                                         conservationText: conservationClosed,
                                         rtName,
@@ -414,10 +482,10 @@ const Labels = () => {
                     } else {
                         // Open system
                         const openTitle = hasPowderLike
-                            ? "Po e formula infantil"
+                            ? "Pó e fórmula infantil"
                             : hasDilution
-                                ? "Dieta Enteral com Diluicao"
-                                : "Dieta Enteral Liquida";
+                                ? "Dieta Enteral com Diluição"
+                                : "Dieta Enteral Líquida";
 
                         if (formulaEntries.length > 0) {
                             formulaEntries.forEach((formula, idx) => {
@@ -435,10 +503,9 @@ const Labels = () => {
                                             infusionRate: getRate(prescription, formula.volume),
                                             route,
                                             formulaText: buildFormulaNameText(formula),
-                                            compositionText: [
-                                                describeFormula(formula),
+                                            compositionText: buildFormulaComposition(formula, [
                                                 modulesSummary || "",
-                                            ].filter(Boolean).join("\n"),
+                                            ]),
                                             volumeText: buildFormulaVolumeText(formula),
                                             manipulationDate: activeDateText,
                                             manipulationTime: time,
@@ -465,9 +532,9 @@ const Labels = () => {
                                         scheduleTime: time,
                                         infusionRate: getRate(prescription),
                                         route,
-                                        formulaText: "Formula enteral",
+                                        formulaText: "Fórmula enteral",
                                         compositionText: undefined,
-                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} ml` : undefined,
+                                        volumeText: prescription.totalVolume ? `${Math.round(prescription.totalVolume)} mL` : undefined,
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
                                         validityText: "Validade: 4h após manipulação.",
@@ -487,7 +554,7 @@ const Labels = () => {
                                 pushLabel(
                                     {
                                         clinic: clinicName,
-                                        templateTitle: "AGUA COM MODULOS",
+                                        templateTitle: "ÁGUA COM MÓDULOS",
                                         patientName,
                                         bed,
                                         record,
@@ -495,7 +562,7 @@ const Labels = () => {
                                         scheduleTime: time,
                                         infusionRate: getRate(prescription),
                                         route,
-                                        formulaText: prescription.hydrationVolume ? `AGUA ${Math.round(prescription.hydrationVolume)}ML` : "AGUA",
+                                        formulaText: prescription.hydrationVolume ? `ÁGUA ${Math.round(prescription.hydrationVolume)} mL` : "ÁGUA",
                                         compositionText: modulesSummary || undefined,
                                         volumeText: prescription.hydrationVolume
                                             ? `${Math.round(prescription.hydrationVolume)} mL`
@@ -524,7 +591,7 @@ const Labels = () => {
                                     clinic: clinicName,
                                     templateTitle: prescription.oralDetails?.administrationRoute === "translactation"
                                         ? "MÓDULOS de translactação"
-                                        : "MODULOS de via oral",
+                                        : "MÓDULOS de via oral",
                                     patientName,
                                     bed,
                                     record,
@@ -533,7 +600,7 @@ const Labels = () => {
                                     route,
                                     formulaText: undefined,
                                     compositionText: [
-                                        modulesSummary ? `Modulos: ${modulesSummary}` : "",
+                                        modulesSummary ? `Módulos: ${modulesSummary}` : "",
                                         describeOralContext(prescription),
                                     ].filter(Boolean).join(" | ") || undefined,
                                     manipulationDate: activeDateText,
@@ -566,9 +633,9 @@ const Labels = () => {
                                         templateTitle: isTranslactation
                                             ? "DIETA por translactação"
                                             : isInfantFormula
-                                                ? "DIETA formula infantil"
+                                                ? "DIETA fórmula infantil"
                                                 : isLiquidSupplement
-                                            ? "Suplementos via oral liquidos"
+                                            ? "Suplementos via oral líquidos"
                                             : isPowder
                                                 ? "DIETA - Suplementos via oral em pó"
                                                 : "DIETA via oral",
@@ -579,10 +646,9 @@ const Labels = () => {
                                         scheduleTime: time,
                                         route,
                                         formulaText: buildFormulaNameText(formula),
-                                        compositionText: [
-                                            describeFormula(formula),
+                                        compositionText: buildFormulaComposition(formula, [
                                             describeOralContext(prescription),
-                                        ].filter(Boolean).join("\n"),
+                                        ]),
                                         volumeText: buildFormulaVolumeText(formula),
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
@@ -606,7 +672,7 @@ const Labels = () => {
                                 pushLabel(
                                     {
                                         clinic: clinicName,
-                                        templateTitle: "AGUA ESPESSADA",
+                                        templateTitle: "ÁGUA ESPESSADA",
                                         patientName,
                                         bed,
                                         record,
@@ -614,8 +680,8 @@ const Labels = () => {
                                         scheduleTime: time,
                                         route,
                                         formulaText: prescription.oralDetails?.thickenerVolume
-                                            ? `AGUA ${Math.round(prescription.oralDetails.thickenerVolume)}ML`
-                                            : "AGUA",
+                                            ? `ÁGUA ${Math.round(prescription.oralDetails.thickenerVolume)} mL`
+                                            : "ÁGUA",
                                         compositionText: [
                                             prescription.oralDetails?.thickenerProduct
                                                 ? `${prescription.oralDetails.thickenerProduct} ${Math.round(prescription.oralDetails?.thickenerGrams || 0)}g`
@@ -640,7 +706,7 @@ const Labels = () => {
             });
 
         return list;
-    }, [activeDate, activeDateText, formulaMap, moduleMap, patientsById, settings, uniquePrescriptions]);
+    }, [activeDate, activeDateText, formulaMap, patientsById, settings, uniquePrescriptions]);
 
     const filteredLabels = useMemo(() => {
         return labels.filter((label) => {
@@ -849,7 +915,7 @@ const Labels = () => {
                 </div>
 
                 <div id="labels-print-document" className="hidden print:block">
-                    <div className="print:grid print:grid-cols-2 print:gap-[3.2mm]">
+                    <div className="print:grid print:grid-cols-3 print:gap-[2mm]">
                         {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))
                             .map((label) => (

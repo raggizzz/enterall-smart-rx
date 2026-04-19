@@ -1,5 +1,3 @@
-
-
 export interface LabelData {
     id: string;
     clinic: string;
@@ -25,86 +23,76 @@ export interface LabelData {
 
 const LabelPreview = ({ data }: { data: LabelData }) => {
     return (
-        <article className="w-[80mm] h-[50mm] bg-white text-black p-2 overflow-hidden font-sans text-xs print:shadow-none shadow-md rounded relative box-border border-2 border-black">
-            {/* Header: Patient Name, Bed, DOB */}
-            <header className="flex flex-col border-b border-black pb-1 mb-1 -mx-2 px-2 pt-1 -mt-2 bg-gray-50">
-                <div className="text-[9px] uppercase tracking-wide text-gray-700 mb-0.5 truncate">
-                    {data.clinic}
-                </div>
-                <div className="flex justify-between items-start">
-                    <div className="font-extrabold text-sm uppercase truncate w-3/4 leading-tight">
-                        {data.patientName}
+        <article className="w-[63.5mm] h-[46.6mm] bg-white text-black p-[1.8mm] overflow-hidden font-sans print:shadow-none shadow-md rounded relative box-border border border-black">
+            <header className="border-b border-black pb-[1mm]">
+                <div className="flex items-start justify-between gap-1">
+                    <div className="font-extrabold text-[9px] uppercase leading-none truncate">
+                        {data.templateTitle}
                     </div>
-                    <div className="font-bold text-xs uppercase border border-black px-1 rounded whitespace-nowrap">
-                        Leito: {data.bed}
-                    </div>
-                </div>
-                <div className="flex justify-between items-center mt-0.5">
-                    <div className="text-[11px] text-gray-800">
-                        DN: <span className="font-bold text-black">{data.dob}</span>
-                    </div>
-                    <div className="font-bold text-[10px] uppercase border border-black px-1 rounded">
-                        Via: {data.route}
-                    </div>
-                </div>
-                {data.controlText && (
-                    <div className="text-[9px] text-gray-800 mt-0.5 truncate">
-                        Lote/Controle: <span className="font-bold text-black">{data.controlText}</span>
-                    </div>
-                )}
-            </header>
-
-            {/* Diet / Formula */}
-            <div className="py-1 space-y-0.5 mb-1">
-                <div className="font-bold text-xs uppercase truncate">
-                    {data.templateTitle}
-                </div>
-                {data.formulaText && (
-                    <div className="text-[11px] leading-tight font-semibold line-clamp-2">
-                        {data.formulaText}
-                    </div>
-                )}
-                {data.compositionText && (
-                    <div className="text-[9px] leading-tight text-gray-800 whitespace-pre-line">
-                        {data.compositionText}
-                    </div>
-                )}
-                {data.volumeText && (
-                    <div className="font-extrabold text-base mt-1 tracking-wide">
-                        {data.volumeText}
-                    </div>
-                )}
-            </div>
-
-            {/* Infusion Rate & Schedule */}
-            <div className="flex justify-between items-end py-1 mt-1 pb-12">
-                <div className="flex flex-col">
-                    {data.infusionRate && (
-                        <div className="text-[11px] font-bold px-1 rounded inline-block mb-1 border border-dashed border-gray-400">
-                            Vazão: {data.infusionRate}
+                    {data.controlText && (
+                        <div className="text-[6px] leading-none text-right whitespace-nowrap">
+                            Controle: <span className="font-bold">{data.controlText}</span>
                         </div>
                     )}
                 </div>
-                {data.scheduleTime && (
-                    <div className="text-[10px] font-bold bg-gray-200 px-1 rounded">
-                        Horário: {data.scheduleTime}
+
+                <div className="mt-[1mm] text-[8px] leading-tight">
+                    <span className="font-bold">Paciente:</span>{" "}
+                    <span className="font-extrabold uppercase">{data.patientName}</span>
+                </div>
+
+                <div className="grid grid-cols-[1fr_1fr] gap-x-1 text-[7px] leading-tight">
+                    <div><span className="font-bold">Leito:</span> {data.bed}</div>
+                    <div><span className="font-bold">Via:</span> {data.route}</div>
+                    <div><span className="font-bold">Registro:</span> {data.record}</div>
+                    <div><span className="font-bold">DN:</span> {data.dob}</div>
+                </div>
+            </header>
+
+            <main className="pt-[1mm] pb-[12.5mm] space-y-[0.7mm]">
+                {data.formulaText && (
+                    <div className="text-[8px] leading-tight">
+                        <span className="font-bold">Fórmula:</span>{" "}
+                        <span className="font-semibold">{data.formulaText}</span>
                     </div>
                 )}
-            </div>
 
-            {/* Footer: Manipulation / Validity / RT */}
-            <footer className="absolute bottom-0 left-0 right-0 bg-gray-100 p-1 text-[8px] leading-tight grid grid-cols-[1fr_auto] gap-x-2 h-[15mm]">
-                <div className="flex flex-col justify-center">
-                    <div><span className="font-bold">Manip:</span> {data.manipulationDate} {data.manipulationTime}</div>
-                    <div className="font-bold truncate mt-0.5">{data.validityText}</div>
-                    {data.conservationText && (
-                        <div className="truncate mt-0.5"><span className="font-bold">Conserv.:</span> {data.conservationText}</div>
+                {data.compositionText && (
+                    <div className="text-[6.5px] leading-tight whitespace-pre-line max-h-[9mm] overflow-hidden">
+                        <span className="font-bold">Composição:</span> {data.compositionText}
+                    </div>
+                )}
+
+                <div className="grid grid-cols-[1fr_1fr] gap-x-1 text-[7.5px] leading-tight">
+                    {data.volumeText && (
+                        <div><span className="font-bold">Volume:</span> {data.volumeText}</div>
+                    )}
+                    {data.infusionRate && (
+                        <div><span className="font-bold">Vazão:</span> {data.infusionRate}</div>
+                    )}
+                    {data.scheduleTime && (
+                        <div><span className="font-bold">Horário:</span> {data.scheduleTime}</div>
                     )}
                 </div>
-                <div className="text-right flex flex-col justify-center min-w-[30mm]">
-                    <div className="font-bold uppercase text-[8px]">Resp. Técnico</div>
-                    <div className="truncate font-medium leading-none">{data.rtName}</div>
-                    <div className="leading-none">{data.rtCrn}</div>
+            </main>
+
+            <footer className="absolute bottom-0 left-0 right-0 border-t border-black bg-gray-50 px-[1.8mm] py-[1mm] text-[6.4px] leading-tight">
+                <div className="grid grid-cols-[1fr_auto] gap-x-1">
+                    <div className="min-w-0">
+                        <div>
+                            <span className="font-bold">{data.manipulationTime ? "Manipulado em:" : "Data:"}</span> {data.manipulationDate}
+                            {data.manipulationTime ? `, ${data.manipulationTime}` : ""}
+                        </div>
+                        <div className="font-semibold">{data.validityText}</div>
+                        {data.conservationText && (
+                            <div><span className="font-bold">Conservação:</span> {data.conservationText}</div>
+                        )}
+                    </div>
+                    <div className="text-right min-w-[22mm]">
+                        <div className="font-bold uppercase">Resp. Técnico</div>
+                        <div className="truncate">{data.rtName}</div>
+                        <div>{data.rtCrn}</div>
+                    </div>
                 </div>
             </footer>
         </article>
