@@ -59,13 +59,14 @@ import { usePatients, useClinics, useHospitals, useWards, usePrescriptions } fro
 import { Patient } from "@/lib/database";
 import { can } from "@/lib/permissions";
 import { useCurrentRole } from "@/hooks/useCurrentRole";
-import {
+import { 
   birthDateInputToIso,
   compareBedLabels,
   formatBirthDateForDisplay,
   formatBirthDateInput,
   isoDateToBirthDateInput,
 } from "@/lib/patientDisplay";
+import { ApiError } from "@/lib/api";
 
 const Patients = () => {
   const navigate = useNavigate();
@@ -239,6 +240,13 @@ const Patients = () => {
       resetForm();
     } catch (error) {
       console.error("Error saving patient:", error);
+      if (error instanceof ApiError && error.status === 409) {
+        const message = typeof error.body === "object" && error.body && "error" in error.body
+          ? String((error.body as { error?: unknown }).error || "Erro ao salvar paciente")
+          : "Erro ao salvar paciente";
+        toast.error(message);
+        return;
+      }
       toast.error("Erro ao salvar paciente");
     }
   };

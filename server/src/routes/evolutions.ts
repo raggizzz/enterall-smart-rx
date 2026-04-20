@@ -21,6 +21,7 @@ const mapEvolutionToClient = (evo: any) => ({
     tneGoals: evo.tneGoals ? JSON.parse(evo.tneGoals) : undefined,
     tneInterruptions: evo.tneInterruptions ? JSON.parse(evo.tneInterruptions) : undefined,
     unintentionalCalories: evo.unintentionalCalories ? JSON.parse(evo.unintentionalCalories) : undefined,
+    weight: evo.weight ?? undefined,
 });
 
 const buildEvolutionPayload = (payload: any, hospitalId: string) => {

@@ -38,10 +38,12 @@ import { useCurrentRole } from "@/hooks/useCurrentRole";
 import type { DailyEvolution, Formula, Module, Patient, Prescription, Supply } from "@/lib/database";
 import { printElementInPopup } from "@/lib/printPopup";
 import { getManualBillingAdjustmentsForPeriod } from "@/lib/manualAdjustments";
+import { clampPercent } from "@/lib/monitoringCalculations";
 
 type ChartRow = {
   date: string;
   enteralPct: number;
+  hasData?: boolean;
 };
 
 type InterruptionReasonRow = {
@@ -146,8 +148,6 @@ const formatNumber = (value: number, digits = 1): string =>
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-
-const clampPercent = (value: number): number => Math.max(0, Math.min(value, 140));
 
 const buildDateRange = (startDate: string, endDate: string): string[] => {
   const dates: string[] = [];
@@ -469,10 +469,24 @@ const Reports = () => {
   );
 
   const historyData = useMemo<ChartRow[]>(() => {
-    const grouped: Record<string, { enteral: number; count: number }> = {};
+    const grouped: Record<string, {
+      infusedVolume: number;
+      prescribedVolume: number;
+      infusedKcal: number;
+      prescribedKcal: number;
+      fallbackPctSum: number;
+      fallbackCount: number;
+    }> = {};
 
     daysInPeriod.forEach((day) => {
-      grouped[day] = { enteral: 0, count: 0 };
+      grouped[day] = {
+        infusedVolume: 0,
+        prescribedVolume: 0,
+        infusedKcal: 0,
+        prescribedKcal: 0,
+        fallbackPctSum: 0,
+        fallbackCount: 0,
+      };
     });
 
     filteredEvolutions.forEach((evolution) => {
@@ -492,27 +506,59 @@ const Reports = () => {
       }
 
       const prescribedVolume = evolution.prescribedVolume || enteralPrescription?.totalVolume || 0;
-      const enteralPct = prescribedVolume > 0
-        ? clampPercent(((evolution.volumeInfused || 0) / prescribedVolume) * 100)
-        : clampPercent(evolution.metaReached || 0);
+      const infusedVolume = evolution.volumeInfused || (
+        prescribedVolume > 0 && (evolution.metaReached || 0) > 0
+          ? prescribedVolume * ((evolution.metaReached || 0) / 100)
+          : 0
+      );
+      const prescribedKcal = enteralPrescription?.totalCalories || 0;
+      const infusedKcal = evolution.enteralKcal || (
+        prescribedKcal > 0 && (evolution.metaReached || 0) > 0
+          ? prescribedKcal * ((evolution.metaReached || 0) / 100)
+          : 0
+      );
 
-      grouped[evolution.date].enteral += enteralPct;
-      grouped[evolution.date].count += 1;
+      if (prescribedVolume > 0) {
+        grouped[evolution.date].prescribedVolume += prescribedVolume;
+        grouped[evolution.date].infusedVolume += infusedVolume;
+        return;
+      }
+
+      if (prescribedKcal > 0) {
+        grouped[evolution.date].prescribedKcal += prescribedKcal;
+        grouped[evolution.date].infusedKcal += infusedKcal;
+        return;
+      }
+
+      grouped[evolution.date].fallbackPctSum += clampPercent(evolution.metaReached || 0);
+      grouped[evolution.date].fallbackCount += 1;
     });
 
     return daysInPeriod.map((day) => {
       const entry = grouped[day];
-      const enteralPct = entry.count > 0 ? Number((entry.enteral / entry.count).toFixed(1)) : 0;
+      let enteralPct = 0;
+
+      if (entry.prescribedVolume > 0) {
+        enteralPct = clampPercent((entry.infusedVolume / entry.prescribedVolume) * 100);
+      } else if (entry.prescribedKcal > 0) {
+        enteralPct = clampPercent((entry.infusedKcal / entry.prescribedKcal) * 100);
+      } else if (entry.fallbackCount > 0) {
+        enteralPct = clampPercent(entry.fallbackPctSum / entry.fallbackCount);
+      }
 
       return {
         date: formatLabelDate(day),
-        enteralPct,
+        enteralPct: Number(enteralPct.toFixed(1)),
+        hasData:
+          entry.prescribedVolume > 0
+          || entry.prescribedKcal > 0
+          || entry.fallbackCount > 0,
       };
     });
   }, [daysInPeriod, filteredEvolutions, prescriptionsByPatient]);
 
   const historySummary = useMemo(() => {
-    const validRows = historyData.filter((row) => row.enteralPct > 0);
+    const validRows = historyData.filter((row) => row.hasData);
     if (validRows.length === 0) {
       return { avgPercentage: "0.0", daysOnGoal: 0, daysBelow: 0 };
     }

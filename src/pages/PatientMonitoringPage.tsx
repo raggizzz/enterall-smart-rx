@@ -13,6 +13,11 @@ import BottomNav from "@/components/BottomNav";
 import PatientMonitoring from "@/components/PatientMonitoring";
 import { usePatients, usePrescriptions, useEvolutions } from "@/hooks/useDatabase";
 import { DailyEvolution, Patient, Prescription } from "@/lib/database";
+import {
+    calculateUnintentionalCaloriesBreakdown,
+    clampPercent,
+    resolveTargetKcalForDay,
+} from "@/lib/monitoringCalculations";
 
 type ChartRow = {
     date: string;
@@ -22,8 +27,6 @@ type ChartRow = {
     nonIntentionalPct: number;
     totalPct: number;
 };
-
-const clampPercent = (value: number): number => Math.max(0, Math.min(value, 140));
 
 const formatLabelDate = (isoDate: string): string => {
     const date = new Date(`${isoDate}T00:00:00`);
@@ -41,19 +44,6 @@ const buildLastSevenDays = (): string[] => {
     }
 
     return days;
-};
-
-const calculateUnintentionalKcal = (source?: { unintentionalCalories?: Patient["unintentionalCalories"]; nonIntentionalKcal?: number }): number => {
-    if (typeof source?.nonIntentionalKcal === "number") return source.nonIntentionalKcal;
-
-    const unintentional = source?.unintentionalCalories;
-    if (!unintentional) return 0;
-
-    const propofol = (unintentional.propofolMlH || 0) * 1.1 * 24;
-    const glucose = (unintentional.glucoseGDay || 0) * 3.4;
-    const citrate = (unintentional.citrateGDay || 0) * 3;
-
-    return propofol + glucose + citrate;
 };
 
 const isPrescriptionActiveOn = (prescription: Prescription, day: string): boolean => {
@@ -260,27 +250,17 @@ export default function PatientMonitoringPage() {
             const oralPrescription = pickPrescriptionForType(prescriptionsOnDay, "oral");
             const parenteralPrescription = pickPrescriptionForType(prescriptionsOnDay, "parenteral");
 
-            const targetKcal = (() => {
-                const tneGoal = selectedPatient.tneGoals?.targetKcalPerKg;
-                if (tneGoal && selectedPatient.weight) return tneGoal * selectedPatient.weight;
-
-                if (enteralPrescription?.totalCalories) return enteralPrescription.totalCalories;
-                if (parenteralPrescription?.totalCalories) return parenteralPrescription.totalCalories;
-
-                const fallbackPrescription = [...prescriptionsOnDay]
-                    .sort(sortByMostRecentStartDate)
-                    .find((prescription) => (prescription.totalCalories || 0) > 0);
-                if (fallbackPrescription?.totalCalories) return fallbackPrescription.totalCalories;
-
-                if (selectedPatient.weight) return selectedPatient.weight * 25;
-                return 0;
-            })();
+            const targetKcal = resolveTargetKcalForDay({
+                patient: selectedPatient,
+                evolution: evolutionOnDay,
+                prescriptionsOnDay,
+            });
 
             const oralKcal = evolutionOnDay?.oralKcal ?? oralPrescription?.totalCalories ?? 0;
             const enteralInfusedKcal = evolutionOnDay?.enteralKcal
                 ?? (enteralPrescription?.totalCalories || 0) * ((evolutionOnDay?.metaReached || 0) / 100);
             const parenteralKcal = evolutionOnDay?.parenteralKcal ?? parenteralPrescription?.totalCalories ?? 0;
-            const nonIntentionalKcal = calculateUnintentionalKcal(evolutionOnDay || selectedPatient);
+            const nonIntentionalKcal = calculateUnintentionalCaloriesBreakdown(evolutionOnDay || selectedPatient).total;
 
             const oralPct = targetKcal > 0 ? clampPercent((oralKcal / targetKcal) * 100) : 0;
             const enteralPct = targetKcal > 0 ? clampPercent((enteralInfusedKcal / targetKcal) * 100) : 0;
@@ -353,10 +333,11 @@ export default function PatientMonitoringPage() {
                 enteralProtein: enteralInfusedProtein,
                 parenteralKcal: data.parenteralKcal ?? savedEvolution?.parenteralKcal ?? totals.parenteralKcal,
                 parenteralProtein: data.parenteralProtein ?? savedEvolution?.parenteralProtein ?? totals.parenteralProtein,
-                nonIntentionalKcal: data.nonIntentionalKcal ?? calculateUnintentionalKcal(updatedPatient),
+                nonIntentionalKcal: data.nonIntentionalKcal ?? calculateUnintentionalCaloriesBreakdown(updatedPatient).total,
                 tneGoals: data.tneGoals ?? updatedPatient.tneGoals,
                 tneInterruptions: data.tneInterruptions ?? updatedPatient.tneInterruptions,
                 unintentionalCalories: data.unintentionalCalories ?? updatedPatient.unintentionalCalories,
+                weight: data.weight ?? updatedPatient.weight,
                 notes: data.monitoringNotes ?? updatedPatient.monitoringNotes,
             };
 

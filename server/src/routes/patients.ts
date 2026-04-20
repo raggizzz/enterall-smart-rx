@@ -71,6 +71,42 @@ const resolveWardId = async (hospitalId?: string, ward?: string, wardId?: string
     return wardRecord?.id;
 };
 
+const normalizeRecordNumber = (value: unknown): string | undefined => {
+    const normalized = toOptionalString(value)?.trim();
+    return normalized ? normalized.toLowerCase() : undefined;
+};
+
+const ensureUniqueRecordNumber = async (
+    hospitalId: string,
+    recordNumber: unknown,
+    excludePatientId?: string,
+) => {
+    const normalizedRecord = normalizeRecordNumber(recordNumber);
+    if (!normalizedRecord) return;
+
+    const existingPatients = await prisma.patient.findMany({
+        where: {
+            hospitalId,
+            ...(excludePatientId ? { id: { not: excludePatientId } } : {}),
+            recordNumber: { not: null },
+        },
+        select: {
+            id: true,
+            recordNumber: true,
+        },
+    });
+
+    const duplicate = existingPatients.find((patient) =>
+        normalizeRecordNumber(patient.recordNumber) === normalizedRecord,
+    );
+
+    if (duplicate) {
+        const error = new Error('Patient record already exists');
+        error.name = 'DuplicatePatientRecordError';
+        throw error;
+    }
+};
+
 const buildPatientData = async (payload: any, hospitalId: string) => {
     const wardId = await resolveWardId(hospitalId, payload.ward, payload.wardId);
     const weight = typeof payload.weight === 'number' ? payload.weight : undefined;
@@ -237,12 +273,17 @@ router.post('/', requireRole('general_manager', 'local_manager', 'nutritionist')
         if (!hospitalId) return;
 
         await withIdempotency(prisma, req, res, async () => {
+            await ensureUniqueRecordNumber(hospitalId, req.body.record ?? req.body.recordNumber);
             const newPatient = await prisma.patient.create({
                 data: await buildPatientData(req.body, hospitalId)
             });
             return { statusCode: 201, body: { id: newPatient.id, version: newPatient.version } };
         });
     } catch (error) {
+        if (error instanceof Error && error.name === 'DuplicatePatientRecordError') {
+            res.status(409).json({ error: 'Já existe um paciente com esse número de prontuário nesta unidade.' });
+            return;
+        }
         res.status(500).json({ error: 'Failed to create patient' });
     }
 });
@@ -266,6 +307,12 @@ router.put('/:id', requireRole('general_manager', 'local_manager', 'nutritionist
 
             assertExpectedVersion(current.version, resolveExpectedVersion(req), 'patient');
 
+            await ensureUniqueRecordNumber(
+                hospitalId,
+                (req.body as Record<string, unknown>).record ?? (req.body as Record<string, unknown>).recordNumber,
+                id,
+            );
+
             const updated = await prisma.patient.update({
                 where: { id },
                 data: {
@@ -278,6 +325,10 @@ router.put('/:id', requireRole('general_manager', 'local_manager', 'nutritionist
     } catch (error) {
         if (error instanceof VersionConflictError) {
             res.status(409).json({ error: 'Version conflict', currentVersion: error.currentVersion });
+            return;
+        }
+        if (error instanceof Error && error.name === 'DuplicatePatientRecordError') {
+            res.status(409).json({ error: 'Já existe um paciente com esse número de prontuário nesta unidade.' });
             return;
         }
         console.error('Failed to update patient', req.params.id, error);

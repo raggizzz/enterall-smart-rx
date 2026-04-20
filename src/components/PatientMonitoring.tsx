@@ -48,6 +48,12 @@ import {
     TNEInterruptions,
     UnintentionalCalories
 } from "@/lib/database";
+import { calculateBmi, calculateIdealWeight } from "@/lib/prescriptionCalculations";
+import {
+    calculateUnintentionalCaloriesBreakdown,
+    getMonitoringWeight,
+    resolveTargetKcalForDay,
+} from "@/lib/monitoringCalculations";
 
 interface MonitoringChartRow {
     date: string;
@@ -103,15 +109,17 @@ export const PatientMonitoring = ({
     savedEvolution,
 }: PatientMonitoringProps) => {
     // Estados locais
-    const [goals, setGoals] = useState<TNEGoals>(patient.tneGoals || {});
+    const [goals, setGoals] = useState<TNEGoals>(savedEvolution?.tneGoals || patient.tneGoals || {});
     const [infusionPercentageInput, setInfusionPercentageInput] = useState(
-        savedEvolution?.metaReached !== undefined ? String(savedEvolution.metaReached) : ""
+        savedEvolution?.metaReached !== undefined
+            ? String(savedEvolution.metaReached)
+            : String(patient.infusionPercentage24h ?? "")
     );
     const [interruptions, setInterruptions] = useState<TNEInterruptions>(
-        patient.tneInterruptions || {}
+        savedEvolution?.tneInterruptions || patient.tneInterruptions || {}
     );
     const [unintentionalCal, setUnintentionalCal] = useState<UnintentionalCalories>(
-        patient.unintentionalCalories || {}
+        savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {}
     );
     const [monitoringNotes, setMonitoringNotes] = useState(patient.monitoringNotes || "");
     const [oralPercentageInput, setOralPercentageInput] = useState(
@@ -129,38 +137,41 @@ export const PatientMonitoring = ({
     const [devicesOpen, setDevicesOpen] = useState(false);
 
     useEffect(() => {
-        setGoals(patient.tneGoals || {});
-        setInfusionPercentageInput(savedEvolution?.metaReached !== undefined ? String(savedEvolution.metaReached) : "");
-        setInterruptions(patient.tneInterruptions || {});
-        setUnintentionalCal(patient.unintentionalCalories || {});
+        setGoals(savedEvolution?.tneGoals || patient.tneGoals || {});
+        setInfusionPercentageInput(
+            savedEvolution?.metaReached !== undefined
+                ? String(savedEvolution.metaReached)
+                : String(patient.infusionPercentage24h ?? "")
+        );
+        setInterruptions(savedEvolution?.tneInterruptions || patient.tneInterruptions || {});
+        setUnintentionalCal(savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {});
         setMonitoringNotes(patient.monitoringNotes || "");
         setOralPercentageInput(savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : "");
         setParenteralPercentageInput(savedEvolution?.parenteralKcal !== undefined && parenteralKcal > 0 ? String(Math.round((savedEvolution.parenteralKcal / parenteralKcal) * 100)) : "");
     }, [patient, savedEvolution, oralKcal, oralProtein, parenteralKcal, parenteralProtein]);
 
     // Calcular peso ideal (IMC 25)
-    const idealWeight = useMemo(() => {
-        if (!patient.height) return undefined;
-        const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
-        const heightM = heightCm / 100;
-        return 25 * heightM * heightM;
-    }, [patient.height]);
+    const monitoringWeight = useMemo(
+        () => getMonitoringWeight(patient, savedEvolution),
+        [patient, savedEvolution],
+    );
+
+    const idealWeight = useMemo(
+        () => calculateIdealWeight(patient.height, patient.dob) ?? undefined,
+        [patient.height, patient.dob],
+    );
 
     // Calcular IMC
-    const bmi = useMemo(() => {
-        if (!patient.weight || !patient.height) return undefined;
-        const heightCm = patient.height < 3 ? patient.height * 100 : patient.height;
-        const heightM = heightCm / 100;
-        return patient.weight / (heightM * heightM);
-    }, [patient.weight, patient.height]);
+    const bmi = useMemo(
+        () => calculateBmi(monitoringWeight, patient.height, patient.dob) ?? undefined,
+        [monitoringWeight, patient.height, patient.dob],
+    );
 
     // Calcular calorias não intencionais
-    const unintentionalKcal = useMemo(() => {
-        const propofol = (unintentionalCal.propofolMlH || 0) * 1.1 * 24;
-        const glucose = (unintentionalCal.glucoseGDay || 0) * 3.4;
-        const citrate = (unintentionalCal.citrateGDay || 0) * 3.0;
-        return { propofol, glucose, citrate, total: propofol + glucose + citrate };
-    }, [unintentionalCal]);
+    const unintentionalKcal = useMemo(
+        () => calculateUnintentionalCaloriesBreakdown({ unintentionalCalories: unintentionalCal }),
+        [unintentionalCal],
+    );
 
     const infusionPercentage = Number(infusionPercentageInput) || 0;
     const oralPercentage = Number(oralPercentageInput) || 0;
@@ -187,11 +198,11 @@ export const PatientMonitoring = ({
         const totalFat = enteralFat + oralFat + parenteralFat;
         const totalFiber = enteralFiber + oralFiber + parenteralFiber;
 
-        const kcalPerKg = patient.weight ? totalKcal / patient.weight : 0;
-        const proteinPerKg = patient.weight ? totalProtein / patient.weight : 0;
+        const kcalPerKg = monitoringWeight ? totalKcal / monitoringWeight : 0;
+        const proteinPerKg = monitoringWeight ? totalProtein / monitoringWeight : 0;
         const proteinPerKgIdeal = idealWeight ? totalProtein / idealWeight : 0;
-        const carbsPerKg = patient.weight ? totalCarbs / patient.weight : 0;
-        const fatPerKg = patient.weight ? totalFat / patient.weight : 0;
+        const carbsPerKg = monitoringWeight ? totalCarbs / monitoringWeight : 0;
+        const fatPerKg = monitoringWeight ? totalFat / monitoringWeight : 0;
 
         const protKcal = totalProtein * 4;
         const carbKcal = totalCarbs * 4;
@@ -226,7 +237,7 @@ export const PatientMonitoring = ({
         enteralCarbs, oralCarbs, parenteralCarbs,
         enteralFat, oralFat, parenteralFat,
         enteralFiber, oralFiber, parenteralFiber,
-        patient.weight, idealWeight, unintentionalKcal.total,
+        monitoringWeight, idealWeight, unintentionalKcal.total,
     ]);
 
     const actualNutrition = useMemo(() => {
@@ -238,10 +249,10 @@ export const PatientMonitoring = ({
             intentionalKcal,
             totalKcal,
             totalProtein,
-            kcalPerKg: patient.weight ? totalKcal / patient.weight : 0,
-            proteinPerKg: patient.weight ? totalProtein / patient.weight : 0,
+            kcalPerKg: monitoringWeight ? totalKcal / monitoringWeight : 0,
+            proteinPerKg: monitoringWeight ? totalProtein / monitoringWeight : 0,
         };
-    }, [actualEnteralKcal, oralActualKcal, parenteralActualKcal, actualEnteralProtein, oralActualProtein, parenteralActualProtein, patient.weight, unintentionalKcal.total]);
+    }, [actualEnteralKcal, oralActualKcal, parenteralActualKcal, actualEnteralProtein, oralActualProtein, parenteralActualProtein, monitoringWeight, unintentionalKcal.total]);
 
     const actualIntentionalNutrition = useMemo(() => ({
         totalKcal: actualEnteralKcal + oralActualKcal + parenteralActualKcal,
@@ -249,9 +260,21 @@ export const PatientMonitoring = ({
     }), [actualEnteralKcal, oralActualKcal, parenteralActualKcal, actualEnteralProtein, oralActualProtein, parenteralActualProtein]);
 
     const targetKcal = useMemo(() => {
-        if (!goals.targetKcalPerKg || !patient.weight) return 0;
-        return goals.targetKcalPerKg * patient.weight;
-    }, [goals.targetKcalPerKg, patient.weight]);
+        if (goals.targetKcalPerKg && monitoringWeight) {
+            return goals.targetKcalPerKg * monitoringWeight;
+        }
+
+        const intentionalCalories = enteralKcal + oralKcal + parenteralKcal;
+        if (intentionalCalories > 0) {
+            return intentionalCalories;
+        }
+
+        return resolveTargetKcalForDay({
+            patient,
+            evolution: savedEvolution,
+            prescriptionsOnDay: [],
+        });
+    }, [goals.targetKcalPerKg, monitoringWeight, enteralKcal, oralKcal, parenteralKcal, patient, savedEvolution]);
 
     const actualNutritionShare = useMemo(() => {
         if (targetKcal <= 0) {
@@ -344,6 +367,7 @@ export const PatientMonitoring = ({
                 unintentionalCalories: unintentionalCal,
                 monitoringNotes,
                 idealWeight: idealWeight,
+                weight: monitoringWeight,
                 oralKcal: oralActualKcal,
                 oralProtein: oralActualProtein,
                 enteralKcal: actualEnteralKcal,

@@ -1,5 +1,6 @@
 import type { Patient, Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
+import { calculateUnintentionalCaloriesBreakdown } from "@/lib/monitoringCalculations";
 
 interface SectorMapPrintProps {
   hospitalName?: string;
@@ -110,16 +111,7 @@ const getOralScheduleNames = (schedule?: Record<string, unknown>) => {
 };
 
 const getUnintentionalBreakdown = (patient?: Patient) => {
-  const source = patient?.unintentionalCalories;
-  const propofol = (source?.propofolMlH || 0) * 1.1 * 24;
-  const glucose = (source?.glucoseGDay || 0) * 3.4;
-  const citrate = (source?.citrateGDay || 0) * 3;
-  return {
-    propofol,
-    glucose,
-    citrate,
-    total: propofol + glucose + citrate,
-  };
+  return calculateUnintentionalCaloriesBreakdown(patient);
 };
 
 const joinNonEmpty = (items: Array<string | undefined | null>, separator = "   ") =>

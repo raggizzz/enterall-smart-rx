@@ -403,6 +403,7 @@ export interface DailyEvolution {
     tneGoals?: TNEGoals;
     tneInterruptions?: TNEInterruptions;
     unintentionalCalories?: UnintentionalCalories;
+    weight?: number;
     notes?: string;
     createdAt: string;
     updatedAt?: string;
@@ -924,6 +925,7 @@ const normalizeEvolution = (raw: any): DailyEvolution => {
         tneGoals: raw.tneGoals,
         tneInterruptions: raw.tneInterruptions,
         unintentionalCalories: raw.unintentionalCalories,
+        weight: toNumber(raw.weight),
         notes: raw.notes,
         createdAt: raw.createdAt || new Date().toISOString(),
         updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
