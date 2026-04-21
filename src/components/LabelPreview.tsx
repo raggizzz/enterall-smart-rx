@@ -22,7 +22,11 @@ export interface LabelData {
 }
 
 const LabelPreview = ({ data }: { data: LabelData }) => {
-    const isWaterLabel = `${data.templateTitle} ${data.formulaText || ""}`.toUpperCase().includes("AGUA");
+    const normalizedWaterText = `${data.templateTitle} ${data.formulaText || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase();
+    const isWaterLabel = normalizedWaterText.includes("AGUA");
 
     return (
         <article className="w-[63.5mm] h-[46.6mm] bg-white text-black p-[1.8mm] overflow-hidden font-sans print:shadow-none shadow-md rounded relative box-border border border-black">
