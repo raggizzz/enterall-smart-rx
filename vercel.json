@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://oxygen-jim-seeds-mrna.trycloudflare.com/health"
+      "destination": "https://checkout-reader-ebooks-priced.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://oxygen-jim-seeds-mrna.trycloudflare.com/health/:path*"
+      "destination": "https://checkout-reader-ebooks-priced.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://oxygen-jim-seeds-mrna.trycloudflare.com/api/:path*"
+      "destination": "https://checkout-reader-ebooks-priced.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
