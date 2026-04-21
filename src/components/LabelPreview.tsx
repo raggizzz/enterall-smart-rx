@@ -49,7 +49,7 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                     </div>
                 </div>
 
-                <div className="mt-[1mm] grid grid-cols-[1.05fr_0.95fr] gap-[1mm]">
+                <div className="mt-[1mm] grid grid-cols-[1.25fr_0.75fr] gap-[1mm]">
                     <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.8mm]">
                         <div className="text-[6.4px] font-bold uppercase leading-none">Leito</div>
                         <div className="mt-[0.6mm] text-[10.5px] font-extrabold leading-none">{data.bed}</div>
@@ -70,8 +70,8 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                 )}
 
                 {isWaterLabel && data.compositionText && (
-                    <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.9mm] text-[7.1px] leading-tight">
-                        <span className="font-bold">Aditivos:</span> {data.compositionText}
+                    <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.9mm] text-[6.7px] leading-tight break-words">
+                        <span className="font-bold">Modulos:</span> {data.compositionText}
                     </div>
                 )}
 
