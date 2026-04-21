@@ -437,7 +437,7 @@ const Labels = () => {
                                     pushLabel(
                                         {
                                             clinic: clinicName,
-                                            templateTitle: "Dieta Enteral",
+                                            templateTitle: "Dieta Enteral Sistema Fechado",
                                             patientName,
                                             bed,
                                             record,
@@ -466,7 +466,7 @@ const Labels = () => {
                                 pushLabel(
                                     {
                                         clinic: clinicName,
-                                        templateTitle: "Dieta Enteral",
+                                        templateTitle: "Dieta Enteral Sistema Fechado",
                                         patientName,
                                         bed,
                                         record,
@@ -491,11 +491,7 @@ const Labels = () => {
                         }
                     } else {
                         // Open system
-                        const openTitle = hasPowderLike
-                            ? "Pó e fórmula infantil"
-                            : hasDilution
-                                ? "Dieta Enteral com Diluição"
-                                : "Dieta Enteral Líquida";
+                        const openTitle = "Dieta Enteral Sistema Aberto";
 
                         if (formulaEntries.length > 0) {
                             formulaEntries.forEach((formula, idx) => {
