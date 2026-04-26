@@ -52,6 +52,30 @@ type SupplyFormState = Partial<Omit<Supply, 'capacityMl' | 'unitPrice' | 'plasti
     glassG?: number | string;
 };
 
+const CATEGORY_OPTIONS: Array<{ value: NonNullable<Supply["category"]>; label: string }> = [
+    { value: "standard", label: "Padrão" },
+    { value: "feeding-bottle", label: "Frasco para dieta" },
+    { value: "baby-bottle", label: "Mamadeira" },
+    { value: "cup", label: "Copo" },
+    { value: "pump-set", label: "Equipo de bomba" },
+    { value: "gravity-set", label: "Equipo gravitacional" },
+    { value: "bolus-set", label: "Equipo/seringa para bolus" },
+    { value: "hydration-water", label: "Água para hidratação" },
+    { value: "thickener", label: "Espessante" },
+    { value: "other", label: "Outro" },
+];
+
+const BILLING_UNIT_OPTIONS: Array<{ value: NonNullable<Supply["billingUnit"]>; label: string }> = [
+    { value: "unit", label: "Unidade" },
+    { value: "ml", label: "mL" },
+    { value: "pack", label: "Pacote" },
+    { value: "box", label: "Caixa" },
+    { value: "other", label: "Outro" },
+];
+
+const getCategoryLabel = (category?: Supply["category"]) =>
+    CATEGORY_OPTIONS.find((option) => option.value === category)?.label || "Padrão";
+
 const Supplies = () => {
     const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
     const role = useCurrentRole();
@@ -82,8 +106,8 @@ const Supplies = () => {
                 code: currentSupply.code!,
                 name: currentSupply.name!,
                 type: currentSupply.type!,
-                category: 'standard' as const,
-                billingUnit: 'unit' as const,
+                category: (currentSupply.category || 'standard') as NonNullable<Supply["category"]>,
+                billingUnit: (currentSupply.billingUnit || 'unit') as NonNullable<Supply["billingUnit"]>,
                 capacityMl: currentSupply.type === 'bottle' ? toOptionalNumber(currentSupply.capacityMl) : undefined,
                 unitPrice: toOptionalNumber(currentSupply.unitPrice) || 0,
                 isBillable: true,
@@ -211,6 +235,45 @@ const Supplies = () => {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid gap-2">
+                                        <Label>Categoria</Label>
+                                        <Select
+                                            value={currentSupply.category || "standard"}
+                                            onValueChange={(val: NonNullable<Supply["category"]>) => setCurrentSupply({ ...currentSupply, category: val })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione a categoria" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {CATEGORY_OPTIONS.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label>Unidade de faturamento</Label>
+                                        <Select
+                                            value={currentSupply.billingUnit || "unit"}
+                                            onValueChange={(val: NonNullable<Supply["billingUnit"]>) => setCurrentSupply({ ...currentSupply, billingUnit: val })}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione a unidade" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {BILLING_UNIT_OPTIONS.map((option) => (
+                                                    <SelectItem key={option.value} value={option.value}>
+                                                        {option.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {currentSupply.type === 'bottle' && (
                                         <div className="grid gap-2">
                                             <Label>Capacidade (mL)</Label>
@@ -308,6 +371,7 @@ const Supplies = () => {
                                     <TableHead>Código</TableHead>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Tipo</TableHead>
+                                    <TableHead>Categoria</TableHead>
                                     <TableHead>Capacidade</TableHead>
                                     <TableHead>Valor</TableHead>
                                     <TableHead>Resíduos</TableHead>
@@ -317,11 +381,11 @@ const Supplies = () => {
                             <TableBody>
                                 {isLoading ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8">Carregando...</TableCell>
+                                        <TableCell colSpan={8} className="text-center py-8">Carregando...</TableCell>
                                     </TableRow>
                                 ) : filteredSupplies.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                             Nenhum insumo encontrado
                                         </TableCell>
                                     </TableRow>
@@ -342,6 +406,9 @@ const Supplies = () => {
                                                     {supply.type === 'bottle' ? 'Frasco' :
                                                         supply.type === 'set' ? 'Equipo' : 'Outros'}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {getCategoryLabel(supply.category)}
                                             </TableCell>
                                             <TableCell>
                                                 {supply.capacityMl ? `${supply.capacityMl} mL` : '-'}

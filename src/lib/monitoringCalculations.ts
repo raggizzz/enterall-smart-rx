@@ -24,7 +24,7 @@ export const calculateUnintentionalCaloriesBreakdown = (
 
   const propofol = (unintentional.propofolMlH || 0) * 1.1 * 24;
   const glucose = (unintentional.glucoseGDay || 0) * 3.4;
-  const citrate = (unintentional.citrateGDay || 0) * 3;
+  const citrate = (unintentional.citrateGDay || 0) * 2.47;
 
   return {
     propofol: round1(propofol),

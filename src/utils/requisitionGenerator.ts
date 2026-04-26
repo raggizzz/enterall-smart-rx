@@ -187,8 +187,45 @@ export const generateRequisitionData = ({
         return modules.find((moduleItem) => moduleItem.name.trim().toLowerCase() === normalizedName);
     };
 
-    const findSupplyByCategory = (category: Supply['category']) =>
-        supplies.find((s) => s.category === category && s.isActive && s.isBillable !== false);
+    const findSupplyByCategory = (...categories: Array<Supply['category']>) =>
+        supplies.find((s) => categories.includes(s.category) && s.isActive && s.isBillable !== false);
+    const getPumpSupply = () =>
+        findSupplyByCategory('pump-set')
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('bomba'))
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set');
+    const getGravitySupply = () =>
+        findSupplyByCategory('gravity-set')
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('gravit'))
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set');
+    const getBolusSupply = () =>
+        findSupplyByCategory('bolus-set')
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('bolus'));
+    const getBottleSupply = () =>
+        findSupplyByCategory('feeding-bottle', 'baby-bottle')
+        || supplies.find((s) => s.type === 'bottle' && s.isActive && s.isBillable !== false);
+    const getWaterSupply = () =>
+        findSupplyByCategory('hydration-water')
+        || supplies.find((s) => s.isActive && s.isBillable !== false && s.name.toLowerCase().includes('agua'));
+    const addSupplyCharge = (supply: Supply | undefined, requestedAmount: number) => {
+        if (!supply || !Number.isFinite(requestedAmount) || requestedAmount <= 0) return;
+
+        const billingUnit = supply.billingUnit || 'unit';
+        const capacityMl = Number(supply.capacityMl || 0);
+        const totalQuantity = billingUnit === 'ml'
+            ? requestedAmount
+            : capacityMl > 0
+                ? Math.ceil(requestedAmount / capacityMl)
+                : requestedAmount;
+
+        addToConsolidated(
+            supply.code,
+            supply.name,
+            totalQuantity,
+            billingUnit,
+            supply.unitPrice || 0,
+            'supply',
+        );
+    };
 
     const eligiblePrescriptions = prescriptions.filter(p => {
         if (p.status !== 'active') return false;
@@ -451,6 +488,7 @@ export const generateRequisitionData = ({
                     observation: 'Linha separada de hidratação'
                 });
                 const totalVol = p.hydrationVolume * matchingTimes.length * dayDiff;
+                addSupplyCharge(getWaterSupply(), totalVol);
                 // Exclude water from consolidated billing as requested
                 // addToConsolidated('WATER-001', 'ÁGUA FILTRADA', totalVol, 'ml', 0, 'diet');
 
@@ -464,29 +502,24 @@ export const generateRequisitionData = ({
         // --- Supplies Heuristics (Consolidated Only) ---
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
             if (p.infusionMode === 'pump') {
-                const pumpSupply = supplies.find(s => s.name.toLowerCase().includes('bomba')) || supplies.find(s => s.type === 'set');
-
-                if (pumpSupply) {
-                    addToConsolidated(pumpSupply.code, pumpSupply.name, 1 * dayDiff, 'un', pumpSupply.unitPrice, 'supply');
-                }
+                addSupplyCharge(getPumpSupply(), dayDiff);
             } else if (p.infusionMode === 'gravity') {
-                const gravSupply = supplies.find(s => s.name.toLowerCase().includes('gravitacional')) || supplies.find(s => s.type === 'set');
-                if (gravSupply) {
-                    addToConsolidated(gravSupply.code, gravSupply.name, 1 * dayDiff, 'un', gravSupply.unitPrice, 'supply');
-                }
+                addSupplyCharge(getGravitySupply(), dayDiff);
+            } else if (p.infusionMode === 'bolus') {
+                addSupplyCharge(getBolusSupply(), dayDiff);
             }
 
             // Bottles (Frascos)
             if (dailyBottles > 0) {
-                const bottleSupply = findSupplyByCategory('feeding-bottle') || supplies.find(s => s.type === 'bottle' && s.isActive && s.isBillable !== false);
+                const bottleSupply = getBottleSupply();
                 if (bottleSupply) {
-                    addToConsolidated(bottleSupply.code, bottleSupply.name, dailyBottles * dayDiff, 'un', bottleSupply.unitPrice, 'supply');
+                    addSupplyCharge(bottleSupply, dailyBottles * dayDiff);
                 }
             }
         }
 
         if (p.therapyType === 'oral' && p.oralDetails?.deliveryMethod === 'feeding-bottle') {
-            const feedingBottle = findSupplyByCategory('feeding-bottle') || supplies.find(s => s.type === 'bottle' && s.isActive && s.isBillable !== false);
+            const feedingBottle = getBottleSupply();
             if (feedingBottle) {
                 const oralAdministrations = p.formulas.reduce((sum, formula) => {
                     const matchingTimes = (formula.schedules || [])
@@ -495,7 +528,7 @@ export const generateRequisitionData = ({
                     return sum + matchingTimes.length;
                 }, 0);
                 const totalUnits = Math.max(oralAdministrations, 1) * dayDiff;
-                addToConsolidated(feedingBottle.code, feedingBottle.name, totalUnits, 'un', feedingBottle.unitPrice, 'supply');
+                addSupplyCharge(feedingBottle, totalUnits);
             }
         }
 

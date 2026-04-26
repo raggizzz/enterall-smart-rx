@@ -129,7 +129,7 @@ const OralMap = () => {
                                             <div>
                                                 <CardTitle className="text-lg">{patient.bed || "Sem leito"}</CardTitle>
                                                 <p className="text-sm font-medium text-muted-foreground">{patient.name}</p>
-                                                <p className="text-xs text-muted-foreground">Prontuario: {patient.record}</p>
+                                                <p className="text-xs text-muted-foreground">Prontuario do paciente: {patient.record}</p>
                                             </div>
                                             <Badge className="bg-green-600">Dieta oral / suplementos</Badge>
                                         </div>

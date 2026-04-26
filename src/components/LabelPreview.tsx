@@ -109,7 +109,7 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                         )}
                     </div>
                     <div className="text-right min-w-[22mm]">
-                        <div className="font-bold uppercase">Resp. Tecnico</div>
+                        <div className="font-bold uppercase">Responsavel Tecnico</div>
                         <div className="truncate">{data.rtName}</div>
                         <div>{data.rtCrn}</div>
                     </div>

@@ -610,13 +610,13 @@ export default function OralTherapyPage() {
                 {/* Estimativas */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>Estimativas da Dieta</CardTitle>
-                        <CardDescription>Valor estimado da alimentação oral (sem suplementos)</CardDescription>
+                        <CardTitle>Resumo da Dieta Oral</CardTitle>
+                        <CardDescription>Valor da alimentação oral (sem suplementos)</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                             <div className="space-y-2">
-                                <Label>Valor energetico total estimado (kcal)</Label>
+                                <Label>Valor energetico total (kcal)</Label>
                                 <Input
                                     type="number"
                                     value={estimatedVET || ''}

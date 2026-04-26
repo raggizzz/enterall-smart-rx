@@ -64,6 +64,8 @@ export interface TNEGoals {
     targetKcalPerKg?: number;
     targetProteinPerKgActual?: number;
     targetProteinPerKgIdeal?: number;
+    targetKcalWeightBasis?: 'actual' | 'ideal';
+    targetProteinWeightBasis?: 'actual' | 'ideal';
 }
 
 export interface Patient {
@@ -195,9 +197,19 @@ export interface Supply {
     code: string;
     name: string;
     type: 'bottle' | 'set' | 'other';
-    category?: 'standard' | 'thickener' | 'cup' | 'baby-bottle' | 'feeding-bottle' | 'other';
+    category?:
+        | 'standard'
+        | 'thickener'
+        | 'cup'
+        | 'baby-bottle'
+        | 'feeding-bottle'
+        | 'pump-set'
+        | 'gravity-set'
+        | 'bolus-set'
+        | 'hydration-water'
+        | 'other';
     description?: string;
-    billingUnit?: 'unit' | 'pack' | 'box' | 'other';
+    billingUnit?: 'unit' | 'pack' | 'box' | 'ml' | 'other';
     capacityMl?: number;
     unitPrice: number;
     isBillable?: boolean;
@@ -664,6 +676,8 @@ const normalizePatient = (raw: any): Patient => {
                 targetKcalPerKg,
                 targetProteinPerKgActual,
                 targetProteinPerKgIdeal: raw.tneGoals?.targetProteinPerKgIdeal,
+                targetKcalWeightBasis: raw.tneGoals?.targetKcalWeightBasis,
+                targetProteinWeightBasis: raw.tneGoals?.targetProteinWeightBasis,
             }
             : undefined,
         infusionPercentage24h: toNumber(raw.infusionPercentage24h),

@@ -638,11 +638,11 @@ const PrescriptionNew = () => {
   // --- Nutrition Goals State ---
   const [goalTargetKcalPerKg, setGoalTargetKcalPerKg] = useState<number | undefined>();
   const [goalTargetProteinPerKgActual, setGoalTargetProteinPerKgActual] = useState<number | undefined>();
-  const [goalTargetProteinPerKgIdeal, setGoalTargetProteinPerKgIdeal] = useState<number | undefined>();
+  const [energyWeightChoice, setEnergyWeightChoice] = useState<WeightChoice | null>(null);
+  const [proteinWeightChoice, setProteinWeightChoice] = useState<WeightChoice | null>(null);
 
   // --- Weight Config Override (per patient) ---
   type WeightChoice = 'actual' | 'ideal';
-  const [weightChoice, setWeightChoice] = useState<WeightChoice | null>(null); // null = auto
 
   // Parenteral derived values (auto-calc from ml inputs)
   const parenteralDerived = useMemo(
@@ -678,12 +678,13 @@ const PrescriptionNew = () => {
   }, [selectedPatient?.weight, selectedPatient?.height]);
 
   // Effective weight config = manual override > auto suggestion
-  const effectiveWeight = weightChoice || autoWeightConfig.energyWeight;
+  const effectiveEnergyWeight = energyWeightChoice || autoWeightConfig.energyWeight;
+  const effectiveProteinWeight = proteinWeightChoice || autoWeightConfig.proteinWeight;
   const weightConfig = useMemo(() => ({
-    energyWeight: effectiveWeight,
-    proteinWeight: effectiveWeight,
+    energyWeight: effectiveEnergyWeight,
+    proteinWeight: effectiveProteinWeight,
     label: autoWeightConfig.label,
-  }), [effectiveWeight, autoWeightConfig]);
+  }), [effectiveEnergyWeight, effectiveProteinWeight, autoWeightConfig]);
 
   // Calculated weights for display
   const calculatedIdealWeight = useMemo(() => {
@@ -694,10 +695,15 @@ const PrescriptionNew = () => {
   }, [selectedPatient?.height]);
 
   // Selected reference weight value
-  const referenceWeight = useMemo(() => {
-    if (effectiveWeight === 'ideal' && calculatedIdealWeight) return calculatedIdealWeight;
+  const energyReferenceWeight = useMemo(() => {
+    if (effectiveEnergyWeight === 'ideal' && calculatedIdealWeight) return calculatedIdealWeight;
     return selectedPatient?.weight || 0;
-  }, [effectiveWeight, calculatedIdealWeight, selectedPatient?.weight]);
+  }, [effectiveEnergyWeight, calculatedIdealWeight, selectedPatient?.weight]);
+
+  const proteinReferenceWeight = useMemo(() => {
+    if (effectiveProteinWeight === 'ideal' && calculatedIdealWeight) return calculatedIdealWeight;
+    return selectedPatient?.weight || 0;
+  }, [effectiveProteinWeight, calculatedIdealWeight, selectedPatient?.weight]);
 
   const calculatedBmi = useMemo(() => {
     const w = selectedPatient?.weight;
@@ -725,9 +731,7 @@ const PrescriptionNew = () => {
       : suggestedAgeGroup === "adult"
         ? "Adulto"
         : null;
-  const ageFilterHint = suggestedAgeGroupLabel
-    ? `Faixa etaria do paciente: ${suggestedAgeGroupLabel}. A lista abaixo respeita idade e rota cadastradas. Formulas infantis permanecem disponiveis ate 3 anos completos.`
-    : null;
+  const ageFilterHint = null;
 
   const formulaMatchesPatient = useCallback((formula: ExtendedCatalogFormula) => {
     if (patientAgeYears === undefined) return true;
@@ -1073,7 +1077,8 @@ const PrescriptionNew = () => {
     if (prescription.tneGoals) {
       setGoalTargetKcalPerKg(prescription.tneGoals.targetKcalPerKg);
       setGoalTargetProteinPerKgActual(prescription.tneGoals.targetProteinPerKgActual);
-      setGoalTargetProteinPerKgIdeal(prescription.tneGoals.targetProteinPerKgIdeal);
+      setEnergyWeightChoice(prescription.tneGoals.targetKcalWeightBasis || null);
+      setProteinWeightChoice(prescription.tneGoals.targetProteinWeightBasis || null);
     }
     if (prescription.unintentionalCalories) {
       setUnintentionalCal(prescription.unintentionalCalories);
@@ -1502,53 +1507,64 @@ const PrescriptionNew = () => {
   const bmi = nutritionSummary.weightMetrics.bmi;
   const idealWeight = nutritionSummary.weightMetrics.idealWeight;
   const goalSummary = useMemo(() => {
-    const energyGoal = goalTargetKcalPerKg && referenceWeight > 0
-      ? goalTargetKcalPerKg * referenceWeight
+    const energyGoal = goalTargetKcalPerKg && energyReferenceWeight > 0
+      ? goalTargetKcalPerKg * energyReferenceWeight
       : undefined;
-    const proteinGoal = goalTargetProteinPerKgActual && referenceWeight > 0
-      ? goalTargetProteinPerKgActual * referenceWeight
-      : undefined;
-    const idealProteinGoal = goalTargetProteinPerKgIdeal && calculatedIdealWeight
-      ? goalTargetProteinPerKgIdeal * calculatedIdealWeight
+    const proteinGoal = goalTargetProteinPerKgActual && proteinReferenceWeight > 0
+      ? goalTargetProteinPerKgActual * proteinReferenceWeight
       : undefined;
 
     return {
       energyGoal,
       proteinGoal,
-      idealProteinGoal,
       energyPct: energyGoal ? (nutritionSummary.vet / energyGoal) * 100 : undefined,
       proteinPct: proteinGoal ? (nutritionSummary.protein / proteinGoal) * 100 : undefined,
-      label: effectiveWeight === "ideal" ? "PI" : "PA",
+      energyLabel: effectiveEnergyWeight === "ideal" ? "PI" : "PA",
+      proteinLabel: effectiveProteinWeight === "ideal" ? "PI" : "PA",
     };
   }, [
-    calculatedIdealWeight,
-    effectiveWeight,
+    effectiveEnergyWeight,
+    effectiveProteinWeight,
+    energyReferenceWeight,
     goalTargetKcalPerKg,
     goalTargetProteinPerKgActual,
-    goalTargetProteinPerKgIdeal,
     nutritionSummary.protein,
     nutritionSummary.vet,
-    referenceWeight,
+    proteinReferenceWeight,
   ]);
 
   const unintentionalNoteLines = useMemo(() => {
     const lines: string[] = [];
     if (unintentionalResult.propofolKcal > 0) {
-      lines.push(`propofol ${formatDecimalValue(unintentionalResult.propofolKcal)} kcal (${formatDecimalValue(unintentionalResult.propofolLipidsG)} g de lipídeos)`);
+      const propofolMlDay = (unintentionalCal.propofolMlH || 0) * 24;
+      lines.push(
+        `Propofol (${formatDecimalValue(unintentionalCal.propofolMlH)} ml/h; ${formatDecimalValue(propofolMlDay)} ml/dia): ${formatDecimalValue(unintentionalResult.propofolKcal)} kcal/dia, adicionado ao percentual calórico de lipídeos.`,
+      );
     }
     if (unintentionalResult.glucoseKcal > 0) {
-      lines.push(`glicose ${formatDecimalValue(unintentionalResult.glucoseKcal)} kcal (${formatDecimalValue(unintentionalResult.glucoseCarbsG)} g de carboidratos)`);
+      lines.push(
+        `Glicose (${formatDecimalValue(unintentionalCal.glucoseGDay)} g/dia): ${formatDecimalValue(unintentionalResult.glucoseKcal)} kcal/dia, adicionada ao percentual calórico de carboidratos, sem compor o cálculo da TIG.`,
+      );
     }
     if (unintentionalResult.citrateKcal > 0) {
-      lines.push(`citrato ${formatDecimalValue(unintentionalResult.citrateKcal)} kcal`);
+      if ((unintentionalCal.citrateGDay || 0) > 0) {
+        lines.push(
+          `Citrato (${formatDecimalValue(unintentionalCal.citrateGDay)} g/dia): ${formatDecimalValue(unintentionalResult.citrateKcal)} kcal/dia, compondo somente o cálculo do VET.`,
+        );
+      } else {
+        lines.push(
+          `Citrato: ${formatDecimalValue(unintentionalResult.citrateKcal)} kcal/dia, compondo somente o cálculo do VET.`,
+        );
+      }
     }
     return lines;
   }, [
+    unintentionalCal.citrateGDay,
+    unintentionalCal.glucoseGDay,
+    unintentionalCal.propofolMlH,
     unintentionalResult.citrateKcal,
-    unintentionalResult.glucoseCarbsG,
     unintentionalResult.glucoseKcal,
     unintentionalResult.propofolKcal,
-    unintentionalResult.propofolLipidsG,
   ]);
 
   const chartNoteSuggestion = useMemo(() => {
@@ -1557,16 +1573,13 @@ const PrescriptionNew = () => {
     const lines: string[] = ["Registro em Prontuário:"];
     const routeLabel = formatEnteralAccessLabel(enteralAccess);
 
-    if (goalSummary.energyGoal || goalSummary.proteinGoal || goalSummary.idealProteinGoal) {
+    if (goalSummary.energyGoal || goalSummary.proteinGoal) {
       lines.push("Metas nutricionais:");
       if (goalSummary.energyGoal) {
-        lines.push(`- Energia: ${formatDecimalValue(goalSummary.energyGoal)} kcal/dia (${goalTargetKcalPerKg} kcal/kg ${goalSummary.label});`);
+        lines.push(`- Energia: ${formatDecimalValue(goalSummary.energyGoal)} kcal/dia (${goalTargetKcalPerKg} kcal/kg ${goalSummary.energyLabel});`);
       }
       if (goalSummary.proteinGoal) {
-        lines.push(`- Proteínas: ${formatDecimalValue(goalSummary.proteinGoal)} g/dia (${goalTargetProteinPerKgActual} g/kg ${goalSummary.label});`);
-      }
-      if (goalSummary.idealProteinGoal && goalSummary.label !== "PI") {
-        lines.push(`- Proteínas por peso ideal: ${formatDecimalValue(goalSummary.idealProteinGoal)} g/dia (${goalTargetProteinPerKgIdeal} g/kg PI);`);
+        lines.push(`- Proteínas: ${formatDecimalValue(goalSummary.proteinGoal)} g/dia (${goalTargetProteinPerKgActual} g/kg ${goalSummary.proteinLabel});`);
       }
     }
 
@@ -1661,13 +1674,12 @@ const PrescriptionNew = () => {
     feedingRoutes.enteral,
     goalSummary.energyGoal,
     goalSummary.energyPct,
-    goalSummary.idealProteinGoal,
-    goalSummary.label,
+    goalSummary.energyLabel,
     goalSummary.proteinGoal,
+    goalSummary.proteinLabel,
     goalSummary.proteinPct,
     goalTargetKcalPerKg,
     goalTargetProteinPerKgActual,
-    goalTargetProteinPerKgIdeal,
     hydration.times,
     hydration.volume,
     modules,
@@ -1758,7 +1770,7 @@ const PrescriptionNew = () => {
     ].filter(Boolean);
 
     lines.push(
-      `Dieta oral em consistência ${oralDietConsistency || "-"}, fracionada em ${oralMealsPerDay || "-"} refeições/dia${oralDietCharacteristics ? `, ${oralDietCharacteristics}` : ""}, com VET estimado de ${formatDecimalValue(oralTotals.vet)} kcal${kcalSuffix.length ? ` (${kcalSuffix.join(" / ")})` : ""}, proteínas ${formatDecimalValue(oralTotals.protein)} g${proteinSuffix.length ? ` (${proteinSuffix.join(" / ")})` : ""}, ${formatDecimalValue(oralTotals.carbs)} g de carboidratos e ${formatDecimalValue(oralTotals.fat)} g de lipídeos.`,
+      `Dieta oral em consistência ${oralDietConsistency || "-"}, fracionada em ${oralMealsPerDay || "-"} refeições/dia${oralDietCharacteristics ? `, ${oralDietCharacteristics}` : ""}, com VET total de ${formatDecimalValue(oralTotals.vet)} kcal${kcalSuffix.length ? ` (${kcalSuffix.join(" / ")})` : ""}, proteínas ${formatDecimalValue(oralTotals.protein)} g${proteinSuffix.length ? ` (${proteinSuffix.join(" / ")})` : ""}, ${formatDecimalValue(oralTotals.carbs)} g de carboidratos e ${formatDecimalValue(oralTotals.fat)} g de lipídeos.`,
     );
 
     if (oralSupplements.length > 0) {
@@ -2082,11 +2094,12 @@ const PrescriptionNew = () => {
       };
 
       const today = new Date().toISOString().split('T')[0];
-      const tneGoalsPayload = goalTargetKcalPerKg || goalTargetProteinPerKgActual || goalTargetProteinPerKgIdeal
+      const tneGoalsPayload = goalTargetKcalPerKg || goalTargetProteinPerKgActual
         ? {
           targetKcalPerKg: goalTargetKcalPerKg,
           targetProteinPerKgActual: goalTargetProteinPerKgActual,
-          targetProteinPerKgIdeal: goalTargetProteinPerKgIdeal,
+          targetKcalWeightBasis: effectiveEnergyWeight,
+          targetProteinWeightBasis: effectiveProteinWeight,
         }
         : undefined;
       const unintentionalCaloriesPayload = unintentionalResult.totalKcal > 0 ? unintentionalCal : undefined;
@@ -2227,7 +2240,7 @@ const PrescriptionNew = () => {
             modules: oralTherapyModules,
             observations: oralObservations || undefined,
           },
-          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Carboidratos manuais: ${oralEstimatedCarbs || 0} g/dia | Lipidios manuais: ${oralEstimatedLipids || 0} g/dia | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes: ${oralObservations || "-"}`,
+          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Carboidratos manuais: ${oralEstimatedCarbs || 0} g/dia | Lipidios manuais: ${oralEstimatedLipids || 0} g/dia | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes clinicas: ${oralObservations || "-"}`,
         });
         savedRoutes.push("Via oral");
       }
@@ -2527,8 +2540,8 @@ const PrescriptionNew = () => {
                           setUnintentionalCal({});
                           setGoalTargetKcalPerKg(undefined);
                           setGoalTargetProteinPerKgActual(undefined);
-                          setGoalTargetProteinPerKgIdeal(undefined);
-                          setWeightChoice(null);
+                          setEnergyWeightChoice(null);
+                          setProteinWeightChoice(null);
                         }}>
                           <CardContent className="p-4">
                             <div className="flex justify-between"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-muted-foreground">{p.record} - {p.bed || 'Sem leito'}</p></div>{selectedPatient?.id === p.id && <Check className="h-5 w-5 text-primary" />}</div>
@@ -2577,61 +2590,66 @@ const PrescriptionNew = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         {calculatedBmi && <Badge variant="outline" className="text-xs">IMC {calculatedBmi.toFixed(1)}</Badge>}
+                      </div>
+                    </CardTitle>
+                    <CardDescription>
+                      Energia por <strong>{effectiveEnergyWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'}</strong> e proteínas por <strong>{effectiveProteinWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'}</strong>.
+                      {autoWeightConfig.label && <span className="ml-2 text-xs text-blue-600">• Sugestão: {autoWeightConfig.label}</span>}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Meta kcal/kg ({effectiveEnergyWeight === 'ideal' ? 'PI' : 'PA'})</Label>
                         <div className="flex rounded-lg border overflow-hidden">
                           <button
                             type="button"
-                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                              effectiveWeight === 'actual'
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-white text-muted-foreground hover:bg-gray-50'
-                            }`}
-                            onClick={() => setWeightChoice('actual')}
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveEnergyWeight === 'actual' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
+                            onClick={() => setEnergyWeightChoice('actual')}
                           >
                             PA {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
                           </button>
                           <button
                             type="button"
-                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                              effectiveWeight === 'ideal'
-                                ? 'bg-emerald-600 text-white'
-                                : 'bg-white text-muted-foreground hover:bg-gray-50'
-                            }`}
-                            onClick={() => setWeightChoice('ideal')}
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveEnergyWeight === 'ideal' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
+                            onClick={() => setEnergyWeightChoice('ideal')}
+                            disabled={!calculatedIdealWeight}
                           >
                             PI {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
                           </button>
                         </div>
-                      </div>
-                    </CardTitle>
-                    <CardDescription>
-                      Peso de referência: <strong>{effectiveWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'}</strong> ({referenceWeight.toFixed(1)}kg)
-                      {autoWeightConfig.label && <span className="ml-2 text-xs text-blue-600">• Sugestão: {autoWeightConfig.label}</span>}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Meta kcal/kg ({effectiveWeight === 'ideal' ? 'PI' : 'PA'})</Label>
                         <Input type="number" step="0.1" value={goalTargetKcalPerKg || ''} onChange={e => setGoalTargetKcalPerKg(parseFloat(e.target.value) || undefined)} placeholder="Ex: 25" />
                         {goalTargetKcalPerKg && (
                           <p className="text-xs text-muted-foreground">
-                            Meta: {(goalTargetKcalPerKg * referenceWeight).toFixed(0)} kcal/dia
+                            Meta: {(goalTargetKcalPerKg * energyReferenceWeight).toFixed(0)} kcal/dia
                           </p>
                         )}
                       </div>
                       <div className="space-y-2">
-                        <Label>Meta proteínas g/kg ({effectiveWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <Label>Meta proteínas g/kg ({effectiveProteinWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <div className="flex rounded-lg border overflow-hidden">
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveProteinWeight === 'actual' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
+                            onClick={() => setProteinWeightChoice('actual')}
+                          >
+                            PA {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveProteinWeight === 'ideal' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
+                            onClick={() => setProteinWeightChoice('ideal')}
+                            disabled={!calculatedIdealWeight}
+                          >
+                            PI {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
+                          </button>
+                        </div>
                         <Input type="number" step="0.1" value={goalTargetProteinPerKgActual || ''} onChange={e => setGoalTargetProteinPerKgActual(parseFloat(e.target.value) || undefined)} placeholder="Ex: 1.2" />
                         {goalTargetProteinPerKgActual && (
                           <p className="text-xs text-muted-foreground">
-                            Meta: {(goalTargetProteinPerKgActual * referenceWeight).toFixed(1)}g/dia
+                            Meta: {(goalTargetProteinPerKgActual * proteinReferenceWeight).toFixed(1)}g/dia
                           </p>
                         )}
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Meta proteínas g/kg (peso ideal)</Label>
-                        <p className="text-xs text-muted-foreground">Para IMC &gt; 30 — referência adicional</p>
-                        <Input type="number" step="0.1" value={goalTargetProteinPerKgIdeal || ''} onChange={e => setGoalTargetProteinPerKgIdeal(parseFloat(e.target.value) || undefined)} placeholder="Ex: 2.0" disabled={!calculatedBmi || calculatedBmi <= 30} />
                       </div>
                     </div>
                   </CardContent>
@@ -2650,19 +2668,20 @@ const PrescriptionNew = () => {
                       <div className="space-y-2 p-3 rounded-lg border bg-white">
                         <Label>Propofol (ml/h)</Label>
                         <Input type="number" step="0.1" value={unintentionalCal.propofolMlH || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, propofolMlH: parseFloat(e.target.value) || undefined })} placeholder="Ex: 10" />
-                        <p className="text-xs text-muted-foreground">= {unintentionalResult.propofolKcal.toFixed(0)} kcal/dia</p>
-                        <p className="text-xs text-muted-foreground">= {unintentionalResult.propofolLipidsG.toFixed(1)} g lipídeos</p>
+                        <p className="text-xs text-muted-foreground">1,1 kcal/ml = {unintentionalResult.propofolKcal.toFixed(1)} kcal/dia</p>
+                        <p className="text-xs text-muted-foreground">Adicionada ao percentual calórico de lipídeos ({unintentionalResult.propofolLipidsG.toFixed(1)} g/dia)</p>
                       </div>
                       <div className="space-y-2 p-3 rounded-lg border bg-white">
                         <Label>Glicose (g/dia)</Label>
-                        <Input type="number" step="1" value={unintentionalCal.glucoseGDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, glucoseGDay: parseFloat(e.target.value) || undefined })} placeholder="Ex: 50" />
-                        <p className="text-xs text-muted-foreground">= {unintentionalResult.glucoseKcal.toFixed(0)} kcal/dia</p>
-                        <p className="text-xs text-muted-foreground">Distribuído como carboidrato</p>
+                        <Input type="number" step="0.1" value={unintentionalCal.glucoseGDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, glucoseGDay: parseFloat(e.target.value) || undefined })} placeholder="Ex: 50" />
+                        <p className="text-xs text-muted-foreground">3,4 kcal/g = {unintentionalResult.glucoseKcal.toFixed(1)} kcal/dia</p>
+                        <p className="text-xs text-muted-foreground">Adicionada ao percentual calórico de carboidratos, sem compor o cálculo da TIG</p>
                       </div>
                       <div className="space-y-2 p-3 rounded-lg border bg-white">
-                        <Label>Citrato (kcal/dia)</Label>
-                        <Input type="number" step="1" value={unintentionalCal.citrateKcalDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, citrateKcalDay: parseFloat(e.target.value) || undefined })} placeholder="Ex: 100" />
-                        <p className="text-xs text-muted-foreground">Somente no VET, sem macronutriente</p>
+                        <Label>Citrato (g/dia)</Label>
+                        <Input type="number" step="0.1" value={unintentionalCal.citrateGDay || ''} onChange={e => setUnintentionalCal({ ...unintentionalCal, citrateGDay: parseFloat(e.target.value) || undefined, citrateKcalDay: undefined })} placeholder="Ex: 10" />
+                        <p className="text-xs text-muted-foreground">2,47 kcal/g = {unintentionalResult.citrateKcal.toFixed(1)} kcal/dia</p>
+                        <p className="text-xs text-muted-foreground">Compõe somente o cálculo do VET</p>
                       </div>
                     </div>
                     {unintentionalResult.totalKcal > 0 && (
@@ -2686,7 +2705,7 @@ const PrescriptionNew = () => {
             {/* Step 3 — Via de Alimentação */}
             {currentStep === 3 && (
               <Card>
-                <CardHeader><CardTitle>3. Via de Alimentação</CardTitle><CardDescription>Selecione a(s) via(s) de alimentação. Enteral pode ser combinada com Oral e/ou Parenteral.</CardDescription></CardHeader>
+                <CardHeader><CardTitle>3. Via de Alimentação</CardTitle><CardDescription>Defina a via de alimentação. A via enteral pode ser combinada com oral e/ou parenteral.</CardDescription></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[{ key: "oral", icon: SupplementIcon, label: "Oral", colorClass: "text-sky-600" }, { key: "enteral", icon: EnteralIcon, label: "Enteral", colorClass: "text-violet-600" }, { key: "parenteral", icon: Syringe, label: "Parenteral", colorClass: "text-orange-600" }].map(r => (
@@ -3055,18 +3074,18 @@ const PrescriptionNew = () => {
                   </CardContent>
                 </Card>
 
-                {/* Estimativas da Dieta */}
+                {/* Resumo da Dieta Oral */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Estimativas da Dieta</CardTitle>
-                    <CardDescription>Aporte oferecido sem considerar módulos e suplementos</CardDescription>
+                    <CardTitle>Resumo da Dieta Oral</CardTitle>
+                    <CardDescription>Aporte informado sem considerar modulos e suplementos</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                       O valor calórico e a quantidade de macronutrientes serão adicionados ao aporte total de acordo com os valores preenchidos. Caso não sejam especificados valores, estes não serão somados ao aporte total.
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                      <div className="space-y-2"><Label>Valor energetico total estimado (kcal)</Label><Input type="number" value={oralEstimatedVET || ''} onChange={e => setOralEstimatedVET(parseInt(e.target.value) || 0)} placeholder="Ex: 1500" /></div>
+                      <div className="space-y-2"><Label>Valor energetico total (kcal)</Label><Input type="number" value={oralEstimatedVET || ''} onChange={e => setOralEstimatedVET(parseInt(e.target.value) || 0)} placeholder="Ex: 1500" /></div>
                       <div className="space-y-2"><Label>Quantidade de proteinas (g/dia)</Label><Input type="number" value={oralEstimatedProtein || ''} onChange={e => setOralEstimatedProtein(parseInt(e.target.value) || 0)} placeholder="Ex: 60" /></div>
                       <div className="space-y-2"><Label>Carboidratos (g/dia)</Label><Input type="number" value={oralEstimatedCarbs || ''} onChange={e => setOralEstimatedCarbs(parseInt(e.target.value) || 0)} placeholder="Ex: 180" /></div>
                       <div className="space-y-2"><Label>Lipidios (g/dia)</Label><Input type="number" value={oralEstimatedLipids || ''} onChange={e => setOralEstimatedLipids(parseInt(e.target.value) || 0)} placeholder="Ex: 45" /></div>
@@ -3202,7 +3221,7 @@ const PrescriptionNew = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.vetPerKgIdeal !== null ? `${nutritionSummary.vetPerKg} kcal/kg PA | ${nutritionSummary.vetPerKgIdeal} kcal/kg PI` : `${nutritionSummary.vetPerKg} kcal/kg`})</p><p className="text-xs font-medium mt-1">VET</p></div>
                     <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${nutritionSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${nutritionSummary.proteinPerKg} g/kg`})</p><p className="text-xs font-medium mt-1">Proteínas</p></div>
-                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.freeWaterPerKgIdeal !== null ? `${nutritionSummary.freeWaterPerKg} ml/kg PA | ${nutritionSummary.freeWaterPerKgIdeal} ml/kg PI` : `${nutritionSummary.freeWaterPerKg} ml/kg`})</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
+                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.freeWaterPerKg} ml/kg PA)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
                   <Collapsible open={showDetails} onOpenChange={setShowDetails}>
@@ -3232,7 +3251,7 @@ const PrescriptionNew = () => {
 
                       {/* Micros */}
                       <div>
-                        <h4 className="font-semibold mb-2">Micronutrientes (Estimativa)</h4>
+                        <h4 className="font-semibold mb-2">Micronutrientes</h4>
                         <p><strong>Cálcio:</strong> {nutritionSummary.calcium.toFixed(1)} mg/dia</p>
                         <p><strong>Fósforo:</strong> {nutritionSummary.phosphorus.toFixed(1)} mg/dia</p>
                         <p><strong>Sódio:</strong> {nutritionSummary.sodium.toFixed(1)} mg/dia</p>
@@ -3248,7 +3267,7 @@ const PrescriptionNew = () => {
                         <p className="text-muted-foreground ml-2 text-xs">
                           Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g
                         </p>
-                        <p><strong>Tempo Estimado de Enfermagem:</strong> {systemType === "closed" ? "45 minutos/dia" : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15) + " minutos/dia"}</p>
+                        <p><strong>Tempo de Enfermagem:</strong> {systemType === "closed" ? "45 minutos/dia" : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15) + " minutos/dia"}</p>
                       </div>
 
                       {feedingRoutes.enteral && (
@@ -3291,7 +3310,7 @@ const PrescriptionNew = () => {
 
                       {/* Custos */}
                       <div>
-                        <h4 className="font-semibold mb-2">Custos Estimados (Diários)</h4>
+                        <h4 className="font-semibold mb-2">Custos Diários</h4>
                         <p><strong>Custo Material (Fórmulas e Módulos):</strong> R$ {(() => {
                             let cost = 0;
                             if (systemType === "closed" && closedFormula.formulaId) {

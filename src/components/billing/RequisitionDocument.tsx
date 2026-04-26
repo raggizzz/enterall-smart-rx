@@ -13,8 +13,8 @@ const formatQuantity = (value?: number, unit?: string) => {
 };
 
 const getTypeBadge = (item: DietMapItem) => {
-    if (item.type === 'water') return 'ÁGUA';
-    if (item.type === 'module') return 'MÓDULO';
+    if (item.type === 'water') return 'AGUA';
+    if (item.type === 'module') return 'MODULO';
     if (item.type === 'supplement') return 'SUPLEMENTO';
     return 'DIETA';
 };
@@ -33,21 +33,21 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
 
     const consolidatedTotal = data.consolidated.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     const documentTitle = isCancellation
-        ? 'Requisição de cancelamento'
+        ? 'Requisicao de cancelamento'
         : isExtraRequest
-            ? 'Requisição extra de insumos'
-            : 'Requisição de insumos para faturamento';
+            ? 'Requisicao extra de insumos'
+            : 'Requisicao de insumos para faturamento';
     const mapTitle = isCancellation
         ? 'Mapa do cancelamento por paciente'
         : isExtraRequest
-            ? 'Mapa da requisição extra por paciente'
+            ? 'Mapa da requisicao extra por paciente'
             : 'Mapa da dieta por paciente';
 
     return (
         <div id="requisition-print-document" className="hidden print:block bg-white p-4 text-[10px] text-black">
             <div className="mb-4 border-b border-black pb-3">
                 <div className="text-center">
-                    <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital não informado"}</h1>
+                    <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital nao informado"}</h1>
                     <p className="text-lg font-bold uppercase mt-1">{data.unitName}</p>
                     <p className="text-sm font-semibold uppercase">{documentTitle}</p>
                 </div>
@@ -58,22 +58,19 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                         <p><span className="font-semibold">Via:</span> {data.therapyLabel}</p>
                     </div>
                     <div>
-                        <p><span className="font-semibold">Data da requisição:</span> {data.printDate}</p>
+                        <p><span className="font-semibold">Data da requisicao:</span> {data.printDate}</p>
                         <p>
                             <span className="font-semibold">{isManualAction ? 'Data efetiva:' : 'Periodo:'}</span>{' '}
                             {isManualAction ? (data.effectiveDate || data.startDate) : `${data.startDate} a ${data.endDate}`}
                         </p>
                     </div>
                     <div>
-                        {!isManualAction && (
-                            <p><span className="font-semibold">Horários:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
-                        )}
+                        <p><span className="font-semibold">Horarios:</span> {data.selectedTimes.length > 0 ? data.selectedTimes.join(', ') : 'Todos'}</p>
                         <p><span className="font-semibold">Pacientes no mapa:</span> {new Set(data.dietMap.map((item) => item.patientId)).size}</p>
                     </div>
                 </div>
             </div>
 
-            {!isManualAction && (
             <div className="mb-6">
                 <h2 className="mb-2 text-xs font-bold uppercase">{mapTitle}</h2>
                 <table className="w-full border-collapse border border-black">
@@ -84,7 +81,9 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                 <th className="border border-black p-1 text-left">Ala</th>
                                 <th className="border border-black p-1 text-left">Leito</th>
                                 <th className="border border-black p-1 text-left">Paciente</th>
-                                <th className="border border-black p-1 text-left">Produto / módulo</th>
+                                <th className="border border-black p-1 text-left">Produto / modulo</th>
+                                <th className="border border-black p-1 text-center">Qtd</th>
+                                <th className="border border-black p-1 text-left">Observacoes</th>
                                 <th className="border border-black p-1 text-right">Valor</th>
                             </tr>
                         ) : (
@@ -97,15 +96,15 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                 <th className="border border-black p-1 text-center">Vol/gr</th>
                                 <th className="border border-black p-1 text-center">Volume total/etapa</th>
                                 <th className="border border-black p-1 text-center">Vel Inf</th>
-                                <th className="border border-black p-1 text-center">Horários</th>
-                                <th className="border border-black p-1 text-left">Observações</th>
+                                <th className="border border-black p-1 text-center">Horarios</th>
+                                <th className="border border-black p-1 text-left">Observacoes</th>
                             </tr>
                         )}
                     </thead>
                     <tbody>
                         {data.dietMap.length === 0 ? (
                             <tr>
-                                <td colSpan={isManualAction ? 6 : 10} className="border border-black p-3 text-center italic">
+                                <td colSpan={isManualAction ? 8 : 10} className="border border-black p-3 text-center italic">
                                     Nenhum item encontrado para os filtros selecionados.
                                 </td>
                             </tr>
@@ -126,7 +125,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                 <td className="border border-black p-1 align-top">
                                                     <div className="font-semibold">{item.patientName}</div>
                                                     {item.patientRecord && (
-                                                            <div className="text-[9px] text-slate-600">Prontuário: {item.patientRecord}</div>
+                                                        <div className="text-[9px] text-slate-600">Prontuario do paciente: {item.patientRecord}</div>
                                                     )}
                                                 </td>
                                                 <td className="border border-black p-1 align-top">
@@ -135,6 +134,10 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                         {getTypeBadge(item)} {item.productCode ? `| Cod. ${item.productCode}` : ''}
                                                     </div>
                                                 </td>
+                                                <td className="border border-black p-1 text-center align-top">
+                                                    {formatQuantity(item.volumeOrAmount, item.unit)}
+                                                </td>
+                                                <td className="border border-black p-1 align-top">{item.observation || '-'}</td>
                                                 <td className="border border-black p-1 text-right align-top">
                                                     {item.subtotal
                                                         ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -154,7 +157,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                         <td rowSpan={rowSpan} className="border border-black p-1 align-top">
                                                             <div className="font-semibold">{item.patientName}</div>
                                                             {item.patientRecord && (
-                                                                <div className="text-[9px] text-slate-600">Prontuário: {item.patientRecord}</div>
+                                                                <div className="text-[9px] text-slate-600">Prontuario do paciente: {item.patientRecord}</div>
                                                             )}
                                                         </td>
                                                     </>
@@ -186,71 +189,70 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                     </tbody>
                 </table>
             </div>
-            )}
 
             <div className="mb-6 break-inside-avoid">
-                    <h2 className="mb-2 text-xs font-bold uppercase">
-                        {isManualAction ? 'Consolidado da guia de ajuste' : 'Requisição consolidada de produtos'}
-                    </h2>
-                    <table className="w-full border-collapse border border-black">
-                        <thead>
+                <h2 className="mb-2 text-xs font-bold uppercase">
+                    {isManualAction ? 'Consolidado da guia de ajuste' : 'Requisicao consolidada de produtos'}
+                </h2>
+                <table className="w-full border-collapse border border-black">
+                    <thead>
+                        <tr>
+                            <th className="border border-black p-1 text-left">Item</th>
+                            <th className="border border-black p-1 text-left">Codigo</th>
+                            <th className="border border-black p-1 text-center">Quantidade total</th>
+                            <th className="border border-black p-1 text-center">Unidade</th>
+                            <th className="border border-black p-1 text-right">Preco unitario</th>
+                            <th className="border border-black p-1 text-right">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.consolidated.length === 0 ? (
                             <tr>
-                                <th className="border border-black p-1 text-left">Item</th>
-                                <th className="border border-black p-1 text-left">Código</th>
-                                <th className="border border-black p-1 text-center">Quantidade total</th>
-                                <th className="border border-black p-1 text-center">Unidade</th>
-                                <th className="border border-black p-1 text-right">Preço unitário</th>
-                                <th className="border border-black p-1 text-right">Subtotal</th>
+                                <td colSpan={6} className="border border-black p-3 text-center italic">
+                                    Nenhum item para faturamento.
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {data.consolidated.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="border border-black p-3 text-center italic">
-                                        Nenhum item para faturamento.
-                                    </td>
-                                </tr>
-                            ) : (
-                                <>
-                                    {data.consolidated.map((item, index) => (
-                                        <tr key={`${item.code}-${index}`}>
-                                            <td className="border border-black p-1">{item.name}</td>
-                                            <td className="border border-black p-1">{item.code || '-'}</td>
-                                            <td className="border border-black p-1 text-center">
-                                                {item.totalQuantity.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
-                                            </td>
-                                            <td className="border border-black p-1 text-center uppercase">{item.billingUnit}</td>
-                                            <td className="border border-black p-1 text-right">
-                                                {item.unitPrice ? item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                                            </td>
-                                            <td className="border border-black p-1 text-right">
-                                                {item.subtotal ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr>
-                                        <td colSpan={5} className="border border-black p-1 text-right font-bold uppercase">Total</td>
-                                        <td className="border border-black p-1 text-right font-bold">
-                                            {consolidatedTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        ) : (
+                            <>
+                                {data.consolidated.map((item, index) => (
+                                    <tr key={`${item.code}-${index}`}>
+                                        <td className="border border-black p-1">{item.name}</td>
+                                        <td className="border border-black p-1">{item.code || '-'}</td>
+                                        <td className="border border-black p-1 text-center">
+                                            {item.totalQuantity.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+                                        </td>
+                                        <td className="border border-black p-1 text-center uppercase">{item.billingUnit}</td>
+                                        <td className="border border-black p-1 text-right">
+                                            {item.unitPrice ? item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                                        </td>
+                                        <td className="border border-black p-1 text-right">
+                                            {item.subtotal ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
                                         </td>
                                     </tr>
-                                </>
-                            )}
-                        </tbody>
-                    </table>
+                                ))}
+                                <tr>
+                                    <td colSpan={5} className="border border-black p-1 text-right font-bold uppercase">Total</td>
+                                    <td className="border border-black p-1 text-right font-bold">
+                                        {consolidatedTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </td>
+                                </tr>
+                            </>
+                        )}
+                    </tbody>
+                </table>
             </div>
 
             <div className="mt-10 grid grid-cols-3 gap-8 text-[10px]">
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Técnico responsável / Matrícula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Tecnico responsavel / Matricula:</p>
                     <p className="mt-2">{data.signatures.technician}</p>
                 </div>
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Nutricionista prescritor / Matrícula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Nutricionista prescritor / Matricula:</p>
                     <p className="mt-2">{data.signatures.prescriber}</p>
                 </div>
                 <div>
-                    <p className="border-t border-black pt-2 font-semibold">Nutricionista RT ou da Concessionária / Matrícula:</p>
+                    <p className="border-t border-black pt-2 font-semibold">Nutricionista RT ou da Concessionaria / Matricula:</p>
                     <p className="mt-2">{data.signatures.manager}</p>
                 </div>
             </div>

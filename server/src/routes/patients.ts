@@ -49,6 +49,12 @@ const mapPatientToClient = (patient: any) => {
                 targetProteinPerKgIdeal: latestEvolution?.tneGoals
                     ? JSON.parse(latestEvolution.tneGoals).targetProteinPerKgIdeal
                     : undefined,
+                targetKcalWeightBasis: latestEvolution?.tneGoals
+                    ? JSON.parse(latestEvolution.tneGoals).targetKcalWeightBasis
+                    : undefined,
+                targetProteinWeightBasis: latestEvolution?.tneGoals
+                    ? JSON.parse(latestEvolution.tneGoals).targetProteinWeightBasis
+                    : undefined,
             }
             : undefined,
         infusionPercentage24h: latestEvolution?.infusionPercentage ?? undefined,

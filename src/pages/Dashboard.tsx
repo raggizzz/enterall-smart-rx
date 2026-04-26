@@ -409,7 +409,7 @@ const Dashboard = () => {
               </div>
 
               <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
-                <div className="space-y-2" title="Busque por nome, data de nascimento ou prontuario.">
+                <div className="space-y-2" title="Busque por nome, data de nascimento ou numero do prontuario.">
                   <Label className="text-sm font-medium">Buscar Paciente</Label>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="h-auto py-4 w-full flex flex-col gap-2" title="Abrir busca detalhada de paciente">
@@ -449,7 +449,7 @@ const Dashboard = () => {
                       <Label htmlFor="search-record">Número de Prontuário</Label>
                       <Input
                         id="search-record"
-                        placeholder="Digite o prontuario"
+                        placeholder="Digite o numero do prontuario"
                         value={patientSearch.record}
                         onChange={(e) => setPatientSearch({ ...patientSearch, record: e.target.value })}
                       />

@@ -567,7 +567,7 @@ export const calculateUnintentionalCalories = (
   const glucoseKcal = glucoseCarbsG * 3.4;
 
   const citrateKcal = (input.citrateKcalDay || 0)
-    + (input.citrateGDay || 0) * 3.0;
+    + (input.citrateGDay || 0) * 2.47;
 
   return {
     propofolKcal,

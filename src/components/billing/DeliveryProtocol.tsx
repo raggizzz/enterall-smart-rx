@@ -1,13 +1,13 @@
 /**
- * DeliveryProtocol - Módulo 8
- * Protocolo Diário de Entrega para impressão.
- * Restrito via RBAC (somente técnico+ pode gerar).
+ * DeliveryProtocol - Modulo 8
+ * Protocolo diario de entrega para impressao.
+ * Restrito via RBAC (somente tecnico+ pode gerar).
  */
 
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FileText, Printer, ShieldCheck } from "lucide-react";
 import { can, getCurrentRole } from "@/lib/permissions";
@@ -22,9 +22,8 @@ interface ProtocolItem {
   patientName: string;
   systemType: string;
   formulaName: string;
-  volume: string;
+  billedAmount: string;
   scheduleTime: string;
-  waterVolume?: string;
 }
 
 interface DeliveryProtocolProps {
@@ -44,7 +43,7 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
 
   const groupedByWard = useMemo(() => {
     const map = new Map<string, ProtocolItem[]>();
-    items.forEach(item => {
+    items.forEach((item) => {
       const ward = item.ward || "Sem setor";
       const existing = map.get(ward) || [];
       existing.push(item);
@@ -55,10 +54,10 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
 
   const handlePrint = () => {
     if (!canGenerate) {
-      toast.error("Sem permissão para gerar o protocolo de entrega. Solicite acesso ao gestor.");
+      toast.error("Sem permissao para gerar o protocolo de entrega. Solicite acesso ao gestor.");
       return;
     }
-    printElementInPopup("delivery-protocol-print", "Protocolo diário de entrega");
+    printElementInPopup("delivery-protocol-print", "Protocolo diario de entrega");
   };
 
   return (
@@ -74,19 +73,18 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Protocolo Diário de Entrega
+            Protocolo Diario de Entrega
           </DialogTitle>
           <DialogDescription>
-            Unidade: {unitName} — Data: {date}
+            Unidade: {unitName} - Data: {date}
           </DialogDescription>
         </DialogHeader>
 
         <div id="delivery-protocol-print" className="space-y-4">
-          {/* Cabeçalho de impressão */}
           <div className="text-center border-b pb-3 print:block hidden">
-            <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital não informado"}</h1>
-            <h2 className="text-lg font-bold uppercase mt-1">Protocolo Diário de Entrega de Dietas</h2>
-            <p className="text-sm">{unitName} — {date}</p>
+            <h1 className="text-xl font-bold uppercase">{settings?.hospitalName || "Hospital nao informado"}</h1>
+            <h2 className="text-lg font-bold uppercase mt-1">Protocolo Diario de Entrega de Dietas</h2>
+            <p className="text-sm">{unitName} - {date}</p>
           </div>
 
           {Array.from(groupedByWard.entries()).map(([ward, wardItems]) => (
@@ -100,11 +98,10 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
                     <TableRow>
                       <TableHead className="text-xs py-1">Leito</TableHead>
                       <TableHead className="text-xs py-1">Paciente</TableHead>
-                      <TableHead className="text-xs py-1">Horário</TableHead>
+                      <TableHead className="text-xs py-1">Horario</TableHead>
                       <TableHead className="text-xs py-1">Sistema</TableHead>
                       <TableHead className="text-xs py-1">Dieta</TableHead>
-                      <TableHead className="text-xs py-1">Volume</TableHead>
-                      <TableHead className="text-xs py-1">Água</TableHead>
+                      <TableHead className="text-xs py-1">Envio/Faturamento</TableHead>
                       <TableHead className="text-xs py-1 w-[80px]">Assinatura</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -120,8 +117,7 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
                             {item.systemType === "closed" ? "SF" : "SA"}
                           </TableCell>
                           <TableCell className="text-xs py-1 truncate max-w-[150px]">{item.formulaName}</TableCell>
-                          <TableCell className="text-xs py-1">{item.volume}</TableCell>
-                          <TableCell className="text-xs py-1">{item.waterVolume || "-"}</TableCell>
+                          <TableCell className="text-xs py-1">{item.billedAmount}</TableCell>
                           <TableCell className="text-xs py-1">
                             <div className="border-b border-dashed border-gray-400 h-4 w-full" />
                           </TableCell>
@@ -133,14 +129,9 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
             </Card>
           ))}
 
-          {/* Rodapé para impressão */}
-          <div className="pt-6 grid grid-cols-3 gap-8 text-center text-xs print:block">
+          <div className="pt-6 grid grid-cols-2 gap-8 text-center text-xs print:block">
             <div className="border-t border-black pt-1">
-              <p className="font-medium">Nutricionista prescritor</p>
-              <p className="text-muted-foreground">{signatures?.prescriber || "____________________"}</p>
-            </div>
-            <div className="border-t border-black pt-1">
-              <p className="font-medium">Técnico responsável</p>
+              <p className="font-medium">Tecnico responsavel</p>
               <p className="text-muted-foreground">{signatures?.technician || "____________________"}</p>
             </div>
             <div className="border-t border-black pt-1">

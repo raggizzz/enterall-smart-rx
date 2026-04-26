@@ -57,6 +57,8 @@ type ProductUsageRow = {
   productId: string;
   productName: string;
   manufacturer: string;
+  ward?: string;
+  notes?: string;
   category: ProductCategory;
   therapyType: Prescription["therapyType"] | "mixed";
   billingUnit: string;
@@ -83,6 +85,8 @@ type UsageAccumulator = {
   productId: string;
   productName: string;
   manufacturer: string;
+  ward?: string;
+  notes?: string;
   category: ProductCategory;
   therapyTypes: Set<Prescription["therapyType"]>;
   billingUnit: string;
@@ -291,28 +295,54 @@ const getModuleByName = (modules: Module[], moduleName?: string) => {
 };
 
 const getPumpSupply = (supplies: Supply[]): Supply | undefined =>
-  supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bomba"))
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "pump-set")
+  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bomba"))
   || supplies.find((supply) => supply.isActive && supply.type === "set");
 
 const getGravitySupply = (supplies: Supply[]): Supply | undefined =>
-  supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("gravit"))
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "gravity-set")
+  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("gravit"))
   || supplies.find((supply) => supply.isActive && supply.type === "set");
 
 const getBottleSupply = (supplies: Supply[]): Supply | undefined =>
-  supplies.find((supply) => supply.isActive && supply.type === "bottle")
-  || supplies.find((supply) => supply.isActive && supply.category === "feeding-bottle")
-  || supplies.find((supply) => supply.isActive && supply.category === "baby-bottle");
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "feeding-bottle")
+  || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "baby-bottle")
+  || supplies.find((supply) => supply.isActive && supply.type === "bottle");
 
-const addWasteByFactor = (
-  target: UsageAccumulator,
-  residueSource: { plasticG?: number; paperG?: number; metalG?: number; glassG?: number },
-  factor: number,
-) => {
+const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "hydration-water")
+  || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.name.toLowerCase().includes("agua"));
+
+  const addWasteByFactor = (
+    target: UsageAccumulator,
+    residueSource: { plasticG?: number; paperG?: number; metalG?: number; glassG?: number },
+    factor: number,
+  ) => {
   target.plasticG += (residueSource.plasticG || 0) * factor;
   target.paperG += (residueSource.paperG || 0) * factor;
-  target.metalG += (residueSource.metalG || 0) * factor;
-  target.glassG += (residueSource.glassG || 0) * factor;
-};
+    target.metalG += (residueSource.metalG || 0) * factor;
+    target.glassG += (residueSource.glassG || 0) * factor;
+  };
+
+  const resolveSupplyBilling = (supply: Supply, requestedAmount: number) => {
+    const billingUnit = supply.billingUnit || "unit";
+    const capacityMl = Number(supply.capacityMl || 0);
+    const totalQuantity = billingUnit === "ml"
+      ? requestedAmount
+      : capacityMl > 0
+        ? Math.ceil(requestedAmount / capacityMl)
+        : requestedAmount;
+    const wasteFactor = billingUnit === "ml" && capacityMl > 0
+      ? Math.ceil(requestedAmount / capacityMl)
+      : totalQuantity;
+
+    return {
+      billingUnit,
+      totalQuantity,
+      totalCost: totalQuantity * (supply.unitPrice || 0),
+      wasteFactor,
+    };
+  };
 
 const getOrCreateAccumulator = (
   usageMap: Map<string, UsageAccumulator>,
@@ -797,6 +827,7 @@ const Reports = () => {
           : getPumpSupply(supplies);
 
         if (selectedSupply && selectedSupply.isBillable !== false) {
+          const supplyBilling = resolveSupplyBilling(selectedSupply, overlapDays);
           const item = getOrCreateAccumulator(
             usageMap,
             `supply:${selectedSupply.id || selectedSupply.code}`,
@@ -805,22 +836,22 @@ const Reports = () => {
               productName: selectedSupply.name,
               manufacturer: "-",
               category: "supply",
-              billingUnit: selectedSupply.billingUnit || "unit",
+              billingUnit: supplyBilling.billingUnit,
             },
           );
 
-          const totalQuantity = overlapDays;
           item.therapyTypes.add("enteral");
           item.patientIds.add(patientId);
           if (prescription.id) item.prescriptionIds.add(prescription.id);
-          item.totalQuantity += totalQuantity;
+          item.totalQuantity += supplyBilling.totalQuantity;
           item.patientDays += overlapDays;
-          item.totalCost += totalQuantity * (selectedSupply.unitPrice || 0);
-          addWasteByFactor(item, selectedSupply, totalQuantity);
+          item.totalCost += supplyBilling.totalCost;
+          addWasteByFactor(item, selectedSupply, supplyBilling.wasteFactor);
         }
 
         const bottleSupply = getBottleSupply(supplies);
         if (bottleSupply && bottleSupply.isBillable !== false && bottleCountPerDay > 0) {
+          const supplyBilling = resolveSupplyBilling(bottleSupply, bottleCountPerDay * overlapDays);
           const item = getOrCreateAccumulator(
             usageMap,
             `supply:${bottleSupply.id || bottleSupply.code}`,
@@ -829,18 +860,43 @@ const Reports = () => {
               productName: bottleSupply.name,
               manufacturer: "-",
               category: "supply",
-              billingUnit: bottleSupply.billingUnit || "unit",
+              billingUnit: supplyBilling.billingUnit,
             },
           );
 
-          const totalQuantity = bottleCountPerDay * overlapDays;
           item.therapyTypes.add("enteral");
           item.patientIds.add(patientId);
           if (prescription.id) item.prescriptionIds.add(prescription.id);
-          item.totalQuantity += totalQuantity;
+          item.totalQuantity += supplyBilling.totalQuantity;
           item.patientDays += overlapDays;
-          item.totalCost += totalQuantity * (bottleSupply.unitPrice || 0);
-          addWasteByFactor(item, bottleSupply, totalQuantity);
+          item.totalCost += supplyBilling.totalCost;
+          addWasteByFactor(item, bottleSupply, supplyBilling.wasteFactor);
+        }
+
+        const totalHydrationMl = (prescription.hydrationVolume || 0) * hydrationCount * overlapDays;
+        const waterSupply = getWaterSupply(supplies);
+        if (waterSupply && waterSupply.isBillable !== false && totalHydrationMl > 0) {
+          const supplyBilling = resolveSupplyBilling(waterSupply, totalHydrationMl);
+          const item = getOrCreateAccumulator(
+            usageMap,
+            `supply:${waterSupply.id || waterSupply.code}`,
+            {
+              productId: waterSupply.id || waterSupply.code,
+              productName: waterSupply.name,
+              manufacturer: "-",
+              category: "supply",
+              billingUnit: supplyBilling.billingUnit,
+            },
+          );
+
+          item.therapyTypes.add("enteral");
+          item.patientIds.add(patientId);
+          if (prescription.id) item.prescriptionIds.add(prescription.id);
+          item.totalQuantity += supplyBilling.totalQuantity;
+          item.totalVolumeMl += totalHydrationMl;
+          item.patientDays += overlapDays;
+          item.totalCost += supplyBilling.totalCost;
+          addWasteByFactor(item, waterSupply, supplyBilling.wasteFactor);
         }
       }
     });
@@ -901,7 +957,9 @@ const Reports = () => {
       return {
         productId: adjustment.id,
         productName: adjustment.productName,
-        manufacturer: adjustment.observation || "Ajuste manual sem paciente",
+        manufacturer: adjustment.mode === "cancellation" ? "Guia de cancelamento manual" : "Guia extra manual",
+        ward: adjustment.ward,
+        notes: adjustment.observation || "Ajuste manual sem paciente",
         category: adjustment.category === "diet" ? "diet" : adjustment.category,
         therapyType: "enteral",
         billingUnit: adjustment.unit,
@@ -1086,6 +1144,8 @@ const Reports = () => {
       <nome>${escapeXml(item.productName)}</nome>
       <categoria>${escapeXml(CATEGORY_LABEL[item.category])}</categoria>
       <fabricante>${escapeXml(item.manufacturer)}</fabricante>
+      <ala>${escapeXml(item.ward || "")}</ala>
+      <observacao>${escapeXml(item.notes || "")}</observacao>
       <via>${escapeXml(item.therapyType)}</via>
       <unidadeFaturamento>${escapeXml(item.billingUnit)}</unidadeFaturamento>
       <quantidadeTotal>${item.totalQuantity.toFixed(2)}</quantidadeTotal>
@@ -1498,11 +1558,13 @@ const Reports = () => {
                             <th className="p-3 font-medium">Produto</th>
                             <th className="p-3 font-medium">Categoria</th>
                             <th className="p-3 font-medium">Fabricante</th>
+                            <th className="p-3 font-medium">Ala</th>
+                            <th className="p-3 font-medium">Observacoes</th>
                             <th className="p-3 font-medium">Via</th>
                             <th className="p-3 font-medium text-right">Qtd total</th>
-                            <th className="p-3 font-medium">Unid.</th>
+                            <th className="p-3 font-medium">Unidade</th>
                             <th className="p-3 font-medium text-right">Volume (ml)</th>
-                            <th className="p-3 font-medium text-right">Unid. estimadas</th>
+                            <th className="p-3 font-medium text-right">Unidades calculadas</th>
                             <th className="p-3 font-medium text-right">Pacientes</th>
                             <th className="p-3 font-medium text-right">Prescricoes</th>
                             <th className="p-3 font-medium text-right">Paciente-dia</th>
@@ -1520,6 +1582,8 @@ const Reports = () => {
                                 <Badge variant="outline">{CATEGORY_LABEL[item.category]}</Badge>
                               </td>
                               <td className="p-3 text-muted-foreground">{item.manufacturer}</td>
+                              <td className="p-3 text-muted-foreground">{item.ward || "-"}</td>
+                              <td className="p-3 text-muted-foreground max-w-[220px] truncate" title={item.notes || undefined}>{item.notes || "-"}</td>
                               <td className="p-3">
                                 <Badge variant="outline" className="capitalize">
                                   {item.therapyType === "mixed" ? "misto" : item.therapyType}
@@ -1615,7 +1679,7 @@ const Reports = () => {
                             <th className="p-3 font-medium">Produto</th>
                             <th className="p-3 font-medium text-right">Volume total (mL)</th>
                             <th className="p-3 font-medium text-right">Quantidade total</th>
-                            <th className="p-3 font-medium text-right">Unidades estimadas</th>
+                            <th className="p-3 font-medium text-right">Unidades calculadas</th>
                             <th className="p-3 font-medium text-right">Custo total</th>
                           </tr>
                         </thead>
@@ -1667,7 +1731,7 @@ const Reports = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Geracao de residuos reciclaveis</CardTitle>
-                    <CardDescription>Estimativa por produto, com media de residuo por paciente que usou cada item.</CardDescription>
+                    <CardDescription>Calculo por produto, com media de residuo por paciente que usou cada item.</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                     <div className="h-[320px]">
@@ -1677,7 +1741,7 @@ const Reports = () => {
                           <XAxis dataKey="material" />
                           <YAxis unit="g" />
                           <Tooltip formatter={(value: number) => `${formatNumber(value, 1)} g`} />
-                          <Bar dataKey="grams" name="Peso estimado">
+                          <Bar dataKey="grams" name="Peso total">
                             {wasteChartData.map((entry) => (
                               <Cell key={entry.material} fill={MATERIAL_COLORS[entry.material]} />
                             ))}
@@ -1690,7 +1754,7 @@ const Reports = () => {
                       <div className="rounded-lg border bg-muted/40 p-4">
                         <div className="flex items-center gap-2 text-sm font-medium">
                           <Recycle className="h-4 w-4 text-primary" />
-                          Total estimado no periodo
+                          Total no periodo
                         </div>
                         <p className="mt-2 text-3xl font-bold">{formatNumber(totalWasteG, 1)}g</p>
                         <p className="mt-2 text-sm text-muted-foreground">

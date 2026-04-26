@@ -66,6 +66,47 @@ const collectPrescriptionTimes = (prescription: Prescription): string[] => [
     ...(prescription.oralDetails?.thickenerTimes || []),
 ];
 
+const formatDeliveryAmount = (
+    prescription: Prescription,
+    formulaRef: string,
+    formulaName: string,
+    volumeOrAmount: number,
+    formulas: Array<{ id?: string; code?: string; name: string; billingUnit?: string; presentations: number[] }>,
+) => {
+    const normalizedName = formulaName.trim().toLowerCase();
+    const formula = formulas.find((item) =>
+        item.id === formulaRef
+        || item.code === formulaRef
+        || item.name.trim().toLowerCase() === normalizedName,
+    );
+    const billingUnit = formula?.billingUnit || "ml";
+    const bagSize = formula?.presentations?.[0] || 0;
+
+    if (prescription.systemType === "closed") {
+        const bagQuantities = prescription.enteralDetails?.closedFormula?.bagQuantities || {};
+        const explicitBagQty = Object.values(bagQuantities).reduce((sum: number, qty: unknown) => sum + (Number(qty) || 0), 0);
+        const calculatedBagQty = bagSize > 0 ? Math.ceil((volumeOrAmount || 0) / bagSize) : 1;
+        const totalBags = explicitBagQty > 0 ? explicitBagQty : Math.max(calculatedBagQty, 1);
+
+        if (billingUnit === "unit") {
+            return `${totalBags} bolsa(s)`;
+        }
+
+        if (bagSize > 0) {
+            return `${totalBags} bolsa(s) de ${bagSize} mL`;
+        }
+
+        return `${volumeOrAmount || 0} mL`;
+    }
+
+    if (billingUnit === "unit" && bagSize > 0) {
+        const totalBags = Math.max(Math.ceil((volumeOrAmount || 0) / bagSize), 1);
+        return `${totalBags} unidade(s)`;
+    }
+
+    return `${volumeOrAmount || 0} ${billingUnit}`;
+};
+
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading, refetch: refetchPrescriptions } = usePrescriptions();
@@ -265,7 +306,7 @@ const Billing = () => {
         const patientIdsWithPrescriptions = new Set(filteredPrescriptions.map((prescription) => prescription.patientId));
 
         return patients
-            .filter((patient) => patient.status === "active" && patientIdsWithPrescriptions.has(patient.id || ""))
+            .filter((patient) => patientIdsWithPrescriptions.has(patient.id || ""))
             .map((patient) => ({
                 id: patient.id || "",
                 name: patient.name || "Paciente sem nome",
@@ -273,7 +314,11 @@ const Billing = () => {
                 ward: patient.ward || "",
                 status: patient.status || "active",
             }))
-            .sort((left, right) => left.name.localeCompare(right.name));
+            .sort((left, right) => {
+                if (left.status === "active" && right.status !== "active") return -1;
+                if (left.status !== "active" && right.status === "active") return 1;
+                return left.name.localeCompare(right.name);
+            });
     }, [filteredPrescriptions, patients]);
 
     const manualProductOptions = useMemo(() => {
@@ -459,6 +504,87 @@ const Billing = () => {
         setTimeout(() => printElementInPopup("requisition-print-document", popupTitle, popup), 120);
     };
 
+    const handleGenerateManualRequest = () => {
+        const hasManualFreeItem = !manualCancelPatientId && manualFreeItem.productName.trim() && Number(manualFreeItem.quantity) > 0;
+
+        if (!hasManualFreeItem) {
+            handleGenerateManualCancellation();
+            return;
+        }
+
+        if (!previewRequisitionData) return;
+
+        const manualSubtotal = manualCancelTotal;
+        const manualUnitPrice = Number(manualFreeItem.unitPrice) || (
+            Number(manualFreeItem.quantity) > 0 ? manualSubtotal / Number(manualFreeItem.quantity) : 0
+        );
+        const manualWard = manualFreeItem.ward || (unit === "all" ? "Ala nao informada" : unit);
+        const effectiveManualTimes = manualSelectedTimes.length > 0 ? manualSelectedTimes : ["Nao se aplica"];
+        const documentType: RequisitionData["documentType"] = manualRequestMode === "cancellation" ? "cancellation" : "extra";
+        const popupTitle = manualRequestMode === "cancellation" ? "Requisicao de cancelamento" : "Requisicao extra";
+        const popup = createPrintPopup(popupTitle);
+
+        const freeDietMap = [{
+            patientId: `manual-${Date.now()}`,
+            patientName: "Ajuste manual",
+            patientRecord: undefined,
+            bed: "-",
+            ward: manualWard,
+            dob: undefined,
+            route: "Manual",
+            type: "formula" as const,
+            productCode: manualFreeItem.productCode || undefined,
+            productName: manualFreeItem.productName.trim(),
+            volumeOrAmount: Number(manualFreeItem.quantity) || 0,
+            unit: manualFreeItem.unit || "un",
+            times: effectiveManualTimes,
+            observation: manualFreeItem.observation || "Lancamento manual sem vinculo com paciente",
+            unitPrice: manualUnitPrice,
+            subtotal: manualSubtotal,
+        }];
+
+        const manualConsolidated = [{
+            code: manualFreeItem.productCode || "AJUSTE-MANUAL",
+            name: manualFreeItem.productName.trim(),
+            billingUnit: manualFreeItem.unit || "un",
+            totalQuantity: Number(manualFreeItem.quantity) || 0,
+            unitPrice: manualUnitPrice,
+            subtotal: manualSubtotal,
+            type: manualFreeItem.category,
+        }];
+
+        addManualBillingAdjustment({
+            hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
+            ward: manualWard,
+            effectiveDate: manualCancelDate,
+            mode: manualRequestMode,
+            productCode: manualFreeItem.productCode || undefined,
+            productName: manualFreeItem.productName.trim(),
+            quantity: Number(manualFreeItem.quantity) || 0,
+            unit: manualFreeItem.unit || "un",
+            unitPrice: manualUnitPrice,
+            subtotal: manualSubtotal,
+            category: manualFreeItem.category,
+            observation: manualFreeItem.observation || undefined,
+        });
+
+        toast.success("Guia de ajuste registrada para os relatorios.");
+
+        setRequisitionData({
+            ...previewRequisitionData,
+            unitName: manualWard,
+            selectedTimes: effectiveManualTimes,
+            documentType,
+            effectiveDate: manualCancelDate,
+            dietMap: freeDietMap,
+            consolidated: manualConsolidated,
+            signatures: previewRequisitionData.signatures,
+        });
+
+        setManualCancelOpen(false);
+        setTimeout(() => printElementInPopup("requisition-print-document", popupTitle, popup), 120);
+    };
+
     const buildCancellationRequisition = (prescription: Prescription): RequisitionData => {
         const effectiveDate = new Date(`${cancelEffectiveDate}T00:00:00`);
         const generated = generateRequisitionData({
@@ -599,18 +725,29 @@ const Billing = () => {
                             unitName={unit === "all" ? "Todas as Unidades" : unit}
                             date={startDate ? formatDate(startDate) : "-"}
                             items={(previewRequisitionData?.dietMap || [])
-                                .filter((item) => item.type === "formula" || item.type === "water")
+                                .filter((item) => item.type === "formula")
                                 .flatMap((item) => {
                                     const times = item.times && item.times.length > 0 ? item.times : ["-"];
+                                    const matchingPrescription = filteredPrescriptions.find((prescription) =>
+                                        prescription.patientId === item.patientId
+                                        && prescription.formulas.some((formula) => formula.formulaId === item.productCode || formula.formulaName === item.productName),
+                                    );
                                     return times.map((time) => ({
                                         ward: item.ward,
                                         bed: item.bed,
                                         patientName: item.patientName,
-                                        systemType: item.observation?.toLowerCase().includes("fechado") ? "closed" : "open",
+                                        systemType: matchingPrescription?.systemType || (item.observation?.toLowerCase().includes("fechado") ? "closed" : "open"),
                                         formulaName: item.productName,
-                                        volume: `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
+                                        billedAmount: matchingPrescription
+                                            ? formatDeliveryAmount(
+                                                matchingPrescription,
+                                                item.productCode || "",
+                                                item.productName,
+                                                Number(item.volumeOrAmount || 0),
+                                                formulas,
+                                            )
+                                            : `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
                                         scheduleTime: time,
-                                        waterVolume: item.type === "water" ? `${item.volumeOrAmount || 0} ml` : undefined,
                                     }));
                                 })}
                             signatures={previewRequisitionData?.signatures}
@@ -799,7 +936,7 @@ const Billing = () => {
                                                 </TableHead>
                                                 <TableHead>Leito</TableHead>
                                                 <TableHead>Paciente</TableHead>
-                                                <TableHead>Prontuario</TableHead>
+                                                <TableHead>Numero do prontuario</TableHead>
                                                 <TableHead>Via</TableHead>
                                                 <TableHead>Setor</TableHead>
                                             </TableRow>
@@ -854,7 +991,7 @@ const Billing = () => {
                                     <DollarSign className="h-5 w-5 text-primary" />
                                     Resumo Financeiro
                                 </CardTitle>
-                                <CardDescription>Preview calculado com os filtros atuais.</CardDescription>
+                                <CardDescription>Resumo calculado com os filtros atuais.</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {previewRequisitionData ? (
@@ -863,7 +1000,7 @@ const Billing = () => {
                                             <div className="text-2xl font-bold text-primary">
                                                 {totalEstimated.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                                             </div>
-                                            <div className="text-xs text-muted-foreground">Total estimado do periodo</div>
+                                            <div className="text-xs text-muted-foreground">Total do periodo</div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="rounded-lg border bg-background p-3 text-center">
@@ -1069,7 +1206,7 @@ const Billing = () => {
                     <DialogHeader>
                         <DialogTitle>{manualRequestMode === "cancellation" ? "Cancelamento manual" : "Requisicao extra manual"}</DialogTitle>
                         <DialogDescription>
-                            Selecione o paciente, marque os itens desejados e gere a {manualActionLabel} com os valores exibidos abaixo.
+                            Voce pode vincular a um paciente, inclusive inativo, ou gerar a {manualActionLabel} sem paciente com ala, item e observacoes.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1080,14 +1217,15 @@ const Billing = () => {
                                 <Select
                                     value={manualCancelPatientId}
                                     onValueChange={(value) => {
-                                        setManualCancelPatientId(value);
+                                        setManualCancelPatientId(value === "__none__" ? "" : value);
                                         setManualCancelSelectedItems([]);
                                     }}
                                 >
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Selecione o paciente" />
+                                        <SelectValue placeholder="Selecione o paciente (opcional)" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem value="__none__">Sem paciente vinculado</SelectItem>
                                         {manualSelectablePatients.map((patient) => (
                                             <SelectItem key={patient.id} value={patient.id || ""}>
                                                 {[
@@ -1160,7 +1298,7 @@ const Billing = () => {
                                     </button>
                                 ))}
                             </div>
-                            {manualSelectedTimes.length === 0 && (
+                            {manualSelectedTimes.length === 0 && manualCancelPatientId && (
                                 <p className="text-xs text-destructive">
                                     Selecione ao menos um horário para gerar a guia manual.
                                 </p>
@@ -1182,7 +1320,7 @@ const Billing = () => {
                             </div>
 
                             {!manualCancelPatientId ? (
-                                <p className="text-sm text-muted-foreground">Escolha um paciente para listar os itens disponiveis.</p>
+                                <p className="text-sm text-muted-foreground">Sem paciente vinculado, a guia pode ser gerada apenas com o ajuste manual abaixo.</p>
                             ) : manualSelectedTimes.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">Selecione os horários da guia manual para listar os itens do paciente.</p>
                             ) : manualCancelCandidates.length === 0 ? (
@@ -1338,7 +1476,7 @@ const Billing = () => {
                         <Button variant="outline" onClick={() => setManualCancelOpen(false)}>
                             Fechar
                         </Button>
-                        <Button onClick={handleGenerateManualCancellation}>
+                        <Button onClick={handleGenerateManualRequest}>
                             {manualActionButtonLabel}
                         </Button>
                     </DialogFooter>
