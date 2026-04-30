@@ -136,6 +136,10 @@ async function main() {
         potassium: module.potassium,
         fiber: module.fiber,
         freeWater: module.freeWater,
+        plasticG: module.plasticG,
+        paperG: module.paperG,
+        metalG: module.metalG,
+        glassG: module.glassG,
         isActive: true,
       },
       create: {
@@ -151,6 +155,10 @@ async function main() {
         potassium: module.potassium,
         fiber: module.fiber,
         freeWater: module.freeWater,
+        plasticG: module.plasticG,
+        paperG: module.paperG,
+        metalG: module.metalG,
+        glassG: module.glassG,
         isActive: true,
       },
     });
