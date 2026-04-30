@@ -141,6 +141,14 @@ const toNumber = (value: unknown): number | undefined => {
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+const calculateScaledFormulaNutrient = (value: unknown, totalAmount: number, nutrientFactor: number): number => {
+  const numericValue = toNumber(value);
+  if (!hasNumber(numericValue)) return 0;
+  // Catalog values coming from the API may be stored per mL/g (<= 1),
+  // while local formula definitions use values per 100 mL/g (> 1).
+  return numericValue <= 1 ? totalAmount * numericValue : nutrientFactor * numericValue;
+};
+
 const addSource = (sources: Set<string>, itemName: string | undefined, sourceValue: string | undefined) => {
   if (!sourceValue) return;
   sources.add(itemName ? `${itemName}: ${sourceValue}` : sourceValue);
@@ -271,15 +279,15 @@ export const calculateFormulaNutrition = (
 
   totals.protein += hasNumber(proteinPct) && totalCalories > 0
     ? (totalCalories * (proteinPct / 100)) / 4
-    : nutrientFactor * (toNumber(formula.proteinPerUnit) || 0);
+    : calculateScaledFormulaNutrient(formula.proteinPerUnit, totalAmount, nutrientFactor);
   totals.carbs += hasNumber(carbPct) && totalCalories > 0
     ? (totalCalories * (carbPct / 100)) / 4
-    : nutrientFactor * (toNumber(formula.carbPerUnit) || 0);
+    : calculateScaledFormulaNutrient(formula.carbPerUnit, totalAmount, nutrientFactor);
   totals.fat += hasNumber(fatPct) && totalCalories > 0
     ? (totalCalories * (fatPct / 100)) / 9
-    : nutrientFactor * (toNumber(formula.fatPerUnit) || 0);
+    : calculateScaledFormulaNutrient(formula.fatPerUnit, totalAmount, nutrientFactor);
 
-  totals.fiber += nutrientFactor * (toNumber(formula.fiberPerUnit) || 0);
+  totals.fiber += calculateScaledFormulaNutrient(formula.fiberPerUnit, totalAmount, nutrientFactor);
   totals.freeWater += calculateFormulaFreeWater(formula, totalAmount, options?.dilutedAmount);
   totals.sodium += nutrientFactor * (toNumber(formula.sodiumPerUnit) || 0);
   totals.potassium += nutrientFactor * (toNumber(formula.potassiumPerUnit) || 0);

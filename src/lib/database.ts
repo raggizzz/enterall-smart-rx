@@ -184,6 +184,10 @@ export interface Module {
     carbSources?: string;
     fatSources?: string;
     fiberSources?: string;
+    plasticG?: number;
+    paperG?: number;
+    metalG?: number;
+    glassG?: number;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;

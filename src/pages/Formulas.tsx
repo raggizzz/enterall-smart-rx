@@ -129,6 +129,10 @@ type ModuleFormState = {
   carbSources: string;
   fatSources: string;
   fiberSources: string;
+  plasticG: string;
+  paperG: string;
+  metalG: string;
+  glassG: string;
 };
 
 const createFormulaForm = (): FormulaFormState => ({
@@ -203,6 +207,10 @@ const createModuleForm = (): ModuleFormState => ({
   carbSources: "",
   fatSources: "",
   fiberSources: "",
+  plasticG: "",
+  paperG: "",
+  metalG: "",
+  glassG: "",
 });
 
 const toOptionalNumber = (value: string) => {
@@ -702,6 +710,10 @@ const Formulas = () => {
       carbSources: moduleItem.carbSources || "",
       fatSources: moduleItem.fatSources || "",
       fiberSources: moduleItem.fiberSources || "",
+      plasticG: moduleItem.plasticG?.toString() || "",
+      paperG: moduleItem.paperG?.toString() || "",
+      metalG: moduleItem.metalG?.toString() || "",
+      glassG: moduleItem.glassG?.toString() || "",
     });
     setIsNewModuleOpen(true);
   };
@@ -748,6 +760,10 @@ const Formulas = () => {
       carbSources: moduleForm.carbSources.trim() || undefined,
       fatSources: moduleForm.fatSources.trim() || undefined,
       fiberSources: moduleForm.fiberSources.trim() || undefined,
+      plasticG: toOptionalNumber(moduleForm.plasticG),
+      paperG: toOptionalNumber(moduleForm.paperG),
+      metalG: toOptionalNumber(moduleForm.metalG),
+      glassG: toOptionalNumber(moduleForm.glassG),
       isActive: true,
     };
 
@@ -907,7 +923,7 @@ const Formulas = () => {
                       {formulaForm.billingUnit === "unit" && (
                         <div className="space-y-2"><Label>Conversao por unidade ({formulaForm.presentationForm === "po" ? "g" : "mL"})</Label><Input type="number" step="0.01" value={formulaForm.conversionFactor} onChange={(e) => setFormulaForm({ ...formulaForm, conversionFactor: e.target.value })} placeholder="Ex: 200" /></div>
                       )}
-                      <div className="space-y-2"><Label>Valor por unidade (R$)</Label><Input type="number" step="0.01" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} placeholder="Ex: 0,08" /></div>
+                      <div className="space-y-2"><Label>Valor por unidade (R$)</Label><Input type="number" step="0.0001" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} placeholder="Ex: 0,0800" /></div>
                     </div>
 
                     <div className="rounded-lg border border-border/60 bg-muted/20 p-4 text-sm text-muted-foreground">
@@ -1025,7 +1041,7 @@ const Formulas = () => {
                           </Select>
                         </div>
                         <div className="space-y-2"><Label>Conversao por unidade</Label><Input type="number" step="0.01" value={formulaForm.conversionFactor} onChange={(e) => setFormulaForm({ ...formulaForm, conversionFactor: e.target.value })} disabled={formulaForm.billingUnit !== "unit"} /></div>
-                        <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.01" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} /></div>
+                    <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.0001" value={formulaForm.billingPrice} onChange={(e) => setFormulaForm({ ...formulaForm, billingPrice: e.target.value })} /></div>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div className="space-y-2"><Label>Kcal/100 ml</Label><Input type="number" step="0.1" value={formulaForm.caloriesPerUnit} onChange={(e) => setFormulaForm({ ...formulaForm, caloriesPerUnit: e.target.value })} /></div>
@@ -1114,7 +1130,7 @@ const Formulas = () => {
                       {moduleForm.billingUnit === "unit" && (
                         <div className="space-y-2"><Label>Conversao por unidade ({moduleForm.presentationForm === "po" ? "g" : "mL"})</Label><Input type="number" step="0.01" value={moduleForm.conversionFactor} onChange={(e) => setModuleForm({ ...moduleForm, conversionFactor: e.target.value })} placeholder="Ex: 200" /></div>
                       )}
-                      <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.01" value={moduleForm.billingPrice} onChange={(e) => setModuleForm({ ...moduleForm, billingPrice: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Valor unitario (R$)</Label><Input type="number" step="0.0001" value={moduleForm.billingPrice} onChange={(e) => setModuleForm({ ...moduleForm, billingPrice: e.target.value })} /></div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2"><Label>Kcal/{moduleReferenceLabel}</Label><Input type="number" step="0.01" value={moduleForm.caloriesPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, caloriesPerUnit: e.target.value })} placeholder="Ex: 360" /></div>
@@ -1133,6 +1149,12 @@ const Formulas = () => {
                       <div className="space-y-2"><Label>Sodio (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.sodiumPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, sodiumPerUnit: e.target.value })} /></div>
                       <div className="space-y-2"><Label>Calcio (mg/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.calciumPerUnit} onChange={(e) => setModuleForm({ ...moduleForm, calciumPerUnit: e.target.value })} /></div>
                       <div className="space-y-2"><Label>Agua livre ({moduleReferenceLabel === "100 g" ? "mL/100 g" : "mL/100 mL"})</Label><Input type="number" step="0.01" value={moduleForm.waterContent} onChange={(e) => setModuleForm({ ...moduleForm, waterContent: e.target.value })} /></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="space-y-2"><Label>Residuo plastico (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.plasticG} onChange={(e) => setModuleForm({ ...moduleForm, plasticG: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Residuo papel (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.paperG} onChange={(e) => setModuleForm({ ...moduleForm, paperG: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Residuo metal (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.metalG} onChange={(e) => setModuleForm({ ...moduleForm, metalG: e.target.value })} /></div>
+                      <div className="space-y-2"><Label>Residuo vidro (g/{moduleReferenceLabel})</Label><Input type="number" step="0.01" value={moduleForm.glassG} onChange={(e) => setModuleForm({ ...moduleForm, glassG: e.target.value })} /></div>
                     </div>
                     <Button onClick={handleSaveModule} className="w-full">{editingModule ? "Salvar Alteracoes" : "Criar Modulo"}</Button>
                   </div>
@@ -1209,7 +1231,7 @@ const Formulas = () => {
                                 {formula.specialCharacteristics ? <div className="text-xs text-muted-foreground mt-1">{formula.specialCharacteristics}</div> : null}
                               </TableCell>
                               <TableCell className="min-w-[170px]">
-                                <div className="text-sm font-medium">{formula.billingUnit || "-"} {formula.billingPrice ? `| R$ ${formula.billingPrice.toFixed(2)}` : ""}</div>
+                                <div className="text-sm font-medium">{formula.billingUnit || "-"} {formula.billingPrice ? `| R$ ${formula.billingPrice.toFixed(4)}` : ""}</div>
                                 <div className="text-xs text-muted-foreground">{formula.conversionFactor ? `${formula.conversionFactor} por unidade` : "-"}</div>
                               </TableCell>
                               <TableCell className="min-w-[150px]">
@@ -1265,9 +1287,10 @@ const Formulas = () => {
                                 <div className="text-sm">{renderMeta([moduleItem.density ? `${moduleItem.density.toFixed(2)} kcal/${moduleItem.presentationForm === "po" ? "g" : "mL"}` : undefined, moduleItem.protein ? `${moduleItem.protein} g PTN/${moduleItem.referenceAmount || 100}` : undefined, moduleItem.fiber ? `${moduleItem.fiber} g fibra/${moduleItem.referenceAmount || 100}` : undefined, moduleItem.freeWater ? `${moduleItem.freeWater} ml agua livre` : undefined])}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.carbs ? `${moduleItem.carbs} g CHO` : undefined, moduleItem.fat ? `${moduleItem.fat} g LIP` : undefined, moduleItem.sodium ? `${moduleItem.sodium} sodio` : undefined, moduleItem.potassium ? `${moduleItem.potassium} potassio` : undefined, moduleItem.calcium ? `${moduleItem.calcium} calcio` : undefined, moduleItem.phosphorus ? `${moduleItem.phosphorus} fosforo` : undefined])}</div>
                                 <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.proteinSources, moduleItem.carbSources, moduleItem.fatSources, moduleItem.fiberSources])}</div>
+                                <div className="text-xs text-muted-foreground mt-1">{renderMeta([moduleItem.plasticG ? `Plastico ${moduleItem.plasticG}g` : undefined, moduleItem.paperG ? `Papel ${moduleItem.paperG}g` : undefined, moduleItem.metalG ? `Metal ${moduleItem.metalG}g` : undefined, moduleItem.glassG ? `Vidro ${moduleItem.glassG}g` : undefined]) || "-"}</div>
                               </TableCell>
                               <TableCell className="min-w-[170px]">
-                                <div className="text-sm font-medium">{moduleItem.billingUnit || "-"} {moduleItem.billingPrice ? `| R$ ${moduleItem.billingPrice.toFixed(2)}` : ""}</div>
+                                <div className="text-sm font-medium">{moduleItem.billingUnit || "-"} {moduleItem.billingPrice ? `| R$ ${moduleItem.billingPrice.toFixed(4)}` : ""}</div>
                                 <div className="text-xs text-muted-foreground">{moduleItem.conversionFactor ? `${moduleItem.conversionFactor} por unidade` : "-"}</div>
                               </TableCell>
                               <TableCell className="text-right">

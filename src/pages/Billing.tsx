@@ -48,7 +48,12 @@ const formatDate = (date: Date | string | undefined | null) => {
     return new Intl.DateTimeFormat("pt-BR").format(parsedDate);
 };
 
-const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const formatCurrency = (value: number) => value.toLocaleString("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+});
 
 type ManualRequestMode = "cancellation" | "extra";
 
@@ -1443,7 +1448,7 @@ const Billing = () => {
                                         <Label>Valor unitário</Label>
                                         <Input
                                             type="number"
-                                            step="0.01"
+                          step="0.0001"
                                             value={manualFreeItem.unitPrice}
                                             onChange={(event) => setManualFreeItem((current) => ({ ...current, unitPrice: event.target.value }))}
                                             placeholder="Ex: 0.08"
@@ -1453,7 +1458,7 @@ const Billing = () => {
                                         <Label>Valor total (opcional)</Label>
                                         <Input
                                             type="number"
-                                            step="0.01"
+                          step="0.0001"
                                             value={manualFreeItem.subtotal}
                                             onChange={(event) => setManualFreeItem((current) => ({ ...current, subtotal: event.target.value }))}
                                             placeholder="Ex: 125.50"

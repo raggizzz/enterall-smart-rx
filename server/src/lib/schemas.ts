@@ -129,6 +129,10 @@ export const createModuleSchema = z.object({
   density: z.coerce.number().nonnegative().nullish(),
   referenceAmount: z.coerce.number().nonnegative().nullish(),
   referenceTimesPerDay: z.coerce.number().int().nonnegative().nullish(),
+  plasticG: z.coerce.number().nonnegative().nullish(),
+  paperG: z.coerce.number().nonnegative().nullish(),
+  metalG: z.coerce.number().nonnegative().nullish(),
+  glassG: z.coerce.number().nonnegative().nullish(),
 }).passthrough();
 
 // ─── Suprimentos ─────────────────────────────────────────────────────────────

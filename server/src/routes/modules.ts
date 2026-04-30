@@ -41,6 +41,10 @@ const buildModulePayload = (payload: any, hospitalId: string) => ({
   carbSources: payload.carbSources || undefined,
   fatSources: payload.fatSources || undefined,
   fiberSources: payload.fiberSources || undefined,
+  plasticG: toNumber(payload.plasticG),
+  paperG: toNumber(payload.paperG),
+  metalG: toNumber(payload.metalG),
+  glassG: toNumber(payload.glassG),
   isActive: payload.isActive !== false,
 });
 

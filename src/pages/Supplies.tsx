@@ -289,7 +289,7 @@ const Supplies = () => {
                                         <Label>Valor Unitário (R$)</Label>
                                         <Input
                                             type="number"
-                                            step="0.01"
+                          step="0.0001"
                                             placeholder="0.00"
                                             value={currentSupply.unitPrice || ''}
                                             onChange={e => setCurrentSupply({ ...currentSupply, unitPrice: e.target.value })}
@@ -413,7 +413,7 @@ const Supplies = () => {
                                             <TableCell>
                                                 {supply.capacityMl ? `${supply.capacityMl} mL` : '-'}
                                             </TableCell>
-                                            <TableCell>R$ {supply.unitPrice?.toFixed(2) || '0.00'}</TableCell>
+                          <TableCell>R$ {supply.unitPrice?.toFixed(4) || '0.0000'}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                                 {[
                                                     supply.plasticG ? `Plástico ${supply.plasticG}g` : undefined,

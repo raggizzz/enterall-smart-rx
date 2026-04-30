@@ -118,13 +118,21 @@ const CATEGORY_LABEL: Record<ProductCategory, string> = {
   diet: "Ajuste manual",
 };
 
-const currencyFormatter = new Intl.NumberFormat("pt-BR", {
+const billingCurrencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
 });
 
 const numberFormatter = new Intl.NumberFormat("pt-BR", {
-  maximumFractionDigits: 1,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const billingNumberFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
 });
 
 const escapeXml = (value: unknown): string =>
@@ -145,7 +153,9 @@ const downloadTextFile = (filename: string, content: string, mimeType: string) =
   URL.revokeObjectURL(url);
 };
 
-const formatCurrency = (value: number): string => currencyFormatter.format(value || 0);
+const formatBillingCurrency = (value: number): string => billingCurrencyFormatter.format(value || 0);
+const roundNutrition = (value: number): number => Number((value || 0).toFixed(2));
+const roundBilling = (value: number): number => Number((value || 0).toFixed(4));
 
 const formatNumber = (value: number, digits = 1): string =>
   value.toLocaleString("pt-BR", {
@@ -743,6 +753,7 @@ const Reports = () => {
         item.patientDays += overlapDays;
         item.totalCalories += totalCalories;
         item.totalCost += totalQuantity * (module?.billingPrice || 0);
+        addWasteByFactor(item, module || {}, totalQuantity / referenceAmount);
       });
 
       if (prescription.therapyType === "oral" && prescription.oralDetails?.needsThickener) {
@@ -808,8 +819,10 @@ const Reports = () => {
           item.totalCost += totalCost;
           addWasteByFactor(
             item,
-            legacyThickenerFormula || {},
-            billingUnit === "g" ? totalQuantity / 1000 : totalVolumeMl / 1000,
+            thickenerModule || legacyThickenerFormula || {},
+            thickenerModule
+              ? totalQuantity / (thickenerModule.referenceAmount || 1)
+              : billingUnit === "g" ? totalQuantity / 1000 : totalVolumeMl / 1000,
           );
         }
       }
@@ -913,26 +926,28 @@ const Reports = () => {
           productId: item.productId,
           productName: item.productName,
           manufacturer: item.manufacturer,
+          ward: item.ward,
+          notes: item.notes,
           category: item.category,
           therapyType,
           billingUnit: item.billingUnit,
-          totalQuantity: Number(item.totalQuantity.toFixed(2)),
+          totalQuantity: roundNutrition(item.totalQuantity),
           totalVolumeMl: Number(item.totalVolumeMl.toFixed(0)),
-          estimatedUnits: Number(item.estimatedUnits.toFixed(1)),
+          estimatedUnits: roundBilling(item.estimatedUnits),
           patientDays: item.patientDays,
           uniquePatients,
           uniquePrescriptions: item.prescriptionIds.size,
           totalCalories: Number(item.totalCalories.toFixed(0)),
-          totalCost: Number(item.totalCost.toFixed(2)),
-          avgQuantityPerPatient: uniquePatients > 0 ? Number((item.totalQuantity / uniquePatients).toFixed(2)) : 0,
-          avgQuantityPerDay: item.patientDays > 0 ? Number((item.totalQuantity / item.patientDays).toFixed(2)) : 0,
-          avgCostPerPatient: uniquePatients > 0 ? Number((item.totalCost / uniquePatients).toFixed(2)) : 0,
-          costPerPatientDay: item.patientDays > 0 ? Number((item.totalCost / item.patientDays).toFixed(2)) : 0,
-          plasticG: Number(item.plasticG.toFixed(1)),
-          paperG: Number(item.paperG.toFixed(1)),
-          metalG: Number(item.metalG.toFixed(1)),
-          glassG: Number(item.glassG.toFixed(1)),
-          wastePerPatient: uniquePatients > 0 ? Number((wasteTotalG / uniquePatients).toFixed(2)) : 0,
+          totalCost: roundBilling(item.totalCost),
+          avgQuantityPerPatient: uniquePatients > 0 ? roundNutrition(item.totalQuantity / uniquePatients) : 0,
+          avgQuantityPerDay: item.patientDays > 0 ? roundNutrition(item.totalQuantity / item.patientDays) : 0,
+          avgCostPerPatient: uniquePatients > 0 ? roundBilling(item.totalCost / uniquePatients) : 0,
+          costPerPatientDay: item.patientDays > 0 ? roundBilling(item.totalCost / item.patientDays) : 0,
+          plasticG: roundNutrition(item.plasticG),
+          paperG: roundNutrition(item.paperG),
+          metalG: roundNutrition(item.metalG),
+          glassG: roundNutrition(item.glassG),
+          wastePerPatient: uniquePatients > 0 ? roundNutrition(wasteTotalG / uniquePatients) : 0,
         };
       })
       .sort((left, right) => {
@@ -1073,10 +1088,10 @@ const Reports = () => {
 
     return rows.map((item) => ({
       product: item.productName,
-      volumeMl: Number(item.totalVolumeMl.toFixed(1)),
-      quantity: Number(item.totalQuantity.toFixed(1)),
-      cost: Number(item.totalCost.toFixed(2)),
-      estimatedUnits: Number(item.estimatedUnits.toFixed(1)),
+      volumeMl: roundNutrition(item.totalVolumeMl),
+      quantity: roundNutrition(item.totalQuantity),
+      cost: roundBilling(item.totalCost),
+      estimatedUnits: roundBilling(item.estimatedUnits),
     }));
   }, [reportProductUsage, selectedProducts]);
 
@@ -1093,10 +1108,10 @@ const Reports = () => {
   }, [reportProductUsage]);
 
   const wasteChartData = useMemo(() => ([
-    { material: "Plastico", grams: Number(wasteSummary.plasticG.toFixed(1)) },
-    { material: "Papel", grams: Number(wasteSummary.paperG.toFixed(1)) },
-    { material: "Metal", grams: Number(wasteSummary.metalG.toFixed(1)) },
-    { material: "Vidro", grams: Number(wasteSummary.glassG.toFixed(1)) },
+    { material: "Plastico", grams: roundNutrition(wasteSummary.plasticG) },
+    { material: "Papel", grams: roundNutrition(wasteSummary.paperG) },
+    { material: "Metal", grams: roundNutrition(wasteSummary.metalG) },
+    { material: "Vidro", grams: roundNutrition(wasteSummary.glassG) },
   ]), [wasteSummary]);
 
   const attendedPatientCount = managementSummary.patientCount;
@@ -1120,15 +1135,15 @@ const Reports = () => {
   <resumo>
     <pacientesAtendidos>${managementSummary.patientCount}</pacientesAtendidos>
     <prescricoes>${managementSummary.prescriptionCount}</prescricoes>
-    <pacienteDia>${managementSummary.patientDays}</pacienteDia>
+    <pacienteDia>${managementSummary.patientDays.toFixed(2)}</pacienteDia>
     <produtos>${managementSummary.productCount}</produtos>
-    <custoFormulas>${managementSummary.formulasCost.toFixed(2)}</custoFormulas>
-    <custoModulos>${managementSummary.modulesCost.toFixed(2)}</custoModulos>
-    <custoInsumos>${managementSummary.suppliesCost.toFixed(2)}</custoInsumos>
-    <custoGuiasAjuste>${managementSummary.manualAdjustmentsCost.toFixed(2)}</custoGuiasAjuste>
-    <custoProdutos>${managementSummary.totalProductCost.toFixed(2)}</custoProdutos>
-    <custoMedioPaciente>${managementSummary.averageCostPerPatient.toFixed(2)}</custoMedioPaciente>
-    <custoMedioPacienteDia>${managementSummary.averageCostPerPatientDay.toFixed(2)}</custoMedioPacienteDia>
+    <custoFormulas>${managementSummary.formulasCost.toFixed(4)}</custoFormulas>
+    <custoModulos>${managementSummary.modulesCost.toFixed(4)}</custoModulos>
+    <custoInsumos>${managementSummary.suppliesCost.toFixed(4)}</custoInsumos>
+    <custoGuiasAjuste>${managementSummary.manualAdjustmentsCost.toFixed(4)}</custoGuiasAjuste>
+    <custoProdutos>${managementSummary.totalProductCost.toFixed(4)}</custoProdutos>
+    <custoMedioPaciente>${managementSummary.averageCostPerPatient.toFixed(4)}</custoMedioPaciente>
+    <custoMedioPacienteDia>${managementSummary.averageCostPerPatientDay.toFixed(4)}</custoMedioPacienteDia>
     <mediaProporcional>${escapeXml(historySummary.avgPercentage)}</mediaProporcional>
   </resumo>
   <historicoAssistencial>
@@ -1150,18 +1165,18 @@ const Reports = () => {
       <unidadeFaturamento>${escapeXml(item.billingUnit)}</unidadeFaturamento>
       <quantidadeTotal>${item.totalQuantity.toFixed(2)}</quantidadeTotal>
       <volumeMl>${item.totalVolumeMl.toFixed(0)}</volumeMl>
-      <unidadesEstimadas>${item.estimatedUnits.toFixed(1)}</unidadesEstimadas>
+      <unidadesEstimadas>${item.estimatedUnits.toFixed(4)}</unidadesEstimadas>
       <pacientes>${item.uniquePatients}</pacientes>
       <prescricoes>${item.uniquePrescriptions}</prescricoes>
       <pacienteDia>${item.patientDays}</pacienteDia>
       <quantidadeMediaDia>${item.avgQuantityPerDay.toFixed(2)}</quantidadeMediaDia>
       <calorias>${item.totalCalories.toFixed(0)}</calorias>
-      <custoTotal>${item.totalCost.toFixed(2)}</custoTotal>
-      <custoPorPacienteDia>${item.costPerPatientDay.toFixed(2)}</custoPorPacienteDia>
-      <plasticoG>${item.plasticG.toFixed(1)}</plasticoG>
-      <papelG>${item.paperG.toFixed(1)}</papelG>
-      <metalG>${item.metalG.toFixed(1)}</metalG>
-      <vidroG>${item.glassG.toFixed(1)}</vidroG>
+      <custoTotal>${item.totalCost.toFixed(4)}</custoTotal>
+      <custoPorPacienteDia>${item.costPerPatientDay.toFixed(4)}</custoPorPacienteDia>
+      <plasticoG>${item.plasticG.toFixed(2)}</plasticoG>
+      <papelG>${item.paperG.toFixed(2)}</papelG>
+      <metalG>${item.metalG.toFixed(2)}</metalG>
+      <vidroG>${item.glassG.toFixed(2)}</vidroG>
       <residuoMedioPaciente>${item.wastePerPatient.toFixed(2)}</residuoMedioPaciente>
     </produto>`).join("\n")}
   </consumoProdutos>
@@ -1333,7 +1348,7 @@ const Reports = () => {
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <p className="text-3xl font-bold text-emerald-600">{formatCurrency(managementSummary.totalProductCost)}</p>
+                    <p className="text-3xl font-bold text-emerald-600">{formatBillingCurrency(managementSummary.totalProductCost)}</p>
                     <p className="text-sm text-muted-foreground">Custo total incluindo fórmulas, suplementos, módulos, frascos e equipos de nutrição enteral</p>
                   </div>
                 </CardContent>
@@ -1383,7 +1398,7 @@ const Reports = () => {
                       <CardTitle className="text-base">Custo médio por paciente/dia</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerPatientDay)}</p>
+                      <p className="text-3xl font-bold">{formatBillingCurrency(managementSummary.averageCostPerPatientDay)}</p>
                       <p className="text-sm text-muted-foreground">Custo médio por paciente em TNE/dia.</p>
                     </CardContent>
                   </Card>
@@ -1401,7 +1416,7 @@ const Reports = () => {
                       <CardTitle className="text-base">Média diária do custo da ala</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-3xl font-bold">{formatCurrency(managementSummary.averageCostPerDay)}</p>
+                      <p className="text-3xl font-bold">{formatBillingCurrency(managementSummary.averageCostPerDay)}</p>
                       <p className="text-sm text-muted-foreground">Média diária do custo relacionado à TNE, da ala e período selecionados.</p>
                     </CardContent>
                   </Card>
@@ -1420,35 +1435,35 @@ const Reports = () => {
                             <p className="font-medium">Formulas</p>
                             <p className="text-sm text-muted-foreground">Produtos nutricionais principais</p>
                           </div>
-                          <div className="text-right font-bold">{formatCurrency(managementSummary.formulasCost)}</div>
+                          <div className="text-right font-bold">{formatBillingCurrency(managementSummary.formulasCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <p className="font-medium">Modulos</p>
                             <p className="text-sm text-muted-foreground">Ajustes e complementos de macro e micronutrientes</p>
                           </div>
-                          <div className="text-right font-bold">{formatCurrency(managementSummary.modulesCost)}</div>
+                          <div className="text-right font-bold">{formatBillingCurrency(managementSummary.modulesCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <p className="font-medium">Insumos</p>
                             <p className="text-sm text-muted-foreground">Equipos, frascos e demais itens faturaveis</p>
                           </div>
-                          <div className="text-right font-bold">{formatCurrency(managementSummary.suppliesCost)}</div>
+                          <div className="text-right font-bold">{formatBillingCurrency(managementSummary.suppliesCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border p-3">
                           <div>
                             <p className="font-medium">Guias de ajuste</p>
                             <p className="text-sm text-muted-foreground">Requisições extras e cancelamentos manuais sem paciente</p>
                           </div>
-                          <div className="text-right font-bold">{formatCurrency(managementSummary.manualAdjustmentsCost)}</div>
+                          <div className="text-right font-bold">{formatBillingCurrency(managementSummary.manualAdjustmentsCost)}</div>
                         </div>
                         <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3">
                           <div>
                             <p className="font-medium">Total do periodo</p>
                             <p className="text-sm text-muted-foreground">{managementSummary.productCount} produto(s) utilizados</p>
                           </div>
-                          <div className="text-right text-lg font-bold">{formatCurrency(managementSummary.totalProductCost)}</div>
+                          <div className="text-right text-lg font-bold">{formatBillingCurrency(managementSummary.totalProductCost)}</div>
                         </div>
                       </div>
                     </CardContent>
@@ -1465,24 +1480,24 @@ const Reports = () => {
                           <p className="font-medium">Material</p>
                           <p className="text-sm text-muted-foreground">Somatorio registrado nas prescricoes</p>
                         </div>
-                        <div className="text-right font-bold">{formatCurrency(managementSummary.materialCostTotal)}</div>
+                        <div className="text-right font-bold">{formatBillingCurrency(managementSummary.materialCostTotal)}</div>
                       </div>
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div>
                           <p className="font-medium">Enfermagem</p>
                           <p className="text-sm text-muted-foreground">Tempo assistencial convertido em custo</p>
                         </div>
-                        <div className="text-right font-bold">{formatCurrency(managementSummary.nursingCostTotal)}</div>
+                        <div className="text-right font-bold">{formatBillingCurrency(managementSummary.nursingCostTotal)}</div>
                       </div>
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div>
                           <p className="font-medium">Custo total da terapia</p>
                           <p className="text-sm text-muted-foreground">Se o campo total da prescricao foi salvo</p>
                         </div>
-                        <div className="text-right font-bold">{formatCurrency(managementSummary.therapyCostTotal)}</div>
+                        <div className="text-right font-bold">{formatBillingCurrency(managementSummary.therapyCostTotal)}</div>
                       </div>
                       <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                        Custo indireto configurado por dia: <strong className="text-foreground">{formatCurrency(managementSummary.indirectCostPerDay)}</strong>
+                        Custo indireto configurado por dia: <strong className="text-foreground">{formatBillingCurrency(managementSummary.indirectCostPerDay)}</strong>
                       </div>
                     </CardContent>
                   </Card>
@@ -1592,14 +1607,14 @@ const Reports = () => {
                               <td className="p-3 text-right">{numberFormatter.format(item.totalQuantity)}</td>
                               <td className="p-3">{item.billingUnit}</td>
                               <td className="p-3 text-right">{item.totalVolumeMl.toLocaleString("pt-BR")}</td>
-                              <td className="p-3 text-right">{numberFormatter.format(item.estimatedUnits)}</td>
+                              <td className="p-3 text-right">{billingNumberFormatter.format(item.estimatedUnits)}</td>
                               <td className="p-3 text-right">{item.uniquePatients}</td>
                               <td className="p-3 text-right">{item.uniquePrescriptions}</td>
                               <td className="p-3 text-right">{item.patientDays}</td>
                               <td className="p-3 text-right">{numberFormatter.format(item.avgQuantityPerDay)}</td>
                               <td className="p-3 text-right">{numberFormatter.format(item.avgQuantityPerPatient)}</td>
-                              <td className="p-3 text-right font-medium">{formatCurrency(item.totalCost)}</td>
-                              <td className="p-3 text-right">{formatCurrency(item.costPerPatientDay)}</td>
+                              <td className="p-3 text-right font-medium">{formatBillingCurrency(item.totalCost)}</td>
+                              <td className="p-3 text-right">{formatBillingCurrency(item.costPerPatientDay)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1664,7 +1679,7 @@ const Reports = () => {
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="product" />
                             <YAxis />
-                            <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                            <Tooltip formatter={(value: number) => formatBillingCurrency(value)} />
                             <Legend />
                             <Bar dataKey="cost" fill="#f59e0b" name="Custo total" />
                           </BarChart>
@@ -1689,8 +1704,8 @@ const Reports = () => {
                               <td className="p-3 font-medium">{item.product}</td>
                               <td className="p-3 text-right">{numberFormatter.format(item.volumeMl)}</td>
                               <td className="p-3 text-right">{numberFormatter.format(item.quantity)}</td>
-                              <td className="p-3 text-right">{numberFormatter.format(item.estimatedUnits)}</td>
-                              <td className="p-3 text-right font-medium">{formatCurrency(item.cost)}</td>
+                              <td className="p-3 text-right">{billingNumberFormatter.format(item.estimatedUnits)}</td>
+                              <td className="p-3 text-right font-medium">{formatBillingCurrency(item.cost)}</td>
                             </tr>
                           ))}
                         </tbody>
