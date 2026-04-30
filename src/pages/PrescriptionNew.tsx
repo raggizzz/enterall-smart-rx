@@ -470,6 +470,7 @@ const PrescriptionNew = () => {
   const [openInfusionMode, setOpenInfusionMode] = useState<"pump" | "gravity" | "bolus" | "">("");
   const [openDurationPerStep, setOpenDurationPerStep] = useState("");
   const [openFormulas, setOpenFormulas] = useState<FormulaEntry[]>([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
+  const [enteralProductionNotes, setEnteralProductionNotes] = useState("");
 
   // Modules
   const [modules, setModules] = useState<ModuleEntry[]>([]);
@@ -1136,9 +1137,11 @@ const PrescriptionNew = () => {
         setOpenInfusionMode("");
         setOpenDurationPerStep("");
         setOpenFormulas([{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
+        setEnteralProductionNotes(enteralDetails?.productionNotes || "");
       } else {
         setOpenInfusionMode(enteralDetails?.infusionMode || (prescription.infusionMode as "pump" | "gravity" | "bolus" | "") || "");
         setOpenDurationPerStep(enteralDetails?.openDurationPerStep || (prescription.infusionHoursPerDay ? String(prescription.infusionHoursPerDay) : ""));
+        setEnteralProductionNotes(enteralDetails?.productionNotes || "");
         setOpenFormulas(
           enteralDetails?.openFormulas && enteralDetails.openFormulas.length > 0
             ? enteralDetails.openFormulas.map((formula, index) => ({
@@ -1326,6 +1329,7 @@ const PrescriptionNew = () => {
       setOralSpeechTherapy(Boolean(patient.safeConsistency));
       setOralNeedsThickener(Boolean(patient.safeConsistency));
       setEquipmentVolume("");
+      setEnteralProductionNotes("");
       setOralThickenerModuleId("");
       setOralThickenerProduct("");
       setOralThickenerGrams("");
@@ -2171,6 +2175,7 @@ const PrescriptionNew = () => {
             infusionMode: (systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || undefined,
             equipmentVolume: systemType === "open" ? parseFloat(equipmentVolume) || undefined : undefined,
             openDurationPerStep: openDurationPerStep || undefined,
+            productionNotes: enteralProductionNotes.trim() || undefined,
             closedFormula: systemType === "closed"
               ? {
                 formulaId: closedFormula.formulaId || undefined,
@@ -2504,6 +2509,7 @@ const PrescriptionNew = () => {
                           setModules([]);
                           setHydration({ volume: "", times: [] });
                           setEquipmentVolume("");
+                          setEnteralProductionNotes("");
                           setPrescriptionScheduleTimes(initialScheduleTimes);
                           setCustomScheduleInput("");
                           setOralDietConsistency(p.consistency || "");
@@ -2843,6 +2849,16 @@ const PrescriptionNew = () => {
                       </p>
                     )}
                   </div>}
+                  <div className="space-y-2">
+                    <Label>Observações para lactário/manipulador</Label>
+                    <Textarea
+                      value={enteralProductionNotes}
+                      onChange={e => setEnteralProductionNotes(e.target.value)}
+                      placeholder="Ex: enviar em mamadeira, copo, bico adaptado, orientação específica para produção ou entrega..."
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">Este texto aparece no mapa/requisição no lugar de observações automáticas.</p>
+                  </div>
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!closedFormula.formulaId || !closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration || hasClosedBagExcess}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
@@ -2922,6 +2938,16 @@ const PrescriptionNew = () => {
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
                     ))}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Observações para lactário/manipulador</Label>
+                    <Textarea
+                      value={enteralProductionNotes}
+                      onChange={e => setEnteralProductionNotes(e.target.value)}
+                      placeholder="Ex: enviar em mamadeira, copo, bico adaptado, orientação específica para produção ou entrega..."
+                      rows={3}
+                    />
+                    <p className="text-xs text-muted-foreground">Este texto aparece no mapa/requisição no lugar de observações automáticas.</p>
                   </div>
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!openInfusionMode || openFormulas.every(f => !f.formulaId)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>

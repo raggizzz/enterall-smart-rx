@@ -272,7 +272,9 @@ export const generateRequisitionData = ({
                 hasMappedDelivery = true;
                 const openFormulaEntry = p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
                 const manipulationTimes = p.systemType === 'open' ? openFormulaEntry?.manipulationTimes || [] : [];
-                const manipulationLabel = manipulationTimes.length > 0 ? `Manipulação: ${manipulationTimes.join(', ')} | ` : '';
+                const productionNotes = p.enteralDetails?.productionNotes?.trim();
+                const manipulationLabel = manipulationTimes.length > 0 ? `Manipulação/preparo: ${manipulationTimes.join(', ')}` : '';
+                const observation = [productionNotes, manipulationLabel].filter(Boolean).join(' | ');
 
                 dietMap.push({
                     ...patientInfo,
@@ -285,11 +287,7 @@ export const generateRequisitionData = ({
                     rate: getPrescriptionRateLabel(p, f.volume),
                     times: matchingTimes,
                     productCode: formulaObj?.code || f.formulaId,
-                    observation: manipulationLabel + (p.systemType === 'closed'
-                        ? 'Sistema fechado'
-                        : p.infusionMode === 'bolus'
-                            ? 'Sistema aberto - bolus'
-                            : 'Sistema aberto')
+                    observation,
                 });
 
                 const administrationsForVolume = p.systemType === 'closed' ? 1 : matchingTimes.length;
@@ -385,7 +383,7 @@ export const generateRequisitionData = ({
                     unit: m.unit || 'g',
                     times: matchingTimes,
                     productCode: moduleObj?.code || m.moduleId,
-                    observation: 'Módulo prescrito'
+                    observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
 
                 const totalAmount = m.amount * matchingTimes.length * dayDiff;
@@ -429,7 +427,7 @@ export const generateRequisitionData = ({
                     stageVolumeUnit: thickenerVolume > 0 ? 'ml' : undefined,
                     times: thickenerTimes,
                     productCode: thickenerSource?.code || thickenerSource?.id,
-                    observation: 'Água espessada',
+                    observation: p.oralDetails?.observations || 'Água espessada',
                 });
 
                 const dailyGrams = thickenerGrams * thickenerTimes.length;
@@ -485,7 +483,7 @@ export const generateRequisitionData = ({
                     rate: p.infusionMode === 'bolus' ? 'Bolus' : undefined,
                     times: matchingTimes,
                     productCode: 'WATER-001',
-                    observation: 'Linha separada de hidratação'
+                    observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
                 const totalVol = p.hydrationVolume * matchingTimes.length * dayDiff;
                 addSupplyCharge(getWaterSupply(), totalVol);

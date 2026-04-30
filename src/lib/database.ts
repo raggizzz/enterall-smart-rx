@@ -315,6 +315,7 @@ export interface Prescription {
         infusionMode?: 'pump' | 'gravity' | 'bolus';
         equipmentVolume?: number | string;
         openDurationPerStep?: string;
+        productionNotes?: string;
         closedFormula?: {
             formulaId?: string;
             infusionMode?: 'pump' | 'gravity' | '';

@@ -12,6 +12,16 @@ const formatQuantity = (value?: number, unit?: string) => {
     return unit ? `${normalized} ${unit}` : normalized;
 };
 
+const formatBillingCurrency = (value?: number) => {
+    if (value === undefined || value === null || Number.isNaN(value)) return '-';
+    return value.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 4,
+        maximumFractionDigits: 4,
+    });
+};
+
 const getTypeBadge = (item: DietMapItem) => {
     if (item.type === 'water') return 'AGUA';
     if (item.type === 'module') return 'MODULO';
@@ -139,9 +149,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                 </td>
                                                 <td className="border border-black p-1 align-top">{item.observation || '-'}</td>
                                                 <td className="border border-black p-1 text-right align-top">
-                                                    {item.subtotal
-                                                        ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                                                        : '-'}
+                                                    {formatBillingCurrency(item.subtotal)}
                                                 </td>
                                             </>
                                         ) : (
@@ -223,17 +231,17 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                         </td>
                                         <td className="border border-black p-1 text-center uppercase">{item.billingUnit}</td>
                                         <td className="border border-black p-1 text-right">
-                                            {item.unitPrice ? item.unitPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                                            {formatBillingCurrency(item.unitPrice)}
                                         </td>
                                         <td className="border border-black p-1 text-right">
-                                            {item.subtotal ? item.subtotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
+                                            {formatBillingCurrency(item.subtotal)}
                                         </td>
                                     </tr>
                                 ))}
                                 <tr>
                                     <td colSpan={5} className="border border-black p-1 text-right font-bold uppercase">Total</td>
                                     <td className="border border-black p-1 text-right font-bold">
-                                        {consolidatedTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        {formatBillingCurrency(consolidatedTotal)}
                                     </td>
                                 </tr>
                             </>

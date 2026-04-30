@@ -47,17 +47,23 @@ export interface ParenteralDerived {
     glucose: number;
     tig: number;
   };
+  perKgIdeal?: {
+    kcal: number;
+    amino: number;
+  };
 }
 
 export const deriveParenteralValues = (
   values: ParenteralValues,
   weight?: number | null,
+  idealWeight?: number | null,
 ): ParenteralDerived => {
   const aa = parenteralAminoacidsFromMl(values.aminoacidsMl, 10);
   const lip = parenteralLipidsFromMl(values.lipidsMl, 20);
   const glu = parenteralGlucoseFromMl(values.glucoseMl, values.glucoseConc);
   const vet = aa.kcal + lip.kcal + glu.kcal;
   const w = weight || 0;
+  const iw = idealWeight || 0;
 
   return {
     aminoacidsG: aa.g,
@@ -76,6 +82,12 @@ export const deriveParenteralValues = (
         ? (glu.g * 1000) / (w * 60 * values.infusionTime)
         : 0,
     },
+    perKgIdeal: iw
+      ? {
+          kcal: vet / iw,
+          amino: aa.g / iw,
+        }
+      : undefined,
   };
 };
 
@@ -88,9 +100,16 @@ interface Props {
 }
 
 export function ParenteralStep({ values, selectedPatient, onValuesChange, onBack, onNext }: Props) {
+  const idealWeight = useMemo(() => {
+    const height = selectedPatient?.height || 0;
+    if (height <= 0) return 0;
+    const heightM = height > 3 ? height / 100 : height;
+    return 25 * heightM * heightM;
+  }, [selectedPatient?.height]);
+
   const derived = useMemo(
-    () => deriveParenteralValues(values, selectedPatient?.weight),
-    [values, selectedPatient?.weight],
+    () => deriveParenteralValues(values, selectedPatient?.weight, idealWeight),
+    [values, selectedPatient?.weight, idealWeight],
   );
 
   return (
@@ -126,8 +145,16 @@ export function ParenteralStep({ values, selectedPatient, onValuesChange, onBack
             </div>
           </div>
           {selectedPatient?.weight && (
-            <div className="rounded-lg border border-orange-200 bg-white/80 px-4 py-3 text-sm">
-              <span className="font-semibold text-orange-700">TIG:</span> {derived.perKg.tig.toFixed(2)} mg/kg/min
+            <div className="rounded-lg border border-orange-200 bg-white/80 px-4 py-3 text-sm space-y-1">
+              <div>
+                <span className="font-semibold text-orange-700">TIG:</span> {derived.perKg.tig.toFixed(2)} mg/kg/min (PA)
+              </div>
+              {derived.perKgIdeal && (
+                <div className="text-muted-foreground">
+                  <span className="font-semibold text-orange-700">Referência PI:</span>{" "}
+                  VET {derived.perKgIdeal.kcal.toFixed(1)} kcal/kg PI | aminoácidos {derived.perKgIdeal.amino.toFixed(2)} g/kg PI
+                </div>
+              )}
             </div>
           )}
         </CardContent>
