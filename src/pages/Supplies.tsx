@@ -76,6 +76,14 @@ const BILLING_UNIT_OPTIONS: Array<{ value: NonNullable<Supply["billingUnit"]>; l
 const getCategoryLabel = (category?: Supply["category"]) =>
     CATEGORY_OPTIONS.find((option) => option.value === category)?.label || "Padrão";
 
+const formatSupplyCurrency = (value?: number) =>
+    new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(value || 0);
+
 const Supplies = () => {
     const { supplies, isLoading, createSupply, updateSupply, deleteSupply } = useSupplies();
     const role = useCurrentRole();
@@ -413,7 +421,7 @@ const Supplies = () => {
                                             <TableCell>
                                                 {supply.capacityMl ? `${supply.capacityMl} mL` : '-'}
                                             </TableCell>
-                          <TableCell>R$ {supply.unitPrice?.toFixed(4) || '0.0000'}</TableCell>
+                          <TableCell>{formatSupplyCurrency(supply.unitPrice)}</TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                                 {[
                                                     supply.plasticG ? `Plástico ${supply.plasticG}g` : undefined,

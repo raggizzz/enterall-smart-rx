@@ -185,6 +185,7 @@ const Tools = () => {
   const { tools } = useAppTools();
   const { formulas } = useFormulas();
   const { modules } = useModules();
+  const currentHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || "" : "";
   const [catalogSearch, setCatalogSearch] = useState("");
 
   // --- PREDICTIVE EQUATIONS STATE ---
@@ -423,6 +424,10 @@ const Tools = () => {
   }, [nrsQ1, nrsQ2, nrsQ3, nrsQ4, nrsAge, nrsNutritionScore, nrsDiseaseScore]);
 
   const toolsCatalog = tools.length > 0 ? tools : TOOLS_FALLBACK;
+  const visibleProducts = useMemo(
+    () => [...formulas, ...modules].filter((product) => !currentHospitalId || !product.hospitalId || product.hospitalId === currentHospitalId),
+    [currentHospitalId, formulas, modules],
+  );
   const linksToShow = tools.filter(t => t.link).length > 0 ? tools.filter(t => t.link) : LINKS_FALLBACK;
 
   return (
@@ -886,7 +891,7 @@ const Tools = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {[...formulas, ...modules]
+                      {visibleProducts
                         .filter((product) =>
                           !catalogSearch
                           || product.name.toLowerCase().includes(catalogSearch.toLowerCase())
@@ -936,7 +941,7 @@ const Tools = () => {
                     </tbody>
                   </table>
                 </div>
-                <p className="text-xs text-muted-foreground mt-3">{[...formulas, ...modules].length} produtos cadastrados para a unidade</p>
+                <p className="text-xs text-muted-foreground mt-3">{visibleProducts.length} produtos cadastrados para a unidade</p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -997,18 +1002,7 @@ const Tools = () => {
 
           {/* === LINKS & TOOLS CATALOG TAB === */}
           <TabsContent value="catalogo">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {toolsCatalog.map(tool => (
-                <div key={tool.code} className="border p-3 rounded flex justify-between items-center bg-card">
-                  <div>
-                    <div className="font-medium">{tool.name}</div>
-                    <p className="text-xs text-muted-foreground">{tool.category}</p>
-                  </div>
-                  <Badge variant="outline">{tool.code}</Badge>
-                </div>
-              ))}
-            </div>
-            <div className="mt-8">
+            <div>
               <h3 className="font-bold mb-4">Links Úteis</h3>
               <div className="grid grid-cols-1 gap-2">
                 {linksToShow.map(l => (

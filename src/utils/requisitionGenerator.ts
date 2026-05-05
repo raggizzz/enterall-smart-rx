@@ -127,6 +127,11 @@ export const generateRequisitionData = ({
     selectedTimes,
     signatures
 }: GenerateOptions): RequisitionData => {
+    const normalizeLookupText = (value?: string) =>
+        (value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
     const orderedSelectedTimes = [...selectedTimes]
         .map((time) => normalizeScheduleTime(time))
         .filter(Boolean);
@@ -205,23 +210,26 @@ export const generateRequisitionData = ({
         || supplies.find((s) => s.type === 'bottle' && s.isActive && s.isBillable !== false);
     const getWaterSupply = () =>
         findSupplyByCategory('hydration-water')
-        || supplies.find((s) => s.isActive && s.isBillable !== false && s.name.toLowerCase().includes('agua'));
+        || supplies.find((s) => s.isActive && s.isBillable !== false && normalizeLookupText(s.name).includes('agua'));
     const addSupplyCharge = (supply: Supply | undefined, requestedAmount: number) => {
         if (!supply || !Number.isFinite(requestedAmount) || requestedAmount <= 0) return;
 
         const billingUnit = supply.billingUnit || 'unit';
         const capacityMl = Number(supply.capacityMl || 0);
-        const totalQuantity = billingUnit === 'ml'
-            ? requestedAmount
-            : capacityMl > 0
-                ? Math.ceil(requestedAmount / capacityMl)
-                : requestedAmount;
+        const billedByContainer = billingUnit === 'ml' && capacityMl > 0;
+        const totalQuantity = billedByContainer
+            ? Math.ceil(requestedAmount / capacityMl)
+            : billingUnit === 'ml'
+                ? requestedAmount
+                : capacityMl > 0
+                    ? Math.ceil(requestedAmount / capacityMl)
+                    : requestedAmount;
 
         addToConsolidated(
             supply.code,
             supply.name,
             totalQuantity,
-            billingUnit,
+            billedByContainer ? 'unit' : billingUnit,
             supply.unitPrice || 0,
             'supply',
         );
@@ -257,7 +265,8 @@ export const generateRequisitionData = ({
                 : p.feedingRoute || p.therapyType,
         };
 
-        let dailySets = 0;
+        let mainDailySetCount = 0;
+        let hydrationDailySetCount = 0;
         let dailyBottles = 0;
         let hasMappedDelivery = false;
 
@@ -271,10 +280,8 @@ export const generateRequisitionData = ({
             if (matchingTimes.length > 0 && f.volume > 0) {
                 hasMappedDelivery = true;
                 const openFormulaEntry = p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
-                const manipulationTimes = p.systemType === 'open' ? openFormulaEntry?.manipulationTimes || [] : [];
                 const productionNotes = p.enteralDetails?.productionNotes?.trim();
-                const manipulationLabel = manipulationTimes.length > 0 ? `Manipulação/preparo: ${manipulationTimes.join(', ')}` : '';
-                const observation = [productionNotes, manipulationLabel].filter(Boolean).join(' | ');
+                const observation = productionNotes || '';
 
                 dietMap.push({
                     ...patientInfo,
@@ -319,10 +326,17 @@ export const generateRequisitionData = ({
                     const hasExplicitBagQuantities = Boolean(p.enteralDetails?.closedFormula?.bagQuantitiesProvided)
                         || Object.keys(bagQuantities).length > 0;
                     const bagQtyFromPrescription = Object.values(bagQuantities).reduce((sum: number, qty: unknown) => sum + (Number(qty) || 0), 0);
+                    const selectedExplicitBags = Object.entries(bagQuantities)
+                        .filter(([time]) => selectedTimeSet.has(normalizeScheduleTime(time)))
+                        .reduce((sum: number, [, qty]) => sum + (Number(qty) || 0), 0);
+                    const hasSingleClosedFormula = p.formulas.length <= 1;
                     const dailyVolume = f.volume;
-                    const dailyBags = hasExplicitBagQuantities
+                    const dailyBags = hasExplicitBagQuantities && hasSingleClosedFormula
                         ? bagQtyFromPrescription
                         : Math.ceil(dailyVolume / bagSize);
+                    const selectedDailyBags = hasExplicitBagQuantities && hasSingleClosedFormula
+                        ? selectedExplicitBags
+                        : matchingTimes.length;
                     const totalBags = dailyBags * dayDiff;
                     const closedBillableQuantity = billingUnit === 'ml'
                         ? totalBags * bagSize
@@ -332,6 +346,11 @@ export const generateRequisitionData = ({
                     rowSubtotal = closedBillableQuantity * price;
 
                     addToConsolidated(formulaObj?.code || f.formulaId, f.formulaName, closedBillableQuantity, closedBillingUnit, price, 'formula');
+                    if (hasExplicitBagQuantities && !hasSingleClosedFormula) {
+                        mainDailySetCount = Math.max(mainDailySetCount, selectedExplicitBags);
+                    } else {
+                        mainDailySetCount += selectedDailyBags;
+                    }
                 } else if (billingUnit === 'ml' && formulaObj?.presentations && formulaObj.presentations.length > 0) {
                     rowUnitPrice = price;
                     rowSubtotal = totalBillableAmount * price;
@@ -362,6 +381,7 @@ export const generateRequisitionData = ({
                 // Heuristic for Bottles: If Open System, 1 bottle per administration?
                 if (p.systemType === 'open') {
                     dailyBottles += matchingTimes.length;
+                    mainDailySetCount = 1;
                 }
             }
         });
@@ -494,17 +514,24 @@ export const generateRequisitionData = ({
                 if (p.systemType === 'open') {
                     dailyBottles += matchingTimes.length;
                 }
+                hydrationDailySetCount = 1;
             }
         }
 
         // --- Supplies Heuristics (Consolidated Only) ---
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
-            if (p.infusionMode === 'pump') {
-                addSupplyCharge(getPumpSupply(), dayDiff);
-            } else if (p.infusionMode === 'gravity') {
-                addSupplyCharge(getGravitySupply(), dayDiff);
-            } else if (p.infusionMode === 'bolus') {
-                addSupplyCharge(getBolusSupply(), dayDiff);
+            if (mainDailySetCount > 0) {
+                if (p.infusionMode === 'pump') {
+                    addSupplyCharge(getPumpSupply(), mainDailySetCount * dayDiff);
+                } else if (p.infusionMode === 'gravity') {
+                    addSupplyCharge(getGravitySupply(), mainDailySetCount * dayDiff);
+                } else if (p.infusionMode === 'bolus') {
+                    addSupplyCharge(getBolusSupply(), mainDailySetCount * dayDiff);
+                }
+            }
+
+            if (hydrationDailySetCount > 0) {
+                addSupplyCharge(getGravitySupply(), hydrationDailySetCount * dayDiff);
             }
 
             // Bottles (Frascos)

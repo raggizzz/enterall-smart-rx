@@ -253,15 +253,12 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
             <div className="mt-10 grid grid-cols-3 gap-8 text-[10px]">
                 <div>
                     <p className="border-t border-black pt-2 font-semibold">Tecnico responsavel / Matricula:</p>
-                    <p className="mt-2">{data.signatures.technician}</p>
                 </div>
                 <div>
                     <p className="border-t border-black pt-2 font-semibold">Nutricionista prescritor / Matricula:</p>
-                    <p className="mt-2">{data.signatures.prescriber}</p>
                 </div>
                 <div>
                     <p className="border-t border-black pt-2 font-semibold">Nutricionista RT ou da Concessionaria / Matricula:</p>
-                    <p className="mt-2">{data.signatures.manager}</p>
                 </div>
             </div>
         </div>

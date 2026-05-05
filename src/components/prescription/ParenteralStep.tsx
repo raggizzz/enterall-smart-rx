@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertCircle, Calculator, ChevronRight } from "lucide-react";
@@ -331,19 +330,6 @@ export function ParenteralStep({ values, selectedPatient, onValuesChange, onBack
               <Label htmlFor="pn-trace-elements" className="cursor-pointer font-medium">Oligoelementos</Label>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Observações */}
-      <Card>
-        <CardHeader><CardTitle>Observações</CardTitle></CardHeader>
-        <CardContent>
-          <Textarea
-            value={values.observations}
-            onChange={e => onValuesChange({ observations: e.target.value })}
-            placeholder="Anotações sobre a prescrição parenteral..."
-            rows={4}
-          />
         </CardContent>
       </Card>
 

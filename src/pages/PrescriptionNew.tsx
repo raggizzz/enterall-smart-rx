@@ -36,6 +36,7 @@ import type { UnintentionalCaloriesInput } from "@/lib/prescriptionCalculations"
 import { calculateOpenStageRate } from "@/lib/prescriptionInfusion";
 import { ParenteralStep, deriveParenteralValues } from "@/components/prescription/ParenteralStep";
 import type { ParenteralValues, GlucoseConcentration, LipidType } from "@/components/prescription/ParenteralStep";
+import { calculatePrescriptionCosts } from "@/lib/prescriptionCosting";
 import {
   DEFAULT_SCHEDULE_TIMES,
   areScheduleTimesEqual,
@@ -357,8 +358,27 @@ const toNumericValue = (value?: string | number | null): number | undefined => {
 
 const formatDecimalValue = (value?: number | null): string => {
   if (typeof value !== "number" || !Number.isFinite(value)) return "0";
-  if (Number.isInteger(value)) return String(value);
-  return value.toFixed(1).replace(/\.0$/, "");
+  if (Number.isInteger(value)) return value.toLocaleString("pt-BR");
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  });
+};
+
+const formatSummaryNumber = (value?: number | null, digits = 1): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "0";
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: Number.isInteger(value) ? 0 : Math.min(1, digits),
+    maximumFractionDigits: digits,
+  });
+};
+
+const formatCurrencyValue = (value?: number | null): string => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "0,00";
+  return value.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
 
 const cleanNoteText = (value?: string | null): string =>
@@ -480,20 +500,25 @@ const PrescriptionNew = () => {
   const [equipmentVolume, setEquipmentVolume] = useState("");
   const [prescriptionScheduleTimes, setPrescriptionScheduleTimes] = useState<string[]>([...DEFAULT_SCHEDULE_TIMES]);
   const [customScheduleInput, setCustomScheduleInput] = useState("");
+  const currentHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || "" : "";
 
   // --- DB hooks for formulas/modules/auxiliary catalogs ---
   const { formulas: dbFormulas } = useFormulas();
   const { modules: dbModules } = useDbModules();
   const { supplies } = useSupplies();
-  const { wards } = useWards();
+  const { wards } = useWards(selectedPatient?.hospitalId || currentHospitalId || undefined);
   const { settings } = useSettings();
   const availableFormulas = useMemo<ExtendedCatalogFormula[]>(
-    () => dbFormulas.map((formula) => buildFallbackCatalogFormula(formula)),
-    [dbFormulas],
+    () => dbFormulas
+      .filter((formula) => !currentHospitalId || !formula.hospitalId || formula.hospitalId === currentHospitalId)
+      .map((formula) => buildFallbackCatalogFormula(formula)),
+    [currentHospitalId, dbFormulas],
   );
   const availableModules = useMemo<ExtendedCatalogModule[]>(
-    () => dbModules.map((moduleItem) => buildFallbackCatalogModule(moduleItem)),
-    [dbModules],
+    () => dbModules
+      .filter((moduleItem) => !currentHospitalId || !moduleItem.hospitalId || moduleItem.hospitalId === currentHospitalId)
+      .map((moduleItem) => buildFallbackCatalogModule(moduleItem)),
+    [currentHospitalId, dbModules],
   );
 
   // Summary expanded
@@ -659,7 +684,6 @@ const PrescriptionNew = () => {
   const parenteralPerKg = parenteralDerived.perKg;
   const parenteralAccess = parenteralValues.access;
   const parenteralInfusionTime = parenteralValues.infusionTime;
-  const parenteralObservations = parenteralValues.observations;
 
   // Unintentional calories calculation
   const unintentionalResult = useMemo(
@@ -1537,6 +1561,76 @@ const PrescriptionNew = () => {
     proteinReferenceWeight,
   ]);
 
+  const detailedSourceLines = useMemo(() => {
+    const formulaLines: string[] = [];
+    const moduleLines: string[] = [];
+
+    if (feedingRoutes.enteral) {
+      if (systemType === "closed" && closedFormula.formulaId) {
+        const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
+        if (formula && (bagCalculation?.totalVolume || 0) > 0) {
+          formulaLines.push(`${formula.name}: ${formatSummaryNumber(bagCalculation?.totalVolume || 0, 0)} mL/dia`);
+        }
+      }
+
+      if (systemType === "open") {
+        openFormulas
+          .filter((entry) => isPersistedDbId(entry.formulaId) && entry.times.length > 0)
+          .forEach((entry) => {
+            const formula = availableFormulas.find((item) => item.id === entry.formulaId);
+            if (!formula) return;
+            const totalVolume = (toNumericValue(entry.volume) || 0) * entry.times.length;
+            if (totalVolume > 0) {
+              formulaLines.push(`${formula.name}: ${formatSummaryNumber(totalVolume, 0)} ${formula.presentationForm === "po" ? "g" : "mL"}/dia`);
+            }
+          });
+      }
+
+      modules
+        .filter((entry) => isPersistedDbId(entry.moduleId) && entry.times.length > 0)
+        .forEach((entry) => {
+          const moduleItem = availableModules.find((item) => item.id === entry.moduleId);
+          if (!moduleItem) return;
+          const totalAmount = (toNumericValue(entry.quantity) || 0) * entry.times.length;
+          if (totalAmount > 0) {
+            moduleLines.push(`${moduleItem.name}: ${formatSummaryNumber(totalAmount, 1)} ${entry.unit}/dia`);
+          }
+        });
+    }
+
+    if (feedingRoutes.oral) {
+      oralSupplements.forEach((supplement) => {
+        if (!isPersistedDbId(supplement.supplementId) || !supplement.supplementName) return;
+        const totalAmount = (supplement.amount || 0) * Object.values(supplement.schedules || {}).filter((value) => value === true).length;
+        if (totalAmount > 0) {
+          formulaLines.push(`${supplement.supplementName}: ${formatSummaryNumber(totalAmount, 1)} ${supplement.unit || "mL"}/dia`);
+        }
+      });
+
+      oralTherapyModules.forEach((moduleEntry) => {
+        if (!isPersistedDbId(moduleEntry.moduleId) || !moduleEntry.moduleName) return;
+        const totalAmount = (moduleEntry.amount || 0) * Object.values(moduleEntry.schedules || {}).filter((value) => value === true).length;
+        if (totalAmount > 0) {
+          moduleLines.push(`${moduleEntry.moduleName}: ${formatSummaryNumber(totalAmount, 1)} ${moduleEntry.unit || "g"}/dia`);
+        }
+      });
+    }
+
+    return { formulas: formulaLines, modules: moduleLines };
+  }, [
+    availableFormulas,
+    availableModules,
+    bagCalculation?.totalVolume,
+    closedFormula.formulaId,
+    feedingRoutes.enteral,
+    feedingRoutes.oral,
+    modules,
+    openFormulas,
+    oralSupplements,
+    oralTherapyModules,
+    systemType,
+  ]);
+
   const unintentionalNoteLines = useMemo(() => {
     const lines: string[] = [];
     if (unintentionalResult.propofolKcal > 0) {
@@ -1574,7 +1668,7 @@ const PrescriptionNew = () => {
   const chartNoteSuggestion = useMemo(() => {
     if (!feedingRoutes.enteral || !systemType) return "";
 
-    const lines: string[] = ["Registro em Prontuário:"];
+    const lines: string[] = [];
     const routeLabel = formatEnteralAccessLabel(enteralAccess);
 
     if (goalSummary.energyGoal || goalSummary.proteinGoal) {
@@ -1659,9 +1753,9 @@ const PrescriptionNew = () => {
       ? "VET (nutrição enteral + kcal não intencionais)"
       : "VET";
     lines.push(
-      `${vetLabel}: ${nutritionSummary.vet} kcal (${nutritionSummary.vetPerKg} kcal/kg); Proteínas: ${nutritionSummary.protein}g (${nutritionSummary.proteinPerKg}g/kg); Carb.: ${nutritionSummary.carbs}g; Lip.: ${nutritionSummary.fat}g; Fibras: ${nutritionSummary.fiber}g/dia.`,
+      `${vetLabel}: ${formatDecimalValue(nutritionSummary.vet)} kcal (${formatDecimalValue(nutritionSummary.vetPerKg)} kcal/kg); Proteínas: ${formatDecimalValue(nutritionSummary.protein)}g (${formatDecimalValue(nutritionSummary.proteinPerKg)}g/kg); Carb.: ${formatDecimalValue(nutritionSummary.carbs)}g; Lip.: ${formatDecimalValue(nutritionSummary.fat)}g; Fibras: ${formatDecimalValue(nutritionSummary.fiber)}g/dia.`,
     );
-    lines.push(`Água livre total: ${nutritionSummary.freeWater} ml/dia (${nutritionSummary.freeWaterPerKg} ml/kg/dia).`);
+    lines.push(`Água livre total: ${formatDecimalValue(nutritionSummary.freeWater)} ml/dia (${formatDecimalValue(nutritionSummary.freeWaterPerKg)} ml/kg/dia).`);
     if (goalSummary.energyPct || goalSummary.proteinPct) {
       lines.push(`A prescrição atual atende ${goalSummary.energyPct ? `${formatDecimalValue(goalSummary.energyPct)}% das metas de energia` : "meta de energia não informada"} e ${goalSummary.proteinPct ? `${formatDecimalValue(goalSummary.proteinPct)}% das metas de proteínas` : "meta de proteínas não informada"}.`);
     }
@@ -1716,7 +1810,6 @@ const PrescriptionNew = () => {
       ? "lipídeos complexos com óleo de peixe"
       : "TCM/TCL";
     const lines = [
-      "Registro em Prontuário:",
       `Terapia nutricional parenteral por acesso ${accessLabel[parenteralAccess] || parenteralAccess}, infundida em ${parenteralInfusionTime || 24} horas.`,
       `${formatDecimalValue(parenteralValues.aminoacidsMl)} ml de aminoácidos a 10% - ${formatDecimalValue(parenteralAminoacids)} g de aminoácidos/dia${parenteralPerKg.amino ? ` (${formatDecimalValue(parenteralPerKg.amino)} g/kg)` : ""}.`,
       `${formatDecimalValue(parenteralValues.glucoseMl)} ml de glicose a ${parenteralValues.glucoseConc}% - ${formatDecimalValue(parenteralGlucose)} g de glicose/dia${parenteralPerKg.glucose ? ` (${formatDecimalValue(parenteralPerKg.glucose)} g/kg)` : ""} - TIG: ${formatDecimalValue(parenteralPerKg.tig)} mg/kg/min.`,
@@ -1732,10 +1825,6 @@ const PrescriptionNew = () => {
 
     lines.push(`Ofertando: VET ${formatDecimalValue(parenteralVET)} kcal/dia${parenteralPerKg.kcal ? ` (${formatDecimalValue(parenteralPerKg.kcal)} kcal/kg/dia)` : ""}.`);
 
-    if (parenteralObservations) {
-      lines.push(`Observações: ${parenteralObservations}`);
-    }
-
     return lines.join("\n");
   }, [
     feedingRoutes.parenteral,
@@ -1744,7 +1833,6 @@ const PrescriptionNew = () => {
     parenteralGlucose,
     parenteralInfusionTime,
     parenteralLipids,
-    parenteralObservations,
     parenteralPerKg.amino,
     parenteralPerKg.glucose,
     parenteralPerKg.kcal,
@@ -1763,7 +1851,7 @@ const PrescriptionNew = () => {
   const oralChartNoteSuggestion = useMemo(() => {
     if (!feedingRoutes.oral) return "";
 
-    const lines = ["Registro em Prontuário:"];
+    const lines: string[] = [];
     const kcalSuffix = [
       oralTotals.vetPerKg > 0 ? `${formatDecimalValue(oralTotals.vetPerKg)} kcal/kg PA` : "",
       oralTotals.vetPerKgIdeal ? `${formatDecimalValue(oralTotals.vetPerKgIdeal)} kcal/kg PI` : "",
@@ -1803,10 +1891,6 @@ const PrescriptionNew = () => {
       lines.push(`- Água espessada com ${oralThickenerProduct || "espessante não informado"}, ${oralThickenerGrams || "-"} g para ${oralThickenerVolume || "-"} ml de água, horários: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}.`);
     }
 
-    if (oralObservations) {
-      lines.push(`Orientações ao manipulador: ${oralObservations}`);
-    }
-
     return lines.join("\n");
   }, [
     ORAL_MEAL_SCHEDULES,
@@ -1815,7 +1899,6 @@ const PrescriptionNew = () => {
     oralDietConsistency,
     oralMealsPerDay,
     oralNeedsThickener,
-    oralObservations,
     oralSupplements,
     oralTherapyModules,
     oralThickenerGrams,
@@ -1880,6 +1963,160 @@ const PrescriptionNew = () => {
     };
   }, [currentStep, feedingRoutes, oralTotals, parenteralVET, parenteralPerKg, parenteralAminoacids, nutritionSummary]);
 
+  const currentCostSummary = useMemo(() => {
+    let materialCostTotal = 0;
+    let nursingTimeMinutes = 0;
+    let nursingCostTotal = 0;
+    let indirectCostTotal = 0;
+    let totalCost = 0;
+
+    if (feedingRoutes.enteral) {
+      const closedBagSchedules = Object.keys(closedFormula.bagQuantities);
+      const closedFormulaSchedules = closedBagSchedules.length > 0
+        ? closedBagSchedules
+        : prescriptionScheduleTimes.slice(0, 1);
+      const enteralFormulas = systemType === "closed" && closedFormula.formulaId
+        ? [{
+          formulaId: closedFormula.formulaId,
+          formulaName: availableFormulas.find((item) => item.id === closedFormula.formulaId)?.name || "",
+          volume: bagCalculation?.totalVolume || 0,
+          timesPerDay: 1,
+          schedules: closedFormulaSchedules,
+        }]
+        : openFormulas
+          .filter((entry) => isPersistedDbId(entry.formulaId))
+          .map((entry) => ({
+            formulaId: entry.formulaId,
+            formulaName: availableFormulas.find((item) => item.id === entry.formulaId)?.name || "",
+            volume: parseFloat(entry.volume) || 0,
+            timesPerDay: entry.times.length,
+            schedules: entry.times,
+          }));
+
+      const enteralModules = modules
+        .filter((entry) => isPersistedDbId(entry.moduleId))
+        .map((entry) => ({
+          moduleId: entry.moduleId,
+          moduleName: availableModules.find((item) => item.id === entry.moduleId)?.name || "",
+          amount: parseFloat(entry.quantity) || 0,
+          timesPerDay: entry.times.length,
+          schedules: entry.times,
+          unit: entry.unit,
+        }));
+
+      const enteralDraft = {
+        therapyType: "enteral" as const,
+        systemType: systemType || "open",
+        infusionMode: (systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || undefined,
+        formulas: enteralFormulas,
+        modules: enteralModules,
+        hydrationVolume: parseFloat(hydration.volume) || undefined,
+        hydrationSchedules: hydration.times.length > 0 ? hydration.times : undefined,
+        enteralDetails: {
+          closedFormula: systemType === "closed"
+            ? {
+              bagQuantities: closedFormula.bagQuantities,
+            }
+            : undefined,
+        },
+      } as Prescription;
+
+      const enteralCosts = calculatePrescriptionCosts({
+        prescription: enteralDraft,
+        formulas: dbFormulas,
+        modules: dbModules,
+        settings,
+      });
+
+      materialCostTotal += enteralCosts.materialCostTotal;
+      nursingTimeMinutes += enteralCosts.nursingTimeMinutes;
+      nursingCostTotal += enteralCosts.nursingCostTotal;
+      totalCost += enteralCosts.materialCostTotal + enteralCosts.nursingCostTotal;
+    }
+
+    if (feedingRoutes.oral) {
+      const mealLabelByKey = Object.fromEntries(ORAL_MEAL_SCHEDULES.map((entry) => [entry.key, entry.label]));
+      const oralFormulas = oralSupplements
+        .filter((supplement) => isPersistedDbId(supplement.supplementId))
+        .map((supplement) => ({
+          formulaId: supplement.supplementId,
+          formulaName: supplement.supplementName,
+          volume: supplement.amount || 0,
+          timesPerDay: Object.values(supplement.schedules || {}).filter((value) => value === true).length,
+          schedules: Object.entries(supplement.schedules || {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([key]) => mealLabelByKey[key] || key),
+        }));
+      const oralModules = oralTherapyModules
+        .filter((entry) => isPersistedDbId(entry.moduleId))
+        .map((entry) => ({
+          moduleId: entry.moduleId,
+          moduleName: entry.moduleName,
+          amount: entry.amount || 0,
+          timesPerDay: Object.values(entry.schedules || {}).filter((value) => value === true).length,
+          schedules: Object.entries(entry.schedules || {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([key]) => mealLabelByKey[key] || key),
+          unit: entry.unit,
+        }));
+
+      const oralDraft = {
+        therapyType: "oral" as const,
+        systemType: "open" as const,
+        formulas: oralFormulas,
+        modules: oralModules,
+      } as Prescription;
+
+      const oralCosts = calculatePrescriptionCosts({
+        prescription: oralDraft,
+        formulas: dbFormulas,
+        modules: dbModules,
+        settings,
+      });
+
+      materialCostTotal += oralCosts.materialCostTotal;
+      nursingTimeMinutes += oralCosts.nursingTimeMinutes;
+      nursingCostTotal += oralCosts.nursingCostTotal;
+      totalCost += oralCosts.materialCostTotal + oralCosts.nursingCostTotal;
+    }
+
+    indirectCostTotal = feedingRoutes.enteral || feedingRoutes.oral || feedingRoutes.parenteral
+      ? settings?.indirectCosts?.laborCosts || 0
+      : 0;
+    totalCost += indirectCostTotal;
+
+    return {
+      materialCostTotal,
+      nursingTimeMinutes,
+      nursingCostTotal,
+      indirectCostTotal,
+      totalCost,
+    };
+  }, [
+    ORAL_MEAL_SCHEDULES,
+    availableFormulas,
+    availableModules,
+    bagCalculation?.totalVolume,
+    closedFormula.bagQuantities,
+    closedFormula.formulaId,
+    closedFormula.infusionMode,
+    dbFormulas,
+    dbModules,
+    feedingRoutes.enteral,
+    feedingRoutes.oral,
+    feedingRoutes.parenteral,
+    hydration.times,
+    hydration.volume,
+    modules,
+    openFormulas,
+    openInfusionMode,
+    oralSupplements,
+    oralTherapyModules,
+    prescriptionScheduleTimes,
+    settings,
+    systemType,
+  ]);
+
   // Handlers
   const addOpenFormula = () => setOpenFormulas([...openFormulas, { id: Date.now().toString(), formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
   const removeOpenFormula = (id: string) => { if (openFormulas.length > 1) setOpenFormulas(openFormulas.filter(f => f.id !== id)); };
@@ -1887,27 +2124,16 @@ const PrescriptionNew = () => {
   const toggleFormulaTime = (formulaId: string, time: string) => {
     const f = openFormulas.find(f => f.id === formulaId);
     if (f) {
+      const nextTimes = f.times.includes(time)
+        ? sortScheduleTimes(f.times.filter(t => t !== time))
+        : sortScheduleTimes([...f.times, time]);
       updateOpenFormula(
         formulaId,
         "times",
-        f.times.includes(time)
-          ? sortScheduleTimes(f.times.filter(t => t !== time))
-          : sortScheduleTimes([...f.times, time]),
+        nextTimes,
       );
+      updateOpenFormula(formulaId, "manipulationTimes", nextTimes);
     }
-  };
-
-  const toggleFormulaManipulationTime = (formulaId: string, time: string) => {
-    const formula = openFormulas.find((item) => item.id === formulaId);
-    if (!formula) return;
-
-    updateOpenFormula(
-      formulaId,
-      "manipulationTimes",
-      formula.manipulationTimes.includes(time)
-        ? sortScheduleTimes(formula.manipulationTimes.filter((item) => item !== time))
-        : sortScheduleTimes([...formula.manipulationTimes, time]),
-    );
   };
 
   const addModule = () => { if (modules.length < 4) setModules([...modules, { id: Date.now().toString(), moduleId: "", quantity: "", unit: "g", times: [] }]); else toast.error("Máximo de 4 módulos"); };
@@ -2107,14 +2333,34 @@ const PrescriptionNew = () => {
         }
         : undefined;
       const unintentionalCaloriesPayload = unintentionalResult.totalKcal > 0 ? unintentionalCal : undefined;
+      const primaryCostRoute: TherapyType | null = feedingRoutes.enteral
+        ? "enteral"
+        : feedingRoutes.oral
+          ? "oral"
+          : feedingRoutes.parenteral
+            ? "parenteral"
+            : null;
       const persistPrescription = async (therapyType: TherapyType, data: Record<string, unknown>) => {
-        const payload = {
+        const draftPrescription = {
           ...basePrescriptionData,
           ...data,
           tneGoals: tneGoalsPayload,
           unintentionalCalories: unintentionalCaloriesPayload,
           therapyType,
           startDate: editingStartDates[therapyType] || today,
+        } as Prescription;
+        const costSummary = calculatePrescriptionCosts({
+          prescription: draftPrescription,
+          formulas: dbFormulas,
+          modules: dbModules,
+          settings,
+          includeIndirectCost: therapyType === primaryCostRoute,
+        });
+        const payload = {
+          ...draftPrescription,
+          materialCostTotal: costSummary.materialCostTotal,
+          nursingCostTotal: costSummary.nursingCostTotal,
+          totalCost: costSummary.totalCost,
         };
 
         if (editingPrescriptionIds[therapyType]) {
@@ -2122,7 +2368,15 @@ const PrescriptionNew = () => {
           return;
         }
 
-        await createPrescription(payload as Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>);
+        const createdId = await createPrescription(payload as Omit<Prescription, 'id' | 'createdAt' | 'updatedAt'>);
+        setEditingPrescriptionIds((current) => ({
+          ...current,
+          [therapyType]: createdId,
+        }));
+        setEditingStartDates((current) => ({
+          ...current,
+          [therapyType]: draftPrescription.startDate || today,
+        }));
       };
 
       const savedRoutes: string[] = [];
@@ -2245,7 +2499,7 @@ const PrescriptionNew = () => {
             modules: oralTherapyModules,
             observations: oralObservations || undefined,
           },
-          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Carboidratos manuais: ${oralEstimatedCarbs || 0} g/dia | Lipidios manuais: ${oralEstimatedLipids || 0} g/dia | Consistencia segura para agua: ${oralSafeConsistency || "-"} | Observacoes clinicas: ${oralObservations || "-"}`,
+          notes: `Via oral | Consistencia: ${oralDietConsistency || "-"} | Refeicoes: ${oralMealsPerDay}/dia | Caracteristicas: ${oralDietCharacteristics || "-"} | Fono: ${oralSpeechTherapy ? "Sim" : "Nao"} | Agua com espessante: ${oralNeedsThickener ? "Sim" : "Nao"}${oralNeedsThickener ? ` | Espessante: ${oralThickenerProduct || "-"} | Quantidade: ${oralThickenerGrams || "-"} g | Agua para diluicao: ${oralThickenerVolume || "-"} ml | Horarios: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}` : ""} | Carboidratos manuais: ${oralEstimatedCarbs || 0} g/dia | Lipidios manuais: ${oralEstimatedLipids || 0} g/dia | Consistencia segura para agua: ${oralSafeConsistency || "-"}`,
         });
         savedRoutes.push("Via oral");
       }
@@ -2274,9 +2528,9 @@ const PrescriptionNew = () => {
             traceElements: parenteralValues.traceElements || undefined,
             vetKcal: parenteralVET,
             tigMgKgMin: parenteralPerKg.tig || undefined,
-            observations: parenteralObservations || undefined,
+            observations: undefined,
           },
-          notes: parenteralObservations || `Acesso: ${parenteralAccess} | Infusao: ${parenteralInfusionTime}h | TIG: ${parenteralPerKg.tig.toFixed(2)} mg/kg/min`,
+          notes: `Acesso: ${parenteralAccess} | Infusao: ${parenteralInfusionTime}h | TIG: ${parenteralPerKg.tig.toFixed(2)} mg/kg/min`,
         });
         savedRoutes.push("TNP");
       }
@@ -2919,21 +3173,12 @@ const PrescriptionNew = () => {
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
                         <p className="text-sm text-muted-foreground">Preencher volume total somente se for necessário adicionar água para diluição da fórmula. A velocidade de infusão será baseada no volume total.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>Horários de manipulação/preparo</Label>
-                            <div className="flex flex-wrap gap-2">
-                              {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.manipulationTimes.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaManipulationTime(f.id, t)}>{t}</Button>)}
-                            </div>
-                            <p className="text-xs text-muted-foreground">Usado para orientar produção/manipulação da dieta aberta.</p>
+                        <div className="space-y-2">
+                          <Label>Horários</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
                           </div>
-                          <div className="space-y-2">
-                            <Label>Horários de infusão/administração</Label>
-                            <div className="flex flex-wrap gap-2">
-                              {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
-                            </div>
-                            <p className="text-xs text-muted-foreground">Usado para cálculo nutricional, mapa e faturamento.</p>
-                          </div>
+                          <p className="text-xs text-muted-foreground">Usado para cálculo nutricional, produção, mapa e faturamento.</p>
                         </div>
                         {f.formulaId && f.volume && f.times.length > 0 && <div className="text-sm text-muted-foreground bg-muted p-2 rounded">Subtotal: {(() => { const af = availableFormulas.find(x => x.id === f.formulaId); if (!af) return ""; const vol = parseFloat(f.volume) * f.times.length; return `${Math.round(vol * (af.composition.density || af.composition.calories / 100))} kcal, ${Math.round((vol / 100) * af.composition.protein * 10) / 10}g PTN`; })()}</div>}
                       </div>
@@ -3243,12 +3488,12 @@ const PrescriptionNew = () => {
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Calculator className="h-6 w-6 text-primary" />Resumo da Prescrição Nutricional</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
-                  {selectedPatient && <div className="p-4 bg-muted rounded-lg"><p className="font-semibold">{selectedPatient.name}</p><p className="text-sm text-muted-foreground">{selectedPatient.bed} - Peso: {selectedPatient.weight}kg {bmi && `(IMC: ${bmi.toFixed(1)})`} {bmi && bmi > 30 && idealWeight && `(PI: ${idealWeight.toFixed(1)}kg)`}</p></div>}
+                  {selectedPatient && <div className="p-4 bg-muted rounded-lg"><p className="font-semibold">{selectedPatient.name}</p><p className="text-sm text-muted-foreground">{selectedPatient.bed} - Peso: {formatSummaryNumber(selectedPatient.weight, 1)}kg {bmi && `(IMC: ${formatSummaryNumber(bmi, 1)})`} {bmi && bmi > 30 && idealWeight && `(PI: ${formatSummaryNumber(idealWeight, 1)}kg)`}</p></div>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{nutritionSummary.vet}</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.vetPerKgIdeal !== null ? `${nutritionSummary.vetPerKg} kcal/kg PA | ${nutritionSummary.vetPerKgIdeal} kcal/kg PI` : `${nutritionSummary.vetPerKg} kcal/kg`})</p><p className="text-xs font-medium mt-1">VET</p></div>
-                    <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{nutritionSummary.protein}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${nutritionSummary.proteinPerKg} g/kg PA | ${nutritionSummary.proteinPerKgIdeal} g/kg PI` : `${nutritionSummary.proteinPerKg} g/kg`})</p><p className="text-xs font-medium mt-1">Proteínas</p></div>
-                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{nutritionSummary.freeWater}ml</p><p className="text-sm text-muted-foreground">({nutritionSummary.freeWaterPerKg} ml/kg PA)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
-                    <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
+                    <div className="p-4 bg-primary/10 rounded-lg text-center"><p className="text-2xl font-bold text-primary">{formatSummaryNumber(nutritionSummary.vet, 0)}</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.vetPerKgIdeal !== null ? `${formatSummaryNumber(nutritionSummary.vetPerKg, 1)} kcal/kg PA | ${formatSummaryNumber(nutritionSummary.vetPerKgIdeal, 1)} kcal/kg PI` : `${formatSummaryNumber(nutritionSummary.vetPerKg, 1)} kcal/kg`})</p><p className="text-xs font-medium mt-1">VET</p></div>
+                    <div className="p-4 bg-blue-100 rounded-lg text-center"><p className="text-2xl font-bold text-blue-700">{formatSummaryNumber(nutritionSummary.protein, 1)}g</p><p className="text-sm text-muted-foreground">({nutritionSummary.weightMetrics.isObese && nutritionSummary.proteinPerKgIdeal !== null ? `${formatSummaryNumber(nutritionSummary.proteinPerKg, 2)} g/kg PA | ${formatSummaryNumber(nutritionSummary.proteinPerKgIdeal, 2)} g/kg PI` : `${formatSummaryNumber(nutritionSummary.proteinPerKg, 2)} g/kg`})</p><p className="text-xs font-medium mt-1">Proteínas</p></div>
+                    <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{formatSummaryNumber(nutritionSummary.freeWater, 0)}ml</p><p className="text-sm text-muted-foreground">({formatSummaryNumber(nutritionSummary.freeWaterPerKg, 1)} ml/kg PA)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
+                    <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${formatSummaryNumber(nutritionSummary.residueTotal, 1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
                   <Collapsible open={showDetails} onOpenChange={setShowDetails}>
                     <CollapsibleTrigger asChild>
@@ -3263,14 +3508,22 @@ const PrescriptionNew = () => {
                       {/* Macros */}
                       <div>
                         <h4 className="font-semibold mb-2">Macronutrientes</h4>
-                        <p><strong>Proteínas:</strong> {nutritionSummary.protein}g ({nutritionSummary.proteinPerKg}g/kg) - {nutritionSummary.proteinPct}% VET</p>
-                        {nutritionSummary.sources.protein.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.protein.join("; ")}</p>}
-                        <p><strong>Carboidratos:</strong> {nutritionSummary.carbs}g ({nutritionSummary.carbsPerKg}g/kg) - {nutritionSummary.carbsPct}% VET</p>
-                        {nutritionSummary.sources.carbs.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.carbs.join("; ")}</p>}
-                        <p><strong>Lipídeos:</strong> {nutritionSummary.fat}g ({nutritionSummary.fatPerKg}g/kg) - {nutritionSummary.fatPct}% VET</p>
-                        {nutritionSummary.sources.fat.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.fat.join("; ")}</p>}
-                        <p><strong>Fibras:</strong> {nutritionSummary.fiber}g/dia</p>
-                        {nutritionSummary.sources.fiber.length > 0 && <p className="text-muted-foreground ml-2 text-xs">Fontes: {nutritionSummary.sources.fiber.join("; ")}</p>}
+                        <p><strong>Proteínas:</strong> {formatSummaryNumber(nutritionSummary.protein, 1)}g ({formatSummaryNumber(nutritionSummary.proteinPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.proteinPct, 1)}% VET</p>
+                        <p><strong>Carboidratos:</strong> {formatSummaryNumber(nutritionSummary.carbs, 1)}g ({formatSummaryNumber(nutritionSummary.carbsPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.carbsPct, 1)}% VET</p>
+                        <p><strong>Lipídeos:</strong> {formatSummaryNumber(nutritionSummary.fat, 1)}g ({formatSummaryNumber(nutritionSummary.fatPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.fatPct, 1)}% VET</p>
+                        <p><strong>Fibras:</strong> {formatSummaryNumber(nutritionSummary.fiber, 1)}g/dia</p>
+                        {detailedSourceLines.formulas.length > 0 && (
+                          <div className="ml-2 text-xs text-muted-foreground space-y-1">
+                            <p className="font-medium text-foreground/80">Fórmulas / suplementos</p>
+                            {detailedSourceLines.formulas.map((line) => <p key={line}>{line}</p>)}
+                          </div>
+                        )}
+                        {detailedSourceLines.modules.length > 0 && (
+                          <div className="ml-2 text-xs text-muted-foreground space-y-1">
+                            <p className="font-medium text-foreground/80">Módulos</p>
+                            {detailedSourceLines.modules.map((line) => <p key={line}>{line}</p>)}
+                          </div>
+                        )}
                       </div>
 
                       <Separator />
@@ -3278,10 +3531,10 @@ const PrescriptionNew = () => {
                       {/* Micros */}
                       <div>
                         <h4 className="font-semibold mb-2">Micronutrientes</h4>
-                        <p><strong>Cálcio:</strong> {nutritionSummary.calcium.toFixed(1)} mg/dia</p>
-                        <p><strong>Fósforo:</strong> {nutritionSummary.phosphorus.toFixed(1)} mg/dia</p>
-                        <p><strong>Sódio:</strong> {nutritionSummary.sodium.toFixed(1)} mg/dia</p>
-                        <p><strong>Potássio:</strong> {nutritionSummary.potassium.toFixed(1)} mg/dia</p>
+                        <p><strong>Cálcio:</strong> {formatSummaryNumber(nutritionSummary.calcium, 1)} mg/dia</p>
+                        <p><strong>Fósforo:</strong> {formatSummaryNumber(nutritionSummary.phosphorus, 1)} mg/dia</p>
+                        <p><strong>Sódio:</strong> {formatSummaryNumber(nutritionSummary.sodium, 1)} mg/dia</p>
+                        <p><strong>Potássio:</strong> {formatSummaryNumber(nutritionSummary.potassium, 1)} mg/dia</p>
                       </div>
 
                       <Separator />
@@ -3289,18 +3542,18 @@ const PrescriptionNew = () => {
                       {/* Residuos e Enfermagem */}
                       <div>
                         <h4 className="font-semibold mb-2">Resíduos e Enfermagem</h4>
-                        <p><strong>Resíduos Potencialmente Recicláveis:</strong> {nutritionSummary.residueTotal.toFixed(1)} g/dia</p>
+                        <p><strong>Resíduos Potencialmente Recicláveis:</strong> {formatSummaryNumber(nutritionSummary.residueTotal, 1)} g/dia</p>
                         <p className="text-muted-foreground ml-2 text-xs">
-                          Plástico: {nutritionSummary.residues.plastic.toFixed(1)}g | Papel: {nutritionSummary.residues.paper.toFixed(1)}g | Metal: {nutritionSummary.residues.metal.toFixed(1)}g | Vidro: {nutritionSummary.residues.glass.toFixed(1)}g
+                          Plástico: {formatSummaryNumber(nutritionSummary.residues.plastic, 1)}g | Papel: {formatSummaryNumber(nutritionSummary.residues.paper, 1)}g | Metal: {formatSummaryNumber(nutritionSummary.residues.metal, 1)}g | Vidro: {formatSummaryNumber(nutritionSummary.residues.glass, 1)}g
                         </p>
-                        <p><strong>Tempo de Enfermagem:</strong> {systemType === "closed" ? "45 minutos/dia" : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15) + " minutos/dia"}</p>
+                        <p><strong>Tempo de Enfermagem:</strong> {formatSummaryNumber(currentCostSummary.nursingTimeMinutes, 0)} minutos/dia</p>
                       </div>
 
                       {feedingRoutes.enteral && (
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Registro em Prontuário</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {chartNoteSuggestion}
                             </div>
@@ -3312,7 +3565,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Registro em Prontuário - Via Oral</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional - Via Oral</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {oralChartNoteSuggestion}
                             </div>
@@ -3324,7 +3577,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Registro em Prontuário - Parenteral</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional - Parenteral</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {parenteralChartNoteSuggestion}
                             </div>
@@ -3337,32 +3590,10 @@ const PrescriptionNew = () => {
                       {/* Custos */}
                       <div>
                         <h4 className="font-semibold mb-2">Custos Diários</h4>
-                        <p><strong>Custo Material (Fórmulas e Módulos):</strong> R$ {(() => {
-                            let cost = 0;
-                            if (systemType === "closed" && closedFormula.formulaId) {
-                                const f = availableFormulas.find(x => x.id === closedFormula.formulaId);
-                                cost += (bagCalculation?.numBags || 1) * (f?.billingPrice || 100);
-                            } else if (systemType === "open") {
-                                openFormulas.forEach(of => {
-                                    const f = availableFormulas.find(x => x.id === of.formulaId);
-                                    const mlTotal = (parseFloat(of.volume) || 0) * of.times.length;
-                                    const costPerMl = (f?.billingPrice || 50) / (f?.presentations?.[0] || 1000);
-                                    cost += mlTotal * costPerMl;
-                                });
-                            }
-                            modules.forEach(m => {
-                              const am = availableModules.find(x => x.id === m.moduleId);
-                              const totalP = (parseFloat(m.quantity) || 0) * m.times.length;
-                              const costPerUnit = (am?.billingPrice || 80) / (am?.referenceAmount || 100);
-                              cost += totalP * costPerUnit;
-                            });
-                            return cost.toFixed(2).replace('.', ',');
-                        })()}</p>
-                        <p><strong>Custos de Enfermagem:</strong> R$ {(() => {
-                            const time = systemType === "closed" ? 45 : (openFormulas.reduce((acc, f) => acc + f.times.length, 0) * 15);
-                            return ((time / 60) * 40).toFixed(2).replace('.', ',');
-                        })()}</p>
-                        <p><strong>Outros Custos (Indiretos / Insumos):</strong> R$ 25,00</p>
+                        <p><strong>Custo Material (Fórmulas, suplementos e módulos):</strong> R$ {formatCurrencyValue(currentCostSummary.materialCostTotal)}</p>
+                        <p><strong>Custos de Enfermagem:</strong> R$ {formatCurrencyValue(currentCostSummary.nursingCostTotal)}</p>
+                        <p><strong>Custo indireto por paciente:</strong> R$ {formatCurrencyValue(currentCostSummary.indirectCostTotal)}</p>
+                        <p><strong>Custo total da terapia:</strong> R$ {formatCurrencyValue(currentCostSummary.totalCost)}</p>
                       </div>
                     </CollapsibleContent>
                   </Collapsible>

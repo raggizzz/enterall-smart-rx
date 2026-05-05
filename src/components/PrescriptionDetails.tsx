@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { Prescription, Patient, Formula, Module, AppSettings } from "@/lib/database";
 import { calculateStoredPrescriptionNutrition } from "@/lib/prescriptionCalculations";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
+import { calculatePrescriptionCosts } from "@/lib/prescriptionCosting";
 
 interface PrescriptionDetailsProps {
     prescription: Prescription;
@@ -227,61 +228,40 @@ export const PrescriptionDetails = ({
 
     // Calcular custos
     const costs = useMemo(() => {
-        const nursingCosts = settings?.nursingCosts;
-        const indirectCosts = settings?.indirectCosts;
+        const hasStoredCostTotals = typeof prescription.materialCostTotal === "number"
+            || typeof prescription.nursingCostTotal === "number"
+            || typeof prescription.totalCost === "number";
 
-        let materialCost = 0;
-        let nursingTimeSeconds = 0;
+        if (hasStoredCostTotals) {
+            const materialCost = prescription.materialCostTotal || 0;
+            const nursingCostTotal = prescription.nursingCostTotal || 0;
+            const totalCost = prescription.totalCost || 0;
+            const laborCosts = Math.max(0, totalCost - materialCost - nursingCostTotal);
+            const fallbackTotals = calculatePrescriptionCosts({
+                prescription,
+                formulas,
+                modules,
+                settings,
+                includeIndirectCost: false,
+            });
 
-        // Custo de materiais (fórmulas e módulos)
-        prescription.formulas.forEach((pf) => {
-            const formula = formulas.find(f => f.id === pf.formulaId);
-            if (formula?.billingPrice) {
-                materialCost += formula.billingPrice * pf.timesPerDay;
-            }
-
-            // Tempo de enfermagem por frasco
-            if (nursingCosts) {
-                const timePerBottle = prescription.systemType === 'open'
-                    ? (prescription.infusionMode === 'pump'
-                        ? nursingCosts.timeOpenSystemPump
-                        : prescription.infusionMode === 'gravity'
-                            ? nursingCosts.timeOpenSystemGravity
-                            : nursingCosts.timeBolus)
-                    : (prescription.infusionMode === 'pump'
-                        ? nursingCosts.timeClosedSystemPump
-                        : nursingCosts.timeClosedSystemGravity);
-
-                nursingTimeSeconds += (timePerBottle || 0) * pf.timesPerDay;
-            }
-        });
-
-        prescription.modules.forEach((pm) => {
-            const module = modules.find(m => m.id === pm.moduleId);
-            if (module?.billingPrice) {
-                materialCost += module.billingPrice * pm.timesPerDay;
-            }
-        });
-
-        // Tempo de enfermagem para água
-        if (prescription.hydrationSchedules?.length && nursingCosts?.timeBolus) {
-            nursingTimeSeconds += nursingCosts.timeBolus * prescription.hydrationSchedules.length;
+            return {
+                materialCost,
+                nursingTimeMinutes: fallbackTotals.nursingTimeMinutes,
+                nursingCostTotal,
+                laborCosts,
+                totalCost,
+            };
         }
 
-        const nursingTimeMinutes = nursingTimeSeconds / 60;
-        const nursingCostTotal = nursingCosts?.hourlyRate
-            ? (nursingTimeMinutes / 60) * nursingCosts.hourlyRate
-            : 0;
-
-        const laborCosts = indirectCosts?.laborCosts || 0;
-        const totalCost = materialCost + nursingCostTotal + laborCosts;
+        const totals = calculatePrescriptionCosts({ prescription, formulas, modules, settings });
 
         return {
-            materialCost,
-            nursingTimeMinutes,
-            nursingCostTotal,
-            laborCosts,
-            totalCost
+            materialCost: totals.materialCostTotal,
+            nursingTimeMinutes: totals.nursingTimeMinutes,
+            nursingCostTotal: totals.nursingCostTotal,
+            laborCosts: totals.indirectCostTotal,
+            totalCost: totals.totalCost
         };
     }, [prescription, formulas, modules, settings]);
 

@@ -121,8 +121,8 @@ const CATEGORY_LABEL: Record<ProductCategory, string> = {
 const billingCurrencyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: "BRL",
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 
 const numberFormatter = new Intl.NumberFormat("pt-BR", {
@@ -304,6 +304,12 @@ const getModuleByName = (modules: Module[], moduleName?: string) => {
   return modules.find((module) => module.name.trim().toLowerCase() === normalized);
 };
 
+const normalizeLookupText = (value?: string) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
 const getPumpSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "pump-set")
   || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bomba"))
@@ -321,7 +327,7 @@ const getBottleSupply = (supplies: Supply[]): Supply | undefined =>
 
 const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "hydration-water")
-  || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.name.toLowerCase().includes("agua"));
+  || supplies.find((supply) => supply.isActive && supply.isBillable !== false && normalizeLookupText(supply.name).includes("agua"));
 
   const addWasteByFactor = (
     target: UsageAccumulator,
@@ -337,17 +343,20 @@ const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
   const resolveSupplyBilling = (supply: Supply, requestedAmount: number) => {
     const billingUnit = supply.billingUnit || "unit";
     const capacityMl = Number(supply.capacityMl || 0);
-    const totalQuantity = billingUnit === "ml"
-      ? requestedAmount
-      : capacityMl > 0
-        ? Math.ceil(requestedAmount / capacityMl)
-        : requestedAmount;
-    const wasteFactor = billingUnit === "ml" && capacityMl > 0
+    const billedByContainer = billingUnit === "ml" && capacityMl > 0;
+    const totalQuantity = billedByContainer
+      ? Math.ceil(requestedAmount / capacityMl)
+      : billingUnit === "ml"
+        ? requestedAmount
+        : capacityMl > 0
+          ? Math.ceil(requestedAmount / capacityMl)
+          : requestedAmount;
+    const wasteFactor = capacityMl > 0
       ? Math.ceil(requestedAmount / capacityMl)
       : totalQuantity;
 
     return {
-      billingUnit,
+      billingUnit: billedByContainer ? "unit" : billingUnit,
       totalQuantity,
       totalCost: totalQuantity * (supply.unitPrice || 0),
       wasteFactor,
@@ -834,13 +843,25 @@ const Reports = () => {
         );
         const hydrationCount = prescription.hydrationSchedules?.length || 0;
         const bottleCountPerDay = prescription.systemType === "open" ? administrationCount + hydrationCount : 0;
+        const bagQuantities = prescription.enteralDetails?.closedFormula?.bagQuantities || {};
+        const explicitBags = Object.values(bagQuantities).reduce((total, quantity) => total + (Number(quantity) || 0), 0);
+        const mainSetCountPerDay = prescription.systemType === "closed"
+          ? explicitBags > 0
+            ? explicitBags
+            : prescription.formulas.reduce((sum, entry) => {
+              const formula = formulasById.get(entry.formulaId) || getFormulaByName(formulas, entry.formulaName);
+              const bagSize = formula?.presentations?.[0] || 0;
+            if (bagSize > 0 && entry.volume > 0) return sum + Math.ceil(entry.volume / bagSize);
+            return sum + Math.max(getAdministrationCount(entry.schedules, entry.timesPerDay), 1);
+            }, 0)
+          : administrationCount > 0 ? 1 : 0;
 
         const selectedSupply = prescription.infusionMode === "gravity"
           ? getGravitySupply(supplies)
           : getPumpSupply(supplies);
 
-        if (selectedSupply && selectedSupply.isBillable !== false) {
-          const supplyBilling = resolveSupplyBilling(selectedSupply, overlapDays);
+        if (selectedSupply && selectedSupply.isBillable !== false && mainSetCountPerDay > 0) {
+          const supplyBilling = resolveSupplyBilling(selectedSupply, mainSetCountPerDay * overlapDays);
           const item = getOrCreateAccumulator(
             usageMap,
             `supply:${selectedSupply.id || selectedSupply.code}`,
@@ -860,6 +881,30 @@ const Reports = () => {
           item.patientDays += overlapDays;
           item.totalCost += supplyBilling.totalCost;
           addWasteByFactor(item, selectedSupply, supplyBilling.wasteFactor);
+        }
+
+        const hydrationSetSupply = getGravitySupply(supplies);
+        if (hydrationSetSupply && hydrationSetSupply.isBillable !== false && hydrationCount > 0) {
+          const supplyBilling = resolveSupplyBilling(hydrationSetSupply, overlapDays);
+          const item = getOrCreateAccumulator(
+            usageMap,
+            `supply:${hydrationSetSupply.id || hydrationSetSupply.code}:hydration`,
+            {
+              productId: hydrationSetSupply.id || hydrationSetSupply.code,
+              productName: `${hydrationSetSupply.name} (hidratação)`,
+              manufacturer: "-",
+              category: "supply",
+              billingUnit: supplyBilling.billingUnit,
+            },
+          );
+
+          item.therapyTypes.add("enteral");
+          item.patientIds.add(patientId);
+          if (prescription.id) item.prescriptionIds.add(prescription.id);
+          item.totalQuantity += supplyBilling.totalQuantity;
+          item.patientDays += overlapDays;
+          item.totalCost += supplyBilling.totalCost;
+          addWasteByFactor(item, hydrationSetSupply, supplyBilling.wasteFactor);
         }
 
         const bottleSupply = getBottleSupply(supplies);
@@ -1374,7 +1419,7 @@ const Reports = () => {
             <Tabs defaultValue="gestao" className="space-y-4">
               <TabsList className="w-full justify-start overflow-x-auto">
                 <TabsTrigger value="gestao">Gestao</TabsTrigger>
-                <TabsTrigger value="historico">Historico Assistencial</TabsTrigger>
+                {isManagerView && <TabsTrigger value="historico">Historico Assistencial</TabsTrigger>}
                 <TabsTrigger value="consumo">Consumo no Periodo</TabsTrigger>
                 <TabsTrigger value="comparativo">Comparacao por Produto</TabsTrigger>
                 <TabsTrigger value="residuos">Residuos Reciclaveis</TabsTrigger>
@@ -1504,60 +1549,62 @@ const Reports = () => {
                 </div>
               </TabsContent>
 
-              <TabsContent value="historico" className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-1">
+              {isManagerView && (
+                <TabsContent value="historico" className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-1">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">% dieta enteral infundida / prescrita</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-3xl font-bold">{historySummary.avgPercentage}%</p>
+                        <p className="text-sm text-muted-foreground">% de dieta enteral infundido em relacao ao prescrito.</p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
                   <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-base">% dieta enteral infundida / prescrita</CardTitle>
+                    <CardHeader>
+                      <CardTitle>Historico assistencial</CardTitle>
+                      <CardDescription>Percentual medio de dieta enteral infundida em relacao ao volume prescrito no dia.</CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-3xl font-bold">{historySummary.avgPercentage}%</p>
-                      <p className="text-sm text-muted-foreground">% de dieta enteral infundido em relacao ao prescrito.</p>
+                    <CardContent className="h-[380px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={historyData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis unit="%" />
+                          <Tooltip formatter={(value: number) => `${value}%`} />
+                          <Legend />
+                          <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="6 4" label="Meta minima" />
+                          <Bar dataKey="enteralPct" fill="#7c3aed" name="% NE infundida / prescrita" />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </CardContent>
                   </Card>
-                </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Historico assistencial</CardTitle>
-                    <CardDescription>Percentual medio de dieta enteral infundida em relacao ao volume prescrito no dia.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="h-[380px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={historyData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="date" />
-                        <YAxis unit="%" />
-                        <Tooltip formatter={(value: number) => `${value}%`} />
-                        <Legend />
-                        <ReferenceLine y={80} stroke="#ef4444" strokeDasharray="6 4" label="Meta minima" />
-                        <Bar dataKey="enteralPct" fill="#7c3aed" name="% NE infundida / prescrita" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Principais motivos de interrupcao de NE</CardTitle>
-                    <CardDescription>Motivos mais registrados no periodo filtrado.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {topInterruptionReasons.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Nenhum motivo de interrupcao registrado no periodo.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {topInterruptionReasons.map((item) => (
-                          <div key={item.label} className="flex items-center justify-between rounded-lg border px-4 py-3">
-                            <span className="font-medium">{item.label}</span>
-                            <Badge variant="secondary">{item.count}</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Principais motivos de interrupcao de NE</CardTitle>
+                      <CardDescription>Motivos mais registrados no periodo filtrado.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {topInterruptionReasons.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Nenhum motivo de interrupcao registrado no periodo.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {topInterruptionReasons.map((item) => (
+                            <div key={item.label} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                              <span className="font-medium">{item.label}</span>
+                              <Badge variant="secondary">{item.count}</Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              )}
 
               <TabsContent value="consumo" className="space-y-4">
                 <Card>

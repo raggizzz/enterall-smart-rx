@@ -1,4 +1,4 @@
-import type { Patient, Prescription } from "@/lib/database";
+import type { DailyEvolution, Patient, Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 import { calculateUnintentionalCaloriesBreakdown } from "@/lib/monitoringCalculations";
 
@@ -7,6 +7,7 @@ interface SectorMapPrintProps {
   wardName: string;
   patients: Patient[];
   prescriptions: Prescription[];
+  evolutions: DailyEvolution[];
 }
 
 const todayLabel = new Intl.DateTimeFormat("pt-BR", {
@@ -87,6 +88,19 @@ const formatSchedules = (schedules?: string[]) => {
   return `${schedules.length}x/dia ${schedules.join(" ")}`;
 };
 
+const formatBirthDate = (value?: string) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR").format(parsed);
+};
+
+const formatEvolutionDate = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR").format(parsed);
+};
+
 const getOralScheduleNames = (schedule?: Record<string, unknown>) => {
   if (!schedule) return [];
 
@@ -127,26 +141,26 @@ const chunkPatients = (items: Patient[], size: number): Patient[][] => {
   return pages;
 };
 
-const buildObservationLines = (
-  patient: Patient,
-  oralPrescription?: Prescription,
-  enteralPrescription?: Prescription,
-  parenteralPrescription?: Prescription,
-) => {
-  const lines: string[] = [];
+const truncateObservation = (value: string, maxLength = 90) =>
+  value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
 
-  const pushLine = (text?: string, date?: string) => {
-    if (!text || !text.trim()) return;
-    lines.push(date ? `${date}: ${text.trim()}` : text.trim());
-  };
+const buildObservationLines = (patientId: string | undefined, evolutions: DailyEvolution[]) => {
+  if (!patientId) return [];
 
-  pushLine(patient.monitoringNotes);
-  pushLine(patient.observation);
-  pushLine(oralPrescription?.oralDetails?.observations, oralPrescription?.startDate);
-  pushLine(enteralPrescription?.notes, enteralPrescription?.startDate);
-  pushLine(parenteralPrescription?.parenteralDetails?.observations || parenteralPrescription?.notes, parenteralPrescription?.startDate);
+  const groupedByDate = new Map<string, string[]>();
 
-  return lines.slice(0, 4);
+  evolutions
+    .filter((evolution) => evolution.patientId === patientId && evolution.notes?.trim())
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .forEach((evolution) => {
+      const current = groupedByDate.get(evolution.date) || [];
+      current.push(evolution.notes!.trim());
+      groupedByDate.set(evolution.date, current);
+    });
+
+  return Array.from(groupedByDate.entries())
+    .slice(0, 5)
+    .map(([date, notes]) => `${formatEvolutionDate(date)}: ${truncateObservation(notes.join(" | "))}`);
 };
 
 const buildProteinTotalLabel = (protein?: number, weight?: number, idealWeight?: number | null) => {
@@ -156,7 +170,15 @@ const buildProteinTotalLabel = (protein?: number, weight?: number, idealWeight?:
   return `${actual} PA   ${formatNumber(protein / idealWeight, 2)} g/kgPI`;
 };
 
-const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescriptions: Prescription[] }) => {
+const PatientBlock = ({
+  patient,
+  prescriptions,
+  evolutions,
+}: {
+  patient: Patient;
+  prescriptions: Prescription[];
+  evolutions: DailyEvolution[];
+}) => {
   const patientPrescriptions = getActivePrescriptionsForPatient(prescriptions, patient.id);
   const oralPrescription = patientPrescriptions.find((prescription) => prescription.therapyType === "oral");
   const enteralPrescription = patientPrescriptions.find((prescription) => prescription.therapyType === "enteral");
@@ -168,7 +190,7 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
     enteralPrescription ? "Enteral" : null,
     parenteralPrescription ? "Parenteral" : null,
   ].filter(Boolean).join("; ");
-  const observations = buildObservationLines(patient, oralPrescription, enteralPrescription, parenteralPrescription);
+  const observations = buildObservationLines(patient.id, evolutions);
   const unint = getUnintentionalBreakdown(patient);
   const oralSupplements = (oralPrescription?.oralDetails?.supplements || []).filter((supplement) => (supplement.amount || 0) > 0);
   const oralModules = (oralPrescription?.oralDetails?.modules || []).filter((module) => (module.amount || 0) > 0);
@@ -290,9 +312,8 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
   return (
     <table className="w-full border-collapse text-[10px] leading-[1.15]">
       <colgroup>
-        <col style={{ width: "66%" }} />
+        <col style={{ width: "76%" }} />
         <col style={{ width: "24%" }} />
-        <col style={{ width: "10%" }} />
       </colgroup>
       <tbody>
         <tr>
@@ -302,7 +323,7 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
                 <tr className="font-bold">
                   <td className="border-r border-black px-1 py-[2px]">Leito:{patient.bed || "-"}</td>
                   <td className="border-r border-black px-1 py-[2px]">Paciente: {patient.name}</td>
-                  <td className="border-r border-black px-1 py-[2px]">Data de nasc: {patient.dob || "-"}</td>
+                  <td className="border-r border-black px-1 py-[2px]">Data de nasc: {formatBirthDate(patient.dob)}</td>
                   <td className="px-1 py-[2px]">Vias de alimentação: {routeSummary || "-"}</td>
                 </tr>
               </tbody>
@@ -312,16 +333,6 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
             Peso atual: {patient.weight ? `${formatNumber(patient.weight)} kg` : "-"}{" "}
             {bmi ? ` IMC: ${formatNumber(bmi, 2)} kg/m2` : ""}{" "}
             {idealWeight ? ` P ideal: ${formatNumber(idealWeight, 0)}kg` : ""}
-          </td>
-          <td rowSpan={totalRows + 1} className="border border-black px-2 py-2 align-top text-[11px] font-bold text-sky-700">
-            <p>{bmi && bmi >= 30 ? "Paciente IMC >= 30" : "Paciente IM<30"}</p>
-            <p className="mt-3">
-              Paciente com {[
-                oralPrescription ? "VO" : null,
-                enteralPrescription ? "NE" : null,
-                parenteralPrescription ? "NP" : null,
-              ].filter(Boolean).join(" e ")}
-            </p>
           </td>
         </tr>
 
@@ -344,7 +355,7 @@ const PatientBlock = ({ patient, prescriptions }: { patient: Patient; prescripti
   );
 };
 
-const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: SectorMapPrintProps) => {
+const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions, evolutions }: SectorMapPrintProps) => {
   const patientPages = chunkPatients(patients, 8);
 
   return (
@@ -377,6 +388,7 @@ const SectorMapPrint = ({ hospitalName, wardName, patients, prescriptions }: Sec
                 key={patient.id}
                 patient={patient}
                 prescriptions={prescriptions}
+                evolutions={evolutions}
               />
             ))}
           </div>

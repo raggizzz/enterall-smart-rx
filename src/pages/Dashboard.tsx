@@ -660,6 +660,7 @@ const Dashboard = () => {
           wardName={selectedWard}
           patients={patientsInSelectedWard}
           prescriptions={prescriptions}
+          evolutions={evolutions}
         />
       )}
 
