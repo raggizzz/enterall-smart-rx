@@ -82,7 +82,7 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
           .print\\:grid { display: grid !important; }
           .print\\:flex { display: flex !important; }
           [data-print-popup-root] { display: block !important; }
-          .print-label-sheet { width: 190.5mm; margin: 0 auto; }
+          .print-label-sheet { width: 196.5mm; margin: 0 auto; }
           .print-label-item { width: 63.5mm; height: 46.6mm; margin: 0; }
           @page {
             size: A4 portrait;
@@ -101,8 +101,9 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
             .print-label-sheet {
               display: grid !important;
               grid-template-columns: repeat(3, 63.5mm);
-              gap: 0 !important;
-              width: 190.5mm;
+              column-gap: 3mm !important;
+              row-gap: 0 !important;
+              width: 196.5mm;
               margin: 0 auto;
             }
             .print-label-item {

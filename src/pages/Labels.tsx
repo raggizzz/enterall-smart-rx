@@ -14,6 +14,7 @@ import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, use
 import type { Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes } from "@/lib/scheduleTimes";
+import { isPatientActiveForOperations } from "@/lib/patientStatus";
 import { printElementInPopup } from "@/lib/printPopup";
 
 const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
@@ -175,11 +176,14 @@ const Labels = () => {
     const clinicOptions = useMemo(() => {
         const fromData = new Set<string>();
         prescriptions.forEach((p) => {
+            const patient = patientsById.get(p.patientId);
             if (currentHospitalId && p.hospitalId && p.hospitalId !== currentHospitalId) return;
-            if (p.patientWard) fromData.add(p.patientWard);
+            if (!isPatientActiveForOperations(patient, activeDate)) return;
+            if (patient?.ward || p.patientWard) fromData.add(patient?.ward || p.patientWard || "");
         });
         patients.forEach((p) => {
             if (currentHospitalId && p.hospitalId && p.hospitalId !== currentHospitalId) return;
+            if (!isPatientActiveForOperations(p, activeDate)) return;
             if (p.ward) fromData.add(p.ward);
         });
         clinics.forEach((c) => {
@@ -194,7 +198,7 @@ const Labels = () => {
         });
 
         return Array.from(fromData).sort((a, b) => a.localeCompare(b));
-    }, [clinics, currentHospitalId, patients, prescriptions, wardObjects]);
+    }, [activeDate, clinics, currentHospitalId, patients, patientsById, prescriptions, wardObjects]);
 
     const availableScheduleTimes = useMemo(() => {
         if (clinic === "all") return resolveConfiguredScheduleTimes({ settings });
@@ -345,7 +349,7 @@ const Labels = () => {
                 if (currentHospitalId && prescription.hospitalId && prescription.hospitalId !== currentHospitalId) return false;
 
                 const patient = patientsById.get(prescription.patientId);
-                if (patient && patient.status !== "active") return false;
+                if (!isPatientActiveForOperations(patient, activeDate)) return false;
 
                 const prescriptionStart = new Date(`${prescription.startDate}T00:00:00`);
                 const prescriptionEnd = prescription.endDate ? new Date(`${prescription.endDate}T23:59:59`) : null;
@@ -356,13 +360,11 @@ const Labels = () => {
                 return true;
             })
             .forEach((prescription) => {
-                const patient = patientsById.get(prescription.patientId);
-
                 const patientName = normalize(prescription.patientName || patient?.name);
                 const bed = normalize(prescription.patientBed || patient?.bed);
                 const record = normalize(prescription.patientRecord || patient?.record);
-                const dob = patient?.dob ? toDateOnly(new Date(patient.dob)) : "-";
-                const clinicName = normalize(prescription.patientWard || patient?.ward || "Sem setor");
+                const dob = toDateOnlyFromIso(patient?.dob) || "-";
+                const clinicName = normalize(patient?.ward || prescription.patientWard || "Sem setor");
                 const route = normalize(
                     prescription.therapyType === "oral"
                         ? "VO"
@@ -951,13 +953,13 @@ const Labels = () => {
                     </Card>
                 </div>
 
-                    <div id="labels-print-document" className="hidden print:block">
-                    <div className="print-label-sheet print:grid print:grid-cols-3 print:gap-0">
-                         {filteredLabels
+                <div id="labels-print-document" className="hidden print:block">
+                    <div className="print-label-sheet print:grid print:grid-cols-3 print:gap-x-[3mm] print:gap-y-0">
+                        {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))
                             .map((label) => (
                                 <div key={label.id} className="print-label-item break-inside-avoid">
-                                     <LabelPreview data={label} />
+                                    <LabelPreview data={label} />
                                 </div>
                             ))}
                     </div>

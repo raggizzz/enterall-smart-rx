@@ -29,8 +29,8 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
     const isWaterLabel = normalizedWaterText.includes("AGUA");
 
     return (
-        <article className="w-[63.5mm] h-[46.6mm] bg-white text-black p-[1.8mm] overflow-hidden font-sans print:shadow-none shadow-md rounded relative box-border border border-black">
-            <header className="border-b border-black pb-[1.2mm]">
+        <article className="w-[63.5mm] h-[46.6mm] bg-white text-black p-[1.8mm] overflow-hidden font-sans print:shadow-none shadow-md rounded relative box-border border-[0.35pt] border-gray-500 print:border-gray-300">
+            <header className="border-b border-gray-500 print:border-gray-300 pb-[1.2mm]">
                 <div className="flex items-start justify-between gap-1">
                     <div className="font-extrabold text-[9.5px] uppercase leading-none truncate">
                         {data.templateTitle}
@@ -49,12 +49,16 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                     </div>
                 </div>
 
-                <div className="mt-[1mm] grid grid-cols-[1.25fr_0.75fr] gap-[1mm]">
-                    <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.8mm]">
+                <div className="mt-[1mm] grid grid-cols-[0.72fr_1.08fr_0.7fr] gap-[0.8mm]">
+                    <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.8mm]">
                         <div className="text-[6.4px] font-bold uppercase leading-none">Leito</div>
                         <div className="mt-[0.6mm] text-[10.5px] font-extrabold leading-none">{data.bed}</div>
                     </div>
-                    <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.8mm]">
+                    <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.8mm]">
+                        <div className="text-[6.4px] font-bold uppercase leading-none">DN</div>
+                        <div className="mt-[0.6mm] text-[8.4px] font-extrabold leading-none">{data.dob}</div>
+                    </div>
+                    <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.8mm]">
                         <div className="text-[6.4px] font-bold uppercase leading-none">Via</div>
                         <div className="mt-[0.6mm] text-[9.4px] font-extrabold leading-none">{data.route}</div>
                     </div>
@@ -70,33 +74,32 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                 )}
 
                 {isWaterLabel && data.compositionText && (
-                    <div className="rounded-[1mm] border border-black px-[1.2mm] py-[0.9mm] text-[6.7px] leading-tight break-words">
-                        <span className="font-bold">Modulos:</span> {data.compositionText}
+                    <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.9mm] text-[6.7px] leading-tight break-words">
+                        <span className="font-bold">Módulos:</span> {data.compositionText}
                     </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-[1mm]">
                     {data.volumeText && (
-                        <div className="rounded-[1mm] border border-black px-[1.2mm] py-[1mm]">
+                        <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]">
                             <div className="text-[6.6px] font-bold uppercase leading-none">Volume total</div>
                             <div className="mt-[0.8mm] text-[10.8px] font-extrabold leading-none">{data.volumeText}</div>
                         </div>
                     )}
                     {data.infusionRate && (
-                        <div className="rounded-[1mm] border border-black px-[1.2mm] py-[1mm]">
+                        <div className="rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]">
                             <div className="text-[6.6px] font-bold uppercase leading-none">Vazao</div>
                             <div className="mt-[0.8mm] text-[10.2px] font-extrabold leading-none">{data.infusionRate}</div>
                         </div>
                     )}
                 </div>
 
-                <div className="grid grid-cols-[1fr_auto] gap-x-[1.2mm] text-[6.8px] leading-tight">
+                <div className="grid grid-cols-1 gap-x-[1.2mm] text-[6.8px] leading-tight">
                     <div><span className="font-bold">Registro:</span> {data.record}</div>
-                    <div><span className="font-bold">DN:</span> {data.dob}</div>
                 </div>
             </main>
 
-            <footer className="absolute bottom-0 left-0 right-0 border-t border-black bg-gray-50 px-[1.8mm] py-[1mm] text-[6.2px] leading-tight">
+            <footer className="absolute bottom-0 left-0 right-0 border-t border-gray-500 print:border-gray-300 bg-gray-50 px-[1.8mm] py-[1mm] text-[6.2px] leading-tight">
                 <div className="grid grid-cols-[1fr_auto] gap-x-1">
                     <div className="min-w-0">
                         <div>

@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleTimes, sanitizeScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
 import { createPrintPopup, printElementInPopup } from "@/lib/printPopup";
 import { addManualBillingAdjustment, ManualAdjustmentCategory } from "@/lib/manualAdjustments";
+import { isPatientActiveForOperations } from "@/lib/patientStatus";
 
 const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
@@ -154,50 +155,60 @@ const Billing = () => {
 
     const wards = useMemo(() => {
         const uniqueWards = new Set<string>();
-        patients.forEach((patient) => {
+        patients.filter((patient) => isPatientActiveForOperations(patient, endDate || startDate || new Date())).forEach((patient) => {
             if (patient.ward) uniqueWards.add(patient.ward);
         });
         return Array.from(uniqueWards).sort((left, right) => left.localeCompare(right));
-    }, [patients]);
+    }, [endDate, patients, startDate]);
+
+    const patientsById = useMemo(() => new Map(patients.map((patient) => [patient.id, patient])), [patients]);
 
     const availableScheduleTimes = useMemo(() => {
         const wardObj = unit === "all" ? undefined : findWardByReference(wardObjects, undefined, unit);
         const configuredTimes = resolveConfiguredScheduleTimes({ settings, ward: wardObj });
         const prescriptionTimes = prescriptions
             .filter((prescription) => {
+                const patient = patientsById.get(prescription.patientId);
                 if (prescription.status !== "active") return false;
-                if (unit !== "all" && prescription.patientWard !== unit) return false;
+                if (!isPatientActiveForOperations(patient, endDate || startDate || new Date())) return false;
+                if (unit !== "all" && (patient?.ward || prescription.patientWard) !== unit) return false;
                 if (therapyFilter !== "all" && prescription.therapyType !== therapyFilter) return false;
                 return true;
             })
             .flatMap(collectPrescriptionTimes);
 
         return sanitizeScheduleTimes([...configuredTimes, ...prescriptionTimes]);
-    }, [prescriptions, settings, therapyFilter, unit, wardObjects]);
+    }, [endDate, patientsById, prescriptions, settings, startDate, therapyFilter, unit, wardObjects]);
 
     useEffect(() => {
         setSelectedTimes([...availableScheduleTimes]);
     }, [availableScheduleTimes]);
 
     const activePrescriptions = useMemo(
-        () => prescriptions.filter((prescription) => prescription.status === "active"),
-        [prescriptions],
+        () => prescriptions.filter((prescription) => {
+            if (prescription.status !== "active") return false;
+            const patient = patients.find((item) => item.id === prescription.patientId);
+            return isPatientActiveForOperations(patient, endDate || startDate || new Date());
+        }),
+        [endDate, patients, prescriptions, startDate],
     );
 
     const filteredPrescriptions = useMemo(() => {
         return activePrescriptions.filter((prescription) => {
-            const matchesUnit = unit === "all" || prescription.patientWard === unit;
+            const patient = patientsById.get(prescription.patientId);
+            const matchesUnit = unit === "all" || (patient?.ward || prescription.patientWard) === unit;
             const matchesTherapy = therapyFilter === "all" || prescription.therapyType === therapyFilter;
             const matchesPatient = selectedPatients.length === 0 || selectedPatients.includes(prescription.patientId);
             return matchesUnit && matchesTherapy && matchesPatient;
         });
-    }, [activePrescriptions, selectedPatients, therapyFilter, unit]);
+    }, [activePrescriptions, patientsById, selectedPatients, therapyFilter, unit]);
 
     const prescriptionTypesByPatient = useMemo(() => {
         const map = new Map<string, Set<string>>();
 
         activePrescriptions.forEach((prescription) => {
-            if (unit !== "all" && prescription.patientWard !== unit) return;
+            const patient = patientsById.get(prescription.patientId);
+            if (unit !== "all" && (patient?.ward || prescription.patientWard) !== unit) return;
             if (therapyFilter !== "all" && prescription.therapyType !== therapyFilter) return;
 
             const types = map.get(prescription.patientId) || new Set<string>();
@@ -206,15 +217,15 @@ const Billing = () => {
         });
 
         return map;
-    }, [activePrescriptions, therapyFilter, unit]);
+    }, [activePrescriptions, patientsById, therapyFilter, unit]);
 
     const filteredPatients = useMemo(() => {
         return patients.filter((patient) => {
-            if (patient.status !== "active") return false;
+            if (!isPatientActiveForOperations(patient, endDate || startDate || new Date())) return false;
             if (unit !== "all" && patient.ward !== unit) return false;
             return prescriptionTypesByPatient.has(patient.id || "");
         });
-    }, [patients, prescriptionTypesByPatient, unit]);
+    }, [endDate, patients, prescriptionTypesByPatient, startDate, unit]);
 
     const summaryByUnit = useMemo(() => {
         const summary: Record<string, { patients: number; enteral: number; oral: number; parenteral: number }> = {};

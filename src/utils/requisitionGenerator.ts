@@ -2,6 +2,7 @@ import { Prescription, Formula, Module, Supply, Patient } from '@/lib/database';
 import { RequisitionData, DietMapItem, ConsolidatedItem } from '@/types/requisition';
 import { getPrescriptionRateLabel } from '@/lib/prescriptionInfusion';
 import { compareBedLabels } from '@/lib/patientDisplay';
+import { isPatientActiveForOperations } from '@/lib/patientStatus';
 
 // Native Date helpers to replace date-fns
 const startOfDay = (date: Date): Date => {
@@ -245,8 +246,10 @@ export const generateRequisitionData = ({
     };
 
     const eligiblePrescriptions = prescriptions.filter(p => {
+        const patient = patientsById.get(p.patientId);
         if (p.status !== 'active') return false;
-        if (unitName !== 'all' && p.patientWard !== unitName) return false;
+        if (!isPatientActiveForOperations(patient, endDate)) return false;
+        if (unitName !== 'all' && (patient?.ward || p.patientWard) !== unitName) return false;
         const pStart = parseISO(p.startDate);
         const pEnd = p.endDate ? parseISO(p.endDate) : null;
         const rangeStart = startOfDay(startDate);

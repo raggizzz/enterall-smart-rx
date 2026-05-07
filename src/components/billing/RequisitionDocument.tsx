@@ -22,6 +22,13 @@ const formatBillingCurrency = (value?: number) => {
     });
 };
 
+const formatDateOnly = (value?: string) => {
+    if (!value) return '-';
+    const parsed = new Date(`${value.split('T')[0]}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) return '-';
+    return new Intl.DateTimeFormat('pt-BR').format(parsed);
+};
+
 const getTypeBadge = (item: DietMapItem) => {
     if (item.type === 'water') return 'AGUA';
     if (item.type === 'module') return 'MODULO';
@@ -160,7 +167,7 @@ export const RequisitionDocument: React.FC<RequisitionDocumentProps> = ({ data }
                                                             {item.bed || '-'}
                                                         </td>
                                                         <td rowSpan={rowSpan} className="border border-black p-1 align-top">
-                                                            {item.dob ? new Intl.DateTimeFormat('pt-BR').format(new Date(item.dob)) : '-'}
+                                                            {formatDateOnly(item.dob)}
                                                         </td>
                                                         <td rowSpan={rowSpan} className="border border-black p-1 align-top">
                                                             <div className="font-semibold">{item.patientName}</div>
