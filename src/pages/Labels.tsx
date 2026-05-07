@@ -31,6 +31,15 @@ const normalize = (value?: string | null): string => {
     return value;
 };
 
+const normalizeFilterText = (value?: string | null): string => (
+    value || ""
+)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
 const normalizeScheduleTime = (value?: string | null): string => {
     if (!value) return "";
 
@@ -93,7 +102,8 @@ const Labels = () => {
     const { settings } = useSettings();
     const { formulas } = useFormulas();
     const { modules } = useModules();
-    const { wards: wardObjects } = useWards();
+    const currentHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || "" : "";
+    const { wards: wardObjects } = useWards(currentHospitalId || undefined);
 
     const patientsById = useMemo(() => {
         const map = new Map<string, (typeof patients)[number]>();
@@ -108,6 +118,7 @@ const Labels = () => {
     const uniquePrescriptions = useMemo(() => {
         const seenIds = new Set<string>();
         const uniqueById = prescriptions.filter((prescription) => {
+            if (currentHospitalId && prescription.hospitalId && prescription.hospitalId !== currentHospitalId) return false;
             if (!prescription.id) return true;
             if (seenIds.has(prescription.id)) return false;
             seenIds.add(prescription.id);
@@ -115,7 +126,7 @@ const Labels = () => {
         });
 
         return pickLatestPrescriptionPerPatientAndRoute(uniqueById);
-    }, [prescriptions]);
+    }, [currentHospitalId, prescriptions]);
 
     const formulaMap = useMemo(() => {
         const map = new Map<string, {
@@ -164,17 +175,26 @@ const Labels = () => {
     const clinicOptions = useMemo(() => {
         const fromData = new Set<string>();
         prescriptions.forEach((p) => {
+            if (currentHospitalId && p.hospitalId && p.hospitalId !== currentHospitalId) return;
             if (p.patientWard) fromData.add(p.patientWard);
         });
         patients.forEach((p) => {
+            if (currentHospitalId && p.hospitalId && p.hospitalId !== currentHospitalId) return;
             if (p.ward) fromData.add(p.ward);
         });
         clinics.forEach((c) => {
+            if (!c.isActive) return;
+            if (currentHospitalId && c.hospitalId && c.hospitalId !== currentHospitalId) return;
             if (c.name) fromData.add(c.name);
+        });
+        wardObjects.forEach((ward) => {
+            if (!ward.isActive) return;
+            if (currentHospitalId && ward.hospitalId !== currentHospitalId) return;
+            if (ward.name) fromData.add(ward.name);
         });
 
         return Array.from(fromData).sort((a, b) => a.localeCompare(b));
-    }, [clinics, patients, prescriptions]);
+    }, [clinics, currentHospitalId, patients, prescriptions, wardObjects]);
 
     const availableScheduleTimes = useMemo(() => {
         if (clinic === "all") return resolveConfiguredScheduleTimes({ settings });
@@ -322,6 +342,10 @@ const Labels = () => {
         uniquePrescriptions
             .filter((prescription) => {
                 if (prescription.status !== "active") return false;
+                if (currentHospitalId && prescription.hospitalId && prescription.hospitalId !== currentHospitalId) return false;
+
+                const patient = patientsById.get(prescription.patientId);
+                if (patient && patient.status !== "active") return false;
 
                 const prescriptionStart = new Date(`${prescription.startDate}T00:00:00`);
                 const prescriptionEnd = prescription.endDate ? new Date(`${prescription.endDate}T23:59:59`) : null;
@@ -554,37 +578,44 @@ const Labels = () => {
                             });
                         }
 
-                        if (moduleEntries.length > 0 || (prescription.hydrationVolume || 0) > 0) {
-                            const waterSchedules = hydrationSchedules.length > 0 ? hydrationSchedules : baseSchedules;
-                            waterSchedules.forEach((time: string) => {
-                                pushLabel(
-                                    {
-                                        clinic: clinicName,
-                                        templateTitle: "ÁGUA COM MÓDULOS",
-                                        patientName,
-                                        bed,
-                                        record,
-                                        dob,
-                                        scheduleTime: time,
-                                        infusionRate: getRate(prescription),
-                                        route,
-                                        formulaText: prescription.hydrationVolume ? `ÁGUA ${Math.round(prescription.hydrationVolume)} mL` : "ÁGUA",
-                                        compositionText: modulesSummary || undefined,
-                                        volumeText: prescription.hydrationVolume
-                                            ? `${Math.round(prescription.hydrationVolume)} mL`
-                                            : undefined,
-                                        manipulationDate: activeDateText,
-                                        manipulationTime: time,
-                                        validityText: "Validade: 4h após manipulação.",
-                                        controlText: buildControl(prescription.id, time, "AG"),
-                                        conservationText: conservationOpen,
-                                        rtName,
-                                        rtCrn,
-                                    },
-                                    "water-modules"
-                                );
-                            });
-                        }
+                    }
+
+                    if (moduleEntries.length > 0 || (prescription.hydrationVolume || 0) > 0) {
+                        const waterSchedules = hydrationSchedules.length > 0
+                            ? hydrationSchedules
+                            : moduleSchedules.length > 0
+                                ? moduleSchedules
+                                : baseSchedules;
+                        const waterTitle = modulesSummary ? "ÁGUA COM MÓDULOS" : "ÁGUA";
+
+                        waterSchedules.forEach((time: string) => {
+                            pushLabel(
+                                {
+                                    clinic: clinicName,
+                                    templateTitle: waterTitle,
+                                    patientName,
+                                    bed,
+                                    record,
+                                    dob,
+                                    scheduleTime: time,
+                                    infusionRate: getRate(prescription),
+                                    route,
+                                    formulaText: prescription.hydrationVolume ? `ÁGUA ${Math.round(prescription.hydrationVolume)} mL` : "ÁGUA",
+                                    compositionText: modulesSummary || undefined,
+                                    volumeText: prescription.hydrationVolume
+                                        ? `${Math.round(prescription.hydrationVolume)} mL`
+                                        : undefined,
+                                    manipulationDate: activeDateText,
+                                    manipulationTime: time,
+                                    validityText: "Validade: 4h após manipulação.",
+                                    controlText: buildControl(prescription.id, time, "AG"),
+                                    conservationText: conservationOpen,
+                                    rtName,
+                                    rtCrn,
+                                },
+                                "water-modules"
+                            );
+                        });
                     }
                 }
 
@@ -712,12 +743,12 @@ const Labels = () => {
             });
 
         return list;
-    }, [activeDate, activeDateText, formulaMap, patientsById, settings, uniquePrescriptions]);
+    }, [activeDate, activeDateText, currentHospitalId, formulaMap, patientsById, settings, uniquePrescriptions]);
 
     const filteredLabels = useMemo(() => {
         return labels.filter((label) => {
-            const matchClinic = clinic === "all" || label.clinic.toLowerCase() === clinic.toLowerCase();
-            const matchPatient = label.patientName.toLowerCase().includes(patientSearch.toLowerCase());
+            const matchClinic = clinic === "all" || normalizeFilterText(label.clinic) === normalizeFilterText(clinic);
+            const matchPatient = normalizeFilterText(label.patientName).includes(normalizeFilterText(patientSearch));
             const matchTime = label.scheduleTime ? selectedTimeSet.has(normalizeScheduleTime(label.scheduleTime)) : true;
             return matchClinic && matchPatient && matchTime;
         });
@@ -920,13 +951,13 @@ const Labels = () => {
                     </Card>
                 </div>
 
-                <div id="labels-print-document" className="hidden print:block">
-                    <div className="print:grid print:grid-cols-3 print:gap-[2mm]">
-                        {filteredLabels
+                    <div id="labels-print-document" className="hidden print:block">
+                    <div className="print-label-sheet print:grid print:grid-cols-3 print:gap-0">
+                         {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))
                             .map((label) => (
-                                <div key={label.id} className="break-inside-avoid mb-[3.2mm]">
-                                    <LabelPreview data={label} />
+                                <div key={label.id} className="print-label-item break-inside-avoid">
+                                     <LabelPreview data={label} />
                                 </div>
                             ))}
                     </div>
