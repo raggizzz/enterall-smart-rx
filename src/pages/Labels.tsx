@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,23 @@ import { isPatientActiveForOperations } from "@/lib/patientStatus";
 import { printElementInPopup } from "@/lib/printPopup";
 
 const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
+
+const printLabelSheetStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 63.5mm)",
+    columnGap: "3mm",
+    rowGap: 0,
+    width: "196.5mm",
+    margin: "0 auto",
+};
+
+const printLabelItemStyle: CSSProperties = {
+    width: "63.5mm",
+    height: "46.6mm",
+    margin: 0,
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
+};
 
 const toDateOnly = (date: Date): string => new Intl.DateTimeFormat('pt-BR').format(date);
 const toDateOnlyFromIso = (value?: string): string | undefined => {
@@ -956,11 +974,11 @@ const Labels = () => {
                 </div>
 
                 <div id="labels-print-document" className="hidden print:block">
-                    <div className="print-label-sheet print:grid print:grid-cols-3 print:gap-x-[3mm] print:gap-y-0">
+                    <div className="print-label-sheet print:grid print:grid-cols-3 print:gap-x-[3mm] print:gap-y-0" style={printLabelSheetStyle}>
                         {filteredLabels
                             .filter((label) => selectedLabels.includes(label.id))
                             .map((label) => (
-                                <div key={label.id} className="print-label-item break-inside-avoid">
+                                <div key={label.id} className="print-label-item break-inside-avoid" style={printLabelItemStyle}>
                                     <LabelPreview data={label} />
                                 </div>
                             ))}
