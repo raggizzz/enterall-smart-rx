@@ -149,6 +149,14 @@ const calculateScaledFormulaNutrient = (value: unknown, totalAmount: number, nut
   return numericValue <= 1 ? totalAmount * numericValue : nutrientFactor * numericValue;
 };
 
+const calculateScaledFormulaFiber = (value: unknown, totalAmount: number, nutrientFactor: number): number => {
+  const numericValue = toNumber(value);
+  if (!hasNumber(numericValue)) return 0;
+  // Fibers are often registered as g/100 mL with values below 1 (ex.: 0.5 g/100 mL).
+  // Only very small values are treated as g/mL.
+  return numericValue < 0.1 ? totalAmount * numericValue : nutrientFactor * numericValue;
+};
+
 const formatSourceAmount = (amount?: number, unit = "mL") => {
   if (!hasNumber(amount) || amount <= 0) return "";
   return `${round1(amount)} ${unit}`;
@@ -300,7 +308,7 @@ export const calculateFormulaNutrition = (
     ? (totalCalories * (fatPct / 100)) / 9
     : calculateScaledFormulaNutrient(formula.fatPerUnit, totalAmount, nutrientFactor);
 
-  totals.fiber += calculateScaledFormulaNutrient(formula.fiberPerUnit, totalAmount, nutrientFactor);
+  totals.fiber += calculateScaledFormulaFiber(formula.fiberPerUnit, totalAmount, nutrientFactor);
   totals.freeWater += calculateFormulaFreeWater(formula, totalAmount, options?.dilutedAmount);
   totals.sodium += nutrientFactor * (toNumber(formula.sodiumPerUnit) || 0);
   totals.potassium += nutrientFactor * (toNumber(formula.potassiumPerUnit) || 0);

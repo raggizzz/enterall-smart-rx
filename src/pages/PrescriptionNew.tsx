@@ -252,7 +252,7 @@ const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
         ? (formula.fatPerUnit <= 1 ? formula.fatPerUnit * 100 : formula.fatPerUnit)
         : undefined,
       fiber: typeof formula.fiberPerUnit === "number"
-        ? (formula.fiberPerUnit <= 1 ? formula.fiberPerUnit * 100 : formula.fiberPerUnit)
+        ? (formula.fiberPerUnit < 0.1 ? formula.fiberPerUnit * 100 : formula.fiberPerUnit)
         : undefined,
       sodium: formula.sodiumPerUnit,
       potassium: formula.potassiumPerUnit,

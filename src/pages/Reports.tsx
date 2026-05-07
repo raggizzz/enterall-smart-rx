@@ -310,10 +310,22 @@ const normalizeLookupText = (value?: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-const getPumpSupply = (supplies: Supply[]): Supply | undefined =>
-  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "pump-set")
-  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bomba"))
-  || supplies.find((supply) => supply.isActive && supply.type === "set");
+const findSetByName = (supplies: Supply[], matcher: (name: string) => boolean): Supply | undefined =>
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.type === "set" && matcher(normalizeLookupText(supply.name)));
+
+const getPumpSupply = (supplies: Supply[], systemType?: string): Supply | undefined => {
+  const preferredCategory = systemType === "closed" ? "closed-pump-set" : systemType === "open" ? "open-pump-set" : "pump-set";
+  return supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === preferredCategory)
+    || (systemType === "closed"
+      ? findSetByName(supplies, (name) => name.includes("bomba") && (/\bsf\b/.test(name) || name.includes("sistema fechado")))
+      : undefined)
+    || (systemType === "open"
+      ? findSetByName(supplies, (name) => name.includes("bomba") && (/\bsab\b/.test(name) || name.includes("sistema aberto")))
+      : undefined)
+    || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "pump-set")
+    || findSetByName(supplies, (name) => name.includes("bomba"))
+    || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.type === "set");
+};
 
 const getGravitySupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "gravity-set")
@@ -352,9 +364,7 @@ const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
       ? Math.ceil(requestedAmount / capacityMl)
       : billingUnit === "ml"
         ? requestedAmount
-        : capacityMl > 0
-          ? Math.ceil(requestedAmount / capacityMl)
-          : requestedAmount;
+        : requestedAmount;
     const wasteFactor = capacityMl > 0
       ? Math.ceil(requestedAmount / capacityMl)
       : totalQuantity;
@@ -864,7 +874,7 @@ const Reports = () => {
           ? getGravitySupply(supplies)
           : prescription.infusionMode === "bolus"
             ? getBolusSupply(supplies)
-            : getPumpSupply(supplies);
+            : getPumpSupply(supplies, prescription.systemType);
 
         if (selectedSupply && selectedSupply.isBillable !== false && mainSetCountPerDay > 0) {
           const supplyBilling = resolveSupplyBilling(selectedSupply, mainSetCountPerDay * overlapDays);

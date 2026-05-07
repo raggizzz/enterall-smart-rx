@@ -80,6 +80,47 @@ const calculateModuleMaterialCost = (moduleEntry: Prescription["modules"][number
   return dailyAmount * billingPrice;
 };
 
+const calculateOralThickenerCost = (prescription: Prescription, modules: Module[], formulas: Formula[]) => {
+  const oralDetails = prescription.oralDetails;
+  if (prescription.therapyType !== "oral" || !oralDetails?.needsThickener) return 0;
+
+  const timesPerDay = getAdministrationCount(oralDetails.thickenerTimes);
+  const gramsPerDose = Number(oralDetails.thickenerGrams || 0);
+  const volumePerDose = Number(oralDetails.thickenerVolume || 0);
+  if (timesPerDay <= 0 || (gramsPerDose <= 0 && volumePerDose <= 0)) return 0;
+
+  const moduleItem = modules.find((item) =>
+    item.id === oralDetails.thickenerModuleId
+    || item.id === oralDetails.thickenerFormulaId
+    || item.name === oralDetails.thickenerProduct
+  );
+  if (moduleItem) {
+    const dailyAmount = (gramsPerDose > 0 ? gramsPerDose : volumePerDose) * timesPerDay;
+    return calculateModuleMaterialCost({
+      moduleId: moduleItem.id || "",
+      moduleName: moduleItem.name,
+      amount: dailyAmount,
+      timesPerDay: 1,
+      schedules: oralDetails.thickenerTimes,
+      unit: gramsPerDose > 0 ? "g" : "ml",
+    }, moduleItem);
+  }
+
+  const legacyFormula = formulas.find((item) =>
+    item.id === oralDetails.thickenerFormulaId
+    || item.name === oralDetails.thickenerProduct
+  );
+  if (!legacyFormula) return 0;
+
+  return calculateFormulaMaterialCost(prescription, {
+    formulaId: legacyFormula.id || "",
+    formulaName: legacyFormula.name,
+    volume: volumePerDose > 0 ? volumePerDose : gramsPerDose,
+    timesPerDay,
+    schedules: oralDetails.thickenerTimes || [],
+  }, legacyFormula);
+};
+
 export const calculatePrescriptionCosts = ({
   prescription,
   formulas,
@@ -108,6 +149,8 @@ export const calculatePrescriptionCosts = ({
     const moduleItem = modules.find((item) => item.id === moduleEntry.moduleId);
     materialCostTotal += calculateModuleMaterialCost(moduleEntry, moduleItem);
   });
+
+  materialCostTotal += calculateOralThickenerCost(prescription, modules, formulas);
 
   if (prescription.therapyType === "enteral" && nursingCosts) {
     const dailyHydrationStages = prescription.hydrationSchedules?.length || 0;

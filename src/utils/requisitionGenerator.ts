@@ -194,10 +194,21 @@ export const generateRequisitionData = ({
 
     const findSupplyByCategory = (...categories: Array<Supply['category']>) =>
         supplies.find((s) => categories.includes(s.category) && s.isActive && s.isBillable !== false);
-    const getPumpSupply = () =>
-        findSupplyByCategory('pump-set')
-        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('bomba'))
-        || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set');
+    const findSetByName = (matcher: (name: string) => boolean) =>
+        supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && matcher(normalizeLookupText(s.name)));
+    const getPumpSupply = (systemType?: string) => {
+        const preferredCategory = systemType === 'closed' ? 'closed-pump-set' : systemType === 'open' ? 'open-pump-set' : 'pump-set';
+        return findSupplyByCategory(preferredCategory as Supply['category'])
+            || (systemType === 'closed'
+                ? findSetByName((name) => name.includes('bomba') && (/\bsf\b/.test(name) || name.includes('sistema fechado')))
+                : undefined)
+            || (systemType === 'open'
+                ? findSetByName((name) => name.includes('bomba') && (/\bsab\b/.test(name) || name.includes('sistema aberto')))
+                : undefined)
+            || findSupplyByCategory('pump-set')
+            || findSetByName((name) => name.includes('bomba'))
+            || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set');
+    };
     const getGravitySupply = () =>
         findSupplyByCategory('gravity-set')
         || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('gravit'))
@@ -221,9 +232,7 @@ export const generateRequisitionData = ({
             ? Math.ceil(requestedAmount / capacityMl)
             : billingUnit === 'ml'
                 ? requestedAmount
-                : capacityMl > 0
-                    ? Math.ceil(requestedAmount / capacityMl)
-                    : requestedAmount;
+                : requestedAmount;
 
         addToConsolidated(
             supply.code,
@@ -519,7 +528,7 @@ export const generateRequisitionData = ({
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
             if (mainDailySetCount > 0) {
                 if (p.infusionMode === 'pump') {
-                    addSupplyCharge(getPumpSupply(), mainDailySetCount * dayDiff);
+                    addSupplyCharge(getPumpSupply(p.systemType), mainDailySetCount * dayDiff);
                 } else if (p.infusionMode === 'gravity') {
                     addSupplyCharge(getGravitySupply(), mainDailySetCount * dayDiff);
                 } else if (p.infusionMode === 'bolus') {
