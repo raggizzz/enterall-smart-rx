@@ -2,7 +2,14 @@ import { toast } from "sonner";
 
 const collectPageStyles = () =>
   Array.from(document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style'))
-    .map((node) => node.outerHTML)
+    .map((node) => {
+      if (node instanceof HTMLLinkElement) {
+        const href = node.href;
+        return `<link rel="stylesheet" href="${href}">`;
+      }
+
+      return node.outerHTML;
+    })
     .join("\n");
 
 export const createPrintPopup = (title = "Documento para impressão"): Window | null => {
@@ -65,6 +72,7 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <base href="${window.location.origin}/" />
         <title>${title}</title>
         ${styles}
         <style>
