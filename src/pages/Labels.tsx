@@ -173,6 +173,9 @@ const Labels = () => {
         return map;
     }, [formulas]);
 
+    const activeDate = useMemo(() => date || new Date(), [date]);
+    const activeDateText = useMemo(() => toDateOnly(activeDate), [activeDate]);
+
     const clinicOptions = useMemo(() => {
         const fromData = new Set<string>();
         prescriptions.forEach((p) => {
@@ -210,8 +213,6 @@ const Labels = () => {
         setSelectedTimes([...availableScheduleTimes]);
     }, [availableScheduleTimes]);
 
-    const activeDate = useMemo(() => date || new Date(), [date]);
-    const activeDateText = useMemo(() => toDateOnly(activeDate), [activeDate]);
     const selectedTimeSet = useMemo(
         () => new Set(selectedTimes.map((time) => normalizeScheduleTime(time)).filter(Boolean)),
         [selectedTimes],
@@ -360,6 +361,7 @@ const Labels = () => {
                 return true;
             })
             .forEach((prescription) => {
+                const patient = patientsById.get(prescription.patientId);
                 const patientName = normalize(prescription.patientName || patient?.name);
                 const bed = normalize(prescription.patientBed || patient?.bed);
                 const record = normalize(prescription.patientRecord || patient?.record);
