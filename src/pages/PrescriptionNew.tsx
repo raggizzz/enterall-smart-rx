@@ -2130,7 +2130,7 @@ const PrescriptionNew = () => {
   // Handlers
   const addOpenFormula = () => setOpenFormulas([...openFormulas, { id: Date.now().toString(), formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
   const removeOpenFormula = (id: string) => { if (openFormulas.length > 1) setOpenFormulas(openFormulas.filter(f => f.id !== id)); };
-  const updateOpenFormula = (id: string, field: keyof FormulaEntry, value: any) => setOpenFormulas(openFormulas.map(f => f.id === id ? { ...f, [field]: value } : f));
+  const updateOpenFormula = (id: string, field: keyof FormulaEntry, value: any) => setOpenFormulas((current) => current.map(f => f.id === id ? { ...f, [field]: value } : f));
   const toggleFormulaTime = (formulaId: string, time: string) => {
     const f = openFormulas.find(f => f.id === formulaId);
     if (f) {
@@ -2148,7 +2148,7 @@ const PrescriptionNew = () => {
 
   const addModule = () => { if (modules.length < 4) setModules([...modules, { id: Date.now().toString(), moduleId: "", quantity: "", unit: "g", times: [] }]); else toast.error("Máximo de 4 módulos"); };
   const removeModule = (id: string) => setModules(modules.filter(m => m.id !== id));
-  const updateModule = (id: string, field: keyof ModuleEntry, value: any) => setModules(modules.map(m => m.id === id ? { ...m, [field]: value } : m));
+  const updateModule = (id: string, field: keyof ModuleEntry, value: any) => setModules((current) => current.map(m => m.id === id ? { ...m, [field]: value } : m));
   const toggleModuleTime = (moduleId: string, time: string) => {
     const m = modules.find(m => m.id === moduleId);
     if (m) {
