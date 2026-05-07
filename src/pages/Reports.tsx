@@ -320,6 +320,10 @@ const getGravitySupply = (supplies: Supply[]): Supply | undefined =>
   || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("gravit"))
   || supplies.find((supply) => supply.isActive && supply.type === "set");
 
+const getBolusSupply = (supplies: Supply[]): Supply | undefined =>
+  supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "bolus-set")
+  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bolus"));
+
 const getBottleSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "feeding-bottle")
   || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "baby-bottle")
@@ -842,7 +846,7 @@ const Reports = () => {
           0,
         );
         const hydrationCount = prescription.hydrationSchedules?.length || 0;
-        const bottleCountPerDay = prescription.systemType === "open" ? administrationCount + hydrationCount : 0;
+        const bottleCountPerDay = (prescription.systemType === "open" ? administrationCount : 0) + hydrationCount;
         const bagQuantities = prescription.enteralDetails?.closedFormula?.bagQuantities || {};
         const explicitBags = Object.values(bagQuantities).reduce((total, quantity) => total + (Number(quantity) || 0), 0);
         const mainSetCountPerDay = prescription.systemType === "closed"
@@ -858,7 +862,9 @@ const Reports = () => {
 
         const selectedSupply = prescription.infusionMode === "gravity"
           ? getGravitySupply(supplies)
-          : getPumpSupply(supplies);
+          : prescription.infusionMode === "bolus"
+            ? getBolusSupply(supplies)
+            : getPumpSupply(supplies);
 
         if (selectedSupply && selectedSupply.isBillable !== false && mainSetCountPerDay > 0) {
           const supplyBilling = resolveSupplyBilling(selectedSupply, mainSetCountPerDay * overlapDays);

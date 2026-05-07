@@ -140,6 +140,7 @@ async function main() {
         paperG: module.paperG,
         metalG: module.metalG,
         glassG: module.glassG,
+        isThickener: module.isThickener === true,
         isActive: true,
       },
       create: {
@@ -159,6 +160,7 @@ async function main() {
         paperG: module.paperG,
         metalG: module.metalG,
         glassG: module.glassG,
+        isThickener: module.isThickener === true,
         isActive: true,
       },
     });

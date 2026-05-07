@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
@@ -133,6 +134,7 @@ type ModuleFormState = {
   paperG: string;
   metalG: string;
   glassG: string;
+  isThickener: boolean;
 };
 
 const createFormulaForm = (): FormulaFormState => ({
@@ -211,6 +213,7 @@ const createModuleForm = (): ModuleFormState => ({
   paperG: "",
   metalG: "",
   glassG: "",
+  isThickener: false,
 });
 
 const toOptionalNumber = (value: string) => {
@@ -714,6 +717,7 @@ const Formulas = () => {
       paperG: moduleItem.paperG?.toString() || "",
       metalG: moduleItem.metalG?.toString() || "",
       glassG: moduleItem.glassG?.toString() || "",
+      isThickener: moduleItem.isThickener === true,
     });
     setIsNewModuleOpen(true);
   };
@@ -764,6 +768,7 @@ const Formulas = () => {
       paperG: toOptionalNumber(moduleForm.paperG),
       metalG: toOptionalNumber(moduleForm.metalG),
       glassG: toOptionalNumber(moduleForm.glassG),
+      isThickener: moduleForm.isThickener,
       isActive: true,
     };
 
@@ -1110,6 +1115,21 @@ const Formulas = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2 md:col-span-2"><Label>Nome comercial *</Label><Input value={moduleForm.name} onChange={(e) => setModuleForm({ ...moduleForm, name: e.target.value })} placeholder="Ex: IsoWhey DCN" /></div>
                     </div>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="module-is-thickener"
+                          checked={moduleForm.isThickener}
+                          onCheckedChange={(checked) => setModuleForm({ ...moduleForm, isThickener: checked === true })}
+                        />
+                        <div className="space-y-1">
+                          <Label htmlFor="module-is-thickener" className="cursor-pointer font-medium">Produto espessante</Label>
+                          <p className="text-xs text-muted-foreground">
+                            Marque esta opção para o produto aparecer no campo de água com espessante da prescrição oral.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2"><Label>Densidade calorica ({moduleDensityUnitLabel})</Label><Input type="number" step="0.01" value={moduleForm.density} onChange={(e) => setModuleForm({ ...moduleForm, density: e.target.value })} placeholder="Ex: 3,6" /></div>
                       <div className="space-y-2"><Label>Descricao</Label><Input value={moduleForm.description} onChange={(e) => setModuleForm({ ...moduleForm, description: e.target.value })} placeholder="Ex: modulo de proteinas" /></div>
@@ -1280,6 +1300,11 @@ const Formulas = () => {
                             <TableRow key={moduleItem.id} className="align-top">
                               <TableCell className="min-w-[260px]">
                                 <div className="font-medium">{moduleItem.name}</div>
+                                {moduleItem.isThickener && (
+                                  <div className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-200">
+                                    Espessante
+                                  </div>
+                                )}
                                 <div className="text-xs text-muted-foreground">{renderMeta([moduleItem.code, moduleItem.manufacturer, moduleItem.description])}</div>
                                 <div className="text-xs text-muted-foreground">{renderMeta([moduleItem.presentationForm, moduleItem.presentations?.length ? `${moduleItem.presentations.join(", ")} ml/g` : undefined])}</div>
                               </TableCell>

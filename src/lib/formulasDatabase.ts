@@ -86,6 +86,7 @@ export interface Module {
   paperG?: number;
   metalG?: number;
   glassG?: number;
+  isThickener?: boolean;
 }
 
 // Complete Database
@@ -495,7 +496,7 @@ const modules: Module[] = [
   { id: "m5", code: "M4", name: "neofiber", manufacturer: "Generico", presentationForm: "po", presentations: [260], density: 0, referenceAmount: 1, referenceTimesPerDay: 1, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0.009, freeWater: 0 },
   { id: "m6", code: "MN35", name: "Solufiber", manufacturer: "Generico", presentationForm: "po", presentations: [260], density: 0, referenceAmount: 1, referenceTimesPerDay: 1, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0.009, freeWater: 0 },
   { id: "m7", code: "M6", name: "Glutamina", manufacturer: "Generico", presentationForm: "po", presentations: [300], density: 4.00, referenceAmount: 1, referenceTimesPerDay: 1, calories: 4, protein: 1, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
-  { id: "m8", code: "MN39", name: "Thicken up", manufacturer: "Generico", presentationForm: "po", presentations: [125], density: 0, referenceAmount: 1, referenceTimesPerDay: 1, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
+  { id: "m8", code: "MN39", name: "Thicken up", manufacturer: "Generico", presentationForm: "po", presentations: [125], density: 0, referenceAmount: 1, referenceTimesPerDay: 1, calories: 0, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0, isThickener: true },
   { id: "m9", code: "M7", name: "Agua de coco", manufacturer: "Generico", presentationForm: "liquido", presentations: [200], density: 0.20, referenceAmount: 1, referenceTimesPerDay: 1, calories: 0.20, protein: 0, sodium: 0, potassium: 0, fiber: 0, freeWater: 0 },
 ];
 

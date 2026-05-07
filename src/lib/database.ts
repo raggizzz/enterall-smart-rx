@@ -188,6 +188,7 @@ export interface Module {
     paperG?: number;
     metalG?: number;
     glassG?: number;
+    isThickener?: boolean;
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
@@ -780,6 +781,11 @@ const normalizeModule = (raw: any): Module => ({
     carbSources: raw.carbSources,
     fatSources: raw.fatSources,
     fiberSources: raw.fiberSources,
+    plasticG: toNumber(raw.plasticG),
+    paperG: toNumber(raw.paperG),
+    metalG: toNumber(raw.metalG),
+    glassG: toNumber(raw.glassG),
+    isThickener: raw.isThickener === true,
     isActive: raw.isActive !== false,
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),

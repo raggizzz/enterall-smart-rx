@@ -149,9 +149,22 @@ const calculateScaledFormulaNutrient = (value: unknown, totalAmount: number, nut
   return numericValue <= 1 ? totalAmount * numericValue : nutrientFactor * numericValue;
 };
 
-const addSource = (sources: Set<string>, itemName: string | undefined, sourceValue: string | undefined) => {
+const formatSourceAmount = (amount?: number, unit = "mL") => {
+  if (!hasNumber(amount) || amount <= 0) return "";
+  return `${round1(amount)} ${unit}`;
+};
+
+const addSource = (
+  sources: Set<string>,
+  itemName: string | undefined,
+  sourceValue: string | undefined,
+  amount?: number,
+  unit = "mL",
+) => {
   if (!sourceValue) return;
-  sources.add(itemName ? `${itemName}: ${sourceValue}` : sourceValue);
+  const amountLabel = formatSourceAmount(amount, unit);
+  const itemLabel = [itemName, amountLabel ? `(${amountLabel})` : ""].filter(Boolean).join(" ");
+  sources.add(itemLabel ? `${itemLabel}: ${sourceValue}` : sourceValue);
 };
 
 const countSupplementSchedules = (schedule?: OralSupplementSchedule["schedules"] | OralModuleSchedule["schedules"]) =>
@@ -300,10 +313,11 @@ export const calculateFormulaNutrition = (
   totals.residueMetal += residueFactor * (toNumber(formula.metalG) || 0);
   totals.residueGlass += residueFactor * (toNumber(formula.glassG) || 0);
 
-  addSource(totals.proteinSources, formula.name, formula.proteinSources);
-  addSource(totals.carbSources, formula.name, formula.carbSources);
-  addSource(totals.fatSources, formula.name, formula.fatSources);
-  addSource(totals.fiberSources, formula.name, formula.fiberSources);
+  const formulaUnit = formula.presentationForm === "po" ? "g" : "mL";
+  addSource(totals.proteinSources, formula.name, formula.proteinSources, totalAmount, formulaUnit);
+  addSource(totals.carbSources, formula.name, formula.carbSources, totalAmount, formulaUnit);
+  addSource(totals.fatSources, formula.name, formula.fatSources, totalAmount, formulaUnit);
+  addSource(totals.fiberSources, formula.name, formula.fiberSources, totalAmount, formulaUnit);
 
   return totals;
 };
@@ -353,10 +367,10 @@ export const calculateModuleNutrition = (
   totals.calcium += factor * (toNumber(moduleItem.calcium) || 0);
   totals.phosphorus += factor * (toNumber(moduleItem.phosphorus) || 0);
 
-  addSource(totals.proteinSources, moduleItem.name, moduleItem.proteinSources);
-  addSource(totals.carbSources, moduleItem.name, moduleItem.carbSources);
-  addSource(totals.fatSources, moduleItem.name, moduleItem.fatSources);
-  addSource(totals.fiberSources, moduleItem.name, moduleItem.fiberSources);
+  addSource(totals.proteinSources, moduleItem.name, moduleItem.proteinSources, totalAmount, "g");
+  addSource(totals.carbSources, moduleItem.name, moduleItem.carbSources, totalAmount, "g");
+  addSource(totals.fatSources, moduleItem.name, moduleItem.fatSources, totalAmount, "g");
+  addSource(totals.fiberSources, moduleItem.name, moduleItem.fiberSources, totalAmount, "g");
 
   return totals;
 };

@@ -133,6 +133,7 @@ export const createModuleSchema = z.object({
   paperG: z.coerce.number().nonnegative().nullish(),
   metalG: z.coerce.number().nonnegative().nullish(),
   glassG: z.coerce.number().nonnegative().nullish(),
+  isThickener: z.boolean().nullish(),
 }).passthrough();
 
 // ─── Suprimentos ─────────────────────────────────────────────────────────────

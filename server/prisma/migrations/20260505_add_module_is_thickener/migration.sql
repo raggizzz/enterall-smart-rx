@@ -1,0 +1,1 @@
+ALTER TABLE "Module" ADD COLUMN "isThickener" BOOLEAN NOT NULL DEFAULT false;

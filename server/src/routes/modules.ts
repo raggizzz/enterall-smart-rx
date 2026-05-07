@@ -45,6 +45,7 @@ const buildModulePayload = (payload: any, hospitalId: string) => ({
   paperG: toNumber(payload.paperG),
   metalG: toNumber(payload.metalG),
   glassG: toNumber(payload.glassG),
+  isThickener: payload.isThickener === true,
   isActive: payload.isActive !== false,
 });
 

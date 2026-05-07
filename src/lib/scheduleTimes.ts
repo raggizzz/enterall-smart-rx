@@ -69,11 +69,24 @@ export const findWardByReference = (
   wardId?: string | null,
   wardName?: string | null,
 ): Ward | undefined => {
+  const normalizedWardId = normalizeLookupKey(wardId);
   const normalizedWardName = normalizeLookupKey(wardName);
 
   return wards.find((ward) => {
     if (wardId && ward.id === wardId) return true;
-    if (normalizedWardName && normalizeLookupKey(ward.name) === normalizedWardName) return true;
+    const wardKeys = [
+      ward.id,
+      ward.code,
+      ward.name,
+    ]
+      .map(normalizeLookupKey)
+      .filter(Boolean);
+
+    if (normalizedWardId && wardKeys.includes(normalizedWardId)) return true;
+    if (normalizedWardName) {
+      if (wardKeys.includes(normalizedWardName)) return true;
+      if (wardKeys.some((key) => key.includes(normalizedWardName) || normalizedWardName.includes(key))) return true;
+    }
     return false;
   });
 };

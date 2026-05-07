@@ -109,6 +109,7 @@ type ExtendedCatalogModule = CatalogModule & {
   fat?: number;
   calcium?: number;
   phosphorus?: number;
+  isThickener?: boolean;
   proteinSources?: string;
   carbSources?: string;
   fatSources?: string;
@@ -277,6 +278,9 @@ const buildFallbackCatalogModule = (moduleItem: any): ExtendedCatalogModule => (
   description: moduleItem.description,
   presentationForm: moduleItem.presentationForm,
   presentations: Array.isArray(moduleItem.presentations) ? moduleItem.presentations : undefined,
+  billingUnit: moduleItem.billingUnit,
+  billingPrice: moduleItem.billingPrice,
+  isThickener: moduleItem.isThickener,
   conversionFactor: moduleItem.conversionFactor,
   density: moduleItem.density || 0,
   referenceAmount: moduleItem.referenceAmount || 0,
@@ -328,7 +332,6 @@ const toFormulaCalculationInput = (formula: ExtendedCatalogFormula) => ({
 const collectPrescriptionScheduleTimes = (prescription: Prescription): string[] => {
   const closedFormulaTimes = Object.keys(prescription.enteralDetails?.closedFormula?.bagQuantities || {});
   const openFormulaTimes = (prescription.enteralDetails?.openFormulas || []).flatMap((formula) => formula.times || []);
-  const openManipulationTimes = (prescription.enteralDetails?.openFormulas || []).flatMap((formula) => formula.manipulationTimes || []);
   const enteralModuleTimes = (prescription.enteralDetails?.modules || []).flatMap((module) => module.times || []);
   const hydrationTimes = prescription.enteralDetails?.hydration?.times || prescription.hydrationSchedules || [];
   const oralThickenerTimes = prescription.oralDetails?.thickenerTimes || [];
@@ -338,7 +341,6 @@ const collectPrescriptionScheduleTimes = (prescription: Prescription): string[] 
   return sanitizeScheduleTimes([
     ...closedFormulaTimes,
     ...openFormulaTimes,
-    ...openManipulationTimes,
     ...enteralModuleTimes,
     ...hydrationTimes,
     ...oralThickenerTimes,
@@ -816,9 +818,17 @@ const PrescriptionNew = () => {
   }, [availableFormulas, formulaMatchesPatient]);
 
   const thickenerModuleOptions = useMemo(() => {
-    const explicitThickeners = availableModules.filter((moduleItem) => {
+    const configuredThickeners = availableModules.filter((moduleItem) => moduleItem.isThickener === true);
+
+    if (configuredThickeners.length > 0) {
+      return configuredThickeners;
+    }
+
+    const legacyTextThickeners = availableModules.filter((moduleItem) => {
       const haystack = [
+        moduleItem.code,
         moduleItem.name,
+        moduleItem.manufacturer,
         moduleItem.description,
       ]
         .filter(Boolean)
@@ -828,8 +838,8 @@ const PrescriptionNew = () => {
       return haystack.includes("espess") || haystack.includes("thicken");
     });
 
-    if (explicitThickeners.length > 0) {
-      return explicitThickeners;
+    if (legacyTextThickeners.length > 0) {
+      return legacyTextThickeners;
     }
 
     return availableModules;
@@ -1013,7 +1023,7 @@ const PrescriptionNew = () => {
       current.map((formula) => ({
         ...formula,
         times: sortScheduleTimes(formula.times.filter((time) => nextTimes.includes(time))),
-        manipulationTimes: sortScheduleTimes(formula.manipulationTimes.filter((time) => nextTimes.includes(time))),
+        manipulationTimes: [],
       })),
     );
     setModules((current) =>
@@ -1174,7 +1184,7 @@ const PrescriptionNew = () => {
               volume: formula.volume || "",
               diluteTo: formula.diluteTo || "",
               times: sanitizeScheduleTimes(formula.times || []),
-              manipulationTimes: sanitizeScheduleTimes(formula.manipulationTimes || formula.times || []),
+              manipulationTimes: [],
             }))
             : prescription.formulas && prescription.formulas.length > 0
             ? prescription.formulas.map((formula, index) => ({
@@ -1183,7 +1193,7 @@ const PrescriptionNew = () => {
               volume: formula.volume ? String(formula.volume) : "",
               diluteTo: "",
               times: sanitizeScheduleTimes(formula.schedules || []),
-              manipulationTimes: sanitizeScheduleTimes(formula.schedules || []),
+              manipulationTimes: [],
             }))
             : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }],
         );
@@ -2132,7 +2142,7 @@ const PrescriptionNew = () => {
         "times",
         nextTimes,
       );
-      updateOpenFormula(formulaId, "manipulationTimes", nextTimes);
+      updateOpenFormula(formulaId, "manipulationTimes", []);
     }
   };
 
@@ -2446,7 +2456,7 @@ const PrescriptionNew = () => {
                 volume: formula.volume || undefined,
                 diluteTo: formula.diluteTo || undefined,
                 times: formula.times,
-                manipulationTimes: formula.manipulationTimes.length > 0 ? formula.manipulationTimes : formula.times,
+                manipulationTimes: [],
               }))
               : undefined,
             modules: modules.map((module) => ({

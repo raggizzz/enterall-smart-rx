@@ -210,6 +210,7 @@ model Module {
   paperG               Float?
   metalG               Float?
   glassG               Float?
+  isThickener          Boolean  @default(false)
   isActive             Boolean  @default(true)
   version              Int      @default(1)
   createdAt            DateTime @default(now())

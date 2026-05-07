@@ -510,10 +510,7 @@ export const generateRequisitionData = ({
                 // Exclude water from consolidated billing as requested
                 // addToConsolidated('WATER-001', 'ÁGUA FILTRADA', totalVol, 'ml', 0, 'diet');
 
-                // Hydration also uses bottles in open system
-                if (p.systemType === 'open') {
-                    dailyBottles += matchingTimes.length;
-                }
+                dailyBottles += matchingTimes.length;
                 hydrationDailySetCount = 1;
             }
         }
