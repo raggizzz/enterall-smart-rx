@@ -26,8 +26,12 @@ export interface LabelData {
 const labelStyles = {
     article: {
         position: "relative",
-        width: "63.5mm",
-        height: "46.6mm",
+        width: "6.35cm",
+        minWidth: "6.35cm",
+        maxWidth: "6.35cm",
+        height: "4.66cm",
+        minHeight: "4.66cm",
+        maxHeight: "4.66cm",
         overflow: "hidden",
         boxSizing: "border-box",
         padding: "1.8mm",

@@ -22,17 +22,25 @@ const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
 
 const printLabelSheetStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 63.5mm)",
-    columnGap: "3mm",
-    rowGap: 0,
-    width: "196.5mm",
+    gridTemplateColumns: "repeat(3, 6.35cm)",
+    gridAutoRows: "4.66cm",
+    columnGap: "0.3cm",
+    rowGap: "0cm",
+    width: "19.65cm",
     margin: "0 auto",
+    alignItems: "start",
+    justifyItems: "start",
 };
 
 const printLabelItemStyle: CSSProperties = {
-    width: "63.5mm",
-    height: "46.6mm",
+    width: "6.35cm",
+    minWidth: "6.35cm",
+    maxWidth: "6.35cm",
+    height: "4.66cm",
+    minHeight: "4.66cm",
+    maxHeight: "4.66cm",
     margin: 0,
+    overflow: "hidden",
     breakInside: "avoid",
     pageBreakInside: "avoid",
 };
