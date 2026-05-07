@@ -3186,7 +3186,7 @@ const PrescriptionNew = () => {
                         <div className="space-y-2">
                           <Label>Horários</Label>
                           <div className="flex flex-wrap gap-2">
-                            {prescriptionScheduleTimes.map(t => <Button key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
+                            {prescriptionScheduleTimes.map(t => <Button type="button" key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
                           </div>
                           <p className="text-xs text-muted-foreground">Usado para cálculo nutricional, produção, mapa e faturamento.</p>
                         </div>
@@ -3223,7 +3223,7 @@ const PrescriptionNew = () => {
                         <div className="space-y-2"><Label>Quantidade</Label><Input type="number" value={m.quantity} onChange={e => updateModule(m.id, "quantity", e.target.value)} /></div>
                         <div className="space-y-2"><Label>Unidade</Label><Select value={m.unit} onValueChange={v => updateModule(m.id, "unit", v as any)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="g">g</SelectItem><SelectItem value="ml">ml</SelectItem></SelectContent></Select></div>
                       </div>
-                      <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>
+                      <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button type="button" key={t} variant={m.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleModuleTime(m.id, t)}>{t}</Button>)}</div></div>
                       {m.moduleId && m.quantity && m.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(m.quantity) * m.times.length} {m.unit}/dia</p>}
                     </div>
                   ))}
@@ -3239,7 +3239,7 @@ const PrescriptionNew = () => {
                 <CardHeader><CardTitle>7. Água/Hidratação</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2"><Label>Volume por horário (ml)</Label><Input type="number" value={hydration.volume} onChange={e => setHydration({ ...hydration, volume: e.target.value })} className="max-w-xs" /></div>
-                  <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
+                  <div className="space-y-2"><Label>Horários</Label><div className="flex flex-wrap gap-2">{prescriptionScheduleTimes.map(t => <Button type="button" key={t} variant={hydration.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleHydrationTime(t)}>{t}</Button>)}</div></div>
                   {hydration.volume && hydration.times.length > 0 && <p className="text-sm text-muted-foreground">Total: {parseFloat(hydration.volume) * hydration.times.length} ml/dia</p>}
                   <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(8))}>Voltar</Button><Button onClick={() => completeStep(8)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
