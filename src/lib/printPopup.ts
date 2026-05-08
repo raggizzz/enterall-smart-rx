@@ -21,9 +21,9 @@ const labelPrintFallbackCss = `
 
   .clinical-label {
     position: relative !important;
-    width: 6.35cm !important;
-    min-width: 6.35cm !important;
-    max-width: 6.35cm !important;
+    width: 6.3333cm !important;
+    min-width: 6.3333cm !important;
+    max-width: 6.3333cm !important;
     height: 4.66cm !important;
     min-height: 4.66cm !important;
     max-height: 4.66cm !important;
@@ -268,19 +268,19 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
           [data-print-popup-root] { display: block !important; }
           .print-label-sheet {
             display: grid !important;
-            grid-template-columns: repeat(3, 6.35cm) !important;
+            grid-template-columns: repeat(3, 6.3333cm) !important;
             grid-auto-rows: 4.66cm !important;
             column-gap: 0.3cm !important;
             row-gap: 0 !important;
-            width: 19.65cm !important;
-            margin: 0 auto !important;
+            width: 19.6cm !important;
+            margin: 0 !important;
             align-items: start !important;
             justify-items: start !important;
           }
           .print-label-item {
-            width: 6.35cm !important;
-            min-width: 6.35cm !important;
-            max-width: 6.35cm !important;
+            width: 6.3333cm !important;
+            min-width: 6.3333cm !important;
+            max-width: 6.3333cm !important;
             height: 4.66cm !important;
             min-height: 4.66cm !important;
             max-height: 4.66cm !important;
@@ -290,7 +290,7 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
           ${labelPrintFallbackCss}
           @page {
             size: A4 portrait;
-            margin: 0.5cm;
+            margin: 0.9cm 0.7cm 0.84cm 0.7cm;
           }
           @media print {
             html, body {
@@ -304,19 +304,19 @@ export const printElementInPopup = (elementId: string, title = "Documento para i
             }
             .print-label-sheet {
               display: grid !important;
-              grid-template-columns: repeat(3, 6.35cm) !important;
+              grid-template-columns: repeat(3, 6.3333cm) !important;
               grid-auto-rows: 4.66cm !important;
               column-gap: 0.3cm !important;
               row-gap: 0 !important;
-              width: 19.65cm !important;
-              margin: 0 auto !important;
+              width: 19.6cm !important;
+              margin: 0 !important;
               align-items: start !important;
               justify-items: start !important;
             }
             .print-label-item {
-              width: 6.35cm !important;
-              min-width: 6.35cm !important;
-              max-width: 6.35cm !important;
+              width: 6.3333cm !important;
+              min-width: 6.3333cm !important;
+              max-width: 6.3333cm !important;
               height: 4.66cm !important;
               min-height: 4.66cm !important;
               max-height: 4.66cm !important;

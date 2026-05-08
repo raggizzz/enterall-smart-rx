@@ -283,7 +283,7 @@ export const generateRequisitionData = ({
         let hasMappedDelivery = false;
 
         // --- Process Formulas ---
-        p.formulas.forEach(f => {
+        p.formulas.forEach((f, formulaIndex) => {
             const formulaObj = formulas.find(item => item.id === f.formulaId);
             const matchingTimes = (f.schedules || [])
                 .map((time) => normalizeScheduleTime(time))
@@ -291,19 +291,24 @@ export const generateRequisitionData = ({
             matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             if (matchingTimes.length > 0 && f.volume > 0) {
                 hasMappedDelivery = true;
-                const openFormulaEntry = p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
+                const openFormulaEntry = p.enteralDetails?.openFormulas?.[formulaIndex]
+                    || p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
+                const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
+                const finalStageVolume = p.systemType === 'open' && diluteTo > 0 ? diluteTo : f.volume;
+                const dilutionWater = p.systemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
+                const formulaUnit = formulaObj?.presentationForm === 'po' ? 'g' : 'ml';
                 const productionNotes = p.enteralDetails?.productionNotes?.trim();
-                const observation = productionNotes || '';
+                const observation = productionNotes || (dilutionWater > 0 ? `Agua de diluicao: ${Math.round(dilutionWater)} ml` : '');
 
                 dietMap.push({
                     ...patientInfo,
                     type: 'formula',
                     productName: f.formulaName,
                     volumeOrAmount: f.volume,
-                    unit: 'ml',
-                    stageVolume: f.volume,
+                    unit: formulaUnit,
+                    stageVolume: finalStageVolume,
                     stageVolumeUnit: 'ml',
-                    rate: getPrescriptionRateLabel(p, f.volume),
+                    rate: getPrescriptionRateLabel(p, finalStageVolume),
                     times: matchingTimes,
                     productCode: formulaObj?.code || f.formulaId,
                     observation,
@@ -320,7 +325,6 @@ export const generateRequisitionData = ({
 
                 // Formulas often billed by mL or Unit (bag).
                 const billingUnit = formulaObj?.billingUnit || 'ml';
-                const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
                 const extraVolumePerDay = equipmentVolumePerAdministration * matchingTimes.length;
                 const totalExtraVolume = extraVolumePerDay * dayDiff;
                 const extraPowderPerAdministration = equipmentVolumePerAdministration > 0

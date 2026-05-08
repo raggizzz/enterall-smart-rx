@@ -22,20 +22,20 @@ const SCHEDULE_TIMES = [...DEFAULT_SCHEDULE_TIMES];
 
 const printLabelSheetStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: "repeat(3, 6.35cm)",
+    gridTemplateColumns: "repeat(3, 6.3333cm)",
     gridAutoRows: "4.66cm",
     columnGap: "0.3cm",
     rowGap: "0cm",
-    width: "19.65cm",
-    margin: "0 auto",
+    width: "19.6cm",
+    margin: "0",
     alignItems: "start",
     justifyItems: "start",
 };
 
 const printLabelItemStyle: CSSProperties = {
-    width: "6.35cm",
-    minWidth: "6.35cm",
-    maxWidth: "6.35cm",
+    width: "6.3333cm",
+    minWidth: "6.3333cm",
+    maxWidth: "6.3333cm",
     height: "4.66cm",
     minHeight: "4.66cm",
     maxHeight: "4.66cm",
@@ -278,6 +278,22 @@ const Labels = () => {
             return `${dateKey}-${timeKey}-${suffix}-${idKey}`;
         };
 
+        const getOpenFormulaDetail = (prescription: any, formula: any, index: number) => {
+            const openFormulas = prescription.enteralDetails?.openFormulas || [];
+            return openFormulas[index] || openFormulas.find((entry: any) => entry.formulaId === formula.formulaId);
+        };
+
+        const getFormulaDiluteTo = (prescription: any, formula: any, index: number): number => {
+            const openFormula = getOpenFormulaDetail(prescription, formula, index);
+            return Number(openFormula?.diluteTo || formula.diluteTo || 0);
+        };
+
+        const getFormulaStageVolume = (prescription: any, formula: any, index: number): number => {
+            const diluteTo = getFormulaDiluteTo(prescription, formula, index);
+            const formulaVolume = Number(formula.volume || 0);
+            return prescription.systemType === "open" && diluteTo > 0 ? diluteTo : formulaVolume;
+        };
+
         const describeFormula = (formula: any) => {
             const meta = formula.formulaId ? formulaMap.get(formula.formulaId) : undefined;
             const isPowder = meta?.presentationForm === "po";
@@ -363,11 +379,9 @@ const Labels = () => {
             return formula.formulaName;
         };
 
-        const buildFormulaVolumeText = (formula: any) => {
-            if (isPowderFormula(formula) && formula.diluteTo) {
-                return `${Math.round(formula.diluteTo)} mL`;
-            }
-            return formula.volume ? `${Math.round(formula.volume)} mL` : undefined;
+        const buildFormulaVolumeText = (prescription: any, formula: any, index: number) => {
+            const stageVolume = getFormulaStageVolume(prescription, formula, index);
+            return stageVolume > 0 ? `${Math.round(stageVolume)} mL` : undefined;
         };
 
         uniquePrescriptions
@@ -497,11 +511,11 @@ const Labels = () => {
                                             record,
                                             dob,
                                             scheduleTime: time,
-                                            infusionRate: getRate(prescription, formula.volume),
+                                            infusionRate: getRate(prescription, getFormulaStageVolume(prescription, formula, idx)),
                                             route,
                                             formulaText: buildFormulaNameText(formula),
                                             compositionText: buildFormulaComposition(formula),
-                                            volumeText: buildFormulaVolumeText(formula),
+                                            volumeText: buildFormulaVolumeText(prescription, formula, idx),
                                             manipulationDate: prescriptionDateText,
                                             manipulationTime: undefined,
                                             validityText: "Validade: 24h após conexão com equipo.",
@@ -560,13 +574,13 @@ const Labels = () => {
                                             record,
                                             dob,
                                             scheduleTime: time,
-                                            infusionRate: getRate(prescription, formula.volume),
+                                            infusionRate: getRate(prescription, getFormulaStageVolume(prescription, formula, idx)),
                                             route,
                                             formulaText: buildFormulaNameText(formula),
                                             compositionText: buildFormulaComposition(formula, [
                                                 modulesSummary || "",
                                             ]),
-                                            volumeText: buildFormulaVolumeText(formula),
+                                            volumeText: buildFormulaVolumeText(prescription, formula, idx),
                                             manipulationDate: activeDateText,
                                             manipulationTime: time,
                                             validityText: "Validade: 4h após manipulação.",
@@ -716,7 +730,7 @@ const Labels = () => {
                                         compositionText: buildFormulaComposition(formula, [
                                             describeOralContext(prescription),
                                         ]),
-                                        volumeText: buildFormulaVolumeText(formula),
+                                        volumeText: buildFormulaVolumeText(prescription, formula, index),
                                         manipulationDate: activeDateText,
                                         manipulationTime: time,
                                         validityText: "Validade: 4h após manipulação.",
