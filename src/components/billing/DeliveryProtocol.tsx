@@ -104,12 +104,8 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
                       <TableRow>
                         <TableHead className="text-xs py-1">Leito</TableHead>
                         <TableHead className="text-xs py-1">Paciente</TableHead>
-                        <TableHead className="text-xs py-1">Sistema</TableHead>
                         <TableHead className="text-xs py-1">Dieta</TableHead>
                         <TableHead className="text-xs py-1">Volume total / faturado</TableHead>
-                        <TableHead className="text-xs py-1 w-[120px]">Responsável pela entrega</TableHead>
-                        <TableHead className="text-xs py-1 w-[120px]">Recebido por</TableHead>
-                        <TableHead className="text-xs py-1 w-[90px]">Horário receb.</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -118,38 +114,32 @@ const DeliveryProtocol = ({ unitName, date, items, signatures }: DeliveryProtoco
                         .map((item, idx) => (
                           <TableRow key={`${item.bed}-${item.scheduleTime}-${idx}`}>
                             <TableCell className="text-xs py-1 font-medium">{item.bed}</TableCell>
-                            <TableCell className="text-xs py-1 truncate max-w-[140px]">{item.patientName}</TableCell>
-                            <TableCell className="text-xs py-1">
-                              {item.systemType === "closed" ? "Fechado" : "Aberto"}
-                            </TableCell>
-                            <TableCell className="text-xs py-1 truncate max-w-[150px]">{item.formulaName}</TableCell>
+                            <TableCell className="text-xs py-1 truncate max-w-[220px]">{item.patientName}</TableCell>
+                            <TableCell className="text-xs py-1 truncate max-w-[260px]">{item.formulaName}</TableCell>
                             <TableCell className="text-xs py-1">{item.billedAmount}</TableCell>
-                            <TableCell className="text-xs py-1"><div className="border-b border-dashed border-gray-400 h-4 w-full" /></TableCell>
-                            <TableCell className="text-xs py-1"><div className="border-b border-dashed border-gray-400 h-4 w-full" /></TableCell>
-                            <TableCell className="text-xs py-1"><div className="border-b border-dashed border-gray-400 h-4 w-full" /></TableCell>
                           </TableRow>
                         ))}
                     </TableBody>
                   </Table>
+                  <div className="grid grid-cols-3 gap-4 px-3 py-4 text-center text-[11px]">
+                    <div>
+                      <div className="border-b border-black h-7" />
+                      <p className="font-medium mt-1">Responsável pela entrega</p>
+                      <p className="text-muted-foreground">{signatures?.technician || "Técnico responsável"}</p>
+                    </div>
+                    <div>
+                      <div className="border-b border-black h-7" />
+                      <p className="font-medium mt-1">Recebido por</p>
+                    </div>
+                    <div>
+                      <div className="border-b border-black h-7" />
+                      <p className="font-medium mt-1">Horário do recebimento</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             ))
           ))}
-
-          <div className="pt-6 grid grid-cols-3 gap-8 text-center text-xs print:block">
-            <div className="border-t border-black pt-1">
-              <p className="font-medium">Responsável pela entrega</p>
-              <p className="text-muted-foreground">{signatures?.technician || "____________________"}</p>
-            </div>
-            <div className="border-t border-black pt-1">
-              <p className="font-medium">Recebido por</p>
-              <p className="text-muted-foreground">____________________</p>
-            </div>
-            <div className="border-t border-black pt-1">
-              <p className="font-medium">Horário do recebimento</p>
-              <p className="text-muted-foreground">____________________</p>
-            </div>
-          </div>
         </div>
 
         <DialogFooter>
