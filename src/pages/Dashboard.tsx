@@ -328,7 +328,7 @@ const Dashboard = () => {
 
   const handleOpenPatientEdit = (patient: WardBed) => {
     if (!patient.patientId) return;
-    navigate(`/patients?action=edit&patient=${patient.patientId}`);
+    navigate(`/patients?action=edit&patient=${patient.patientId}&returnTo=dashboard`);
   };
 
   const handleOpenPatientStatus = (patient: WardBed, status: "discharged" | "deceased") => {

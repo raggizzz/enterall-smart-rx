@@ -76,6 +76,7 @@ const Patients = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [handledUrlAction, setHandledUrlAction] = useState("");
+  const returnTo = searchParams.get("returnTo");
 
   // Status Confirmation State
   const [statusDialogData, setStatusDialogData] = useState<{
@@ -163,6 +164,14 @@ const Patients = () => {
     setEditingPatient(null);
   };
 
+  const returnAfterInlineEdit = () => {
+    if (returnTo === "dashboard") {
+      navigate("/dashboard");
+      return true;
+    }
+    return false;
+  };
+
   const handleAddPatient = async () => {
     if (!canManagePatients) {
       toast.error("Sem permissao para gerenciar pacientes.");
@@ -238,6 +247,9 @@ const Patients = () => {
 
       setIsDialogOpen(false);
       resetForm();
+      if (editingPatient?.id) {
+        returnAfterInlineEdit();
+      }
     } catch (error) {
       console.error("Error saving patient:", error);
       if (error instanceof ApiError && error.status === 409) {
@@ -366,7 +378,13 @@ const Patients = () => {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => {
             setIsDialogOpen(open);
-            if (!open) resetForm();
+            if (!open) {
+              const hadEditingPatient = Boolean(editingPatient?.id);
+              resetForm();
+              if (hadEditingPatient) {
+                returnAfterInlineEdit();
+              }
+            }
           }}>
             <DialogTrigger asChild>
               <Button disabled={!canManagePatients}>

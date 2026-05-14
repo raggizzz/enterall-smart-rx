@@ -2,7 +2,7 @@ import type { AppSettings, Patient, Ward } from "@/lib/database";
 
 export const DEFAULT_SCHEDULE_TIMES = ["03:00", "06:00", "09:00", "12:00", "15:00", "18:00", "21:00", "00:00"];
 
-const ANCHOR_MINUTES = 3 * 60;
+const ANCHOR_MINUTES = 9 * 60;
 
 export const normalizeScheduleTime = (value?: string | null): string | null => {
   if (!value) return null;
@@ -25,12 +25,47 @@ const toAnchoredMinutes = (time: string): number => {
   return total < ANCHOR_MINUTES ? total + (24 * 60) : total;
 };
 
+const isSameCalendarDay = (left: Date, right: Date) => (
+  left.getFullYear() === right.getFullYear()
+  && left.getMonth() === right.getMonth()
+  && left.getDate() === right.getDate()
+);
+
 export const sortScheduleTimes = (times: string[]): string[] => (
   [...times]
     .map((time) => normalizeScheduleTime(time))
     .filter((time): time is string => Boolean(time))
     .sort((left, right) => toAnchoredMinutes(left) - toAnchoredMinutes(right))
 );
+
+export const getOperationalSlotDate = (
+  baseDate: Date,
+  time: string,
+  referenceDateTime?: Date,
+): Date => {
+  const normalized = normalizeScheduleTime(time);
+  const slotDate = new Date(baseDate);
+  slotDate.setHours(0, 0, 0, 0);
+
+  if (!normalized) return slotDate;
+
+  const [hours, minutes] = normalized.split(":").map(Number);
+  slotDate.setHours(hours, minutes, 0, 0);
+
+  if (toAnchoredMinutes(normalized) !== (hours * 60) + minutes) {
+    slotDate.setDate(slotDate.getDate() + 1);
+  }
+
+  if (
+    referenceDateTime
+    && isSameCalendarDay(baseDate, referenceDateTime)
+    && slotDate.getTime() < referenceDateTime.getTime()
+  ) {
+    slotDate.setDate(slotDate.getDate() + 1);
+  }
+
+  return slotDate;
+};
 
 export const sanitizeScheduleTimes = (times: Array<string | null | undefined>) => {
   const seen = new Set<string>();
@@ -104,7 +139,7 @@ export const resolveConfiguredScheduleTimes = ({
   const unitSchedules = sanitizeScheduleTimes(settings?.labelSettings?.defaultDietSchedules || []);
   if (unitSchedules.length > 0) return unitSchedules;
 
-  return [...DEFAULT_SCHEDULE_TIMES];
+  return sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 };
 
 export const resolvePatientScheduleTimes = ({

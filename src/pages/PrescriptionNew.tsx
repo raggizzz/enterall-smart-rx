@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -329,26 +329,6 @@ const toFormulaCalculationInput = (formula: ExtendedCatalogFormula) => ({
   fiberSources: formula.fiberSources,
 });
 
-const collectPrescriptionScheduleTimes = (prescription: Prescription): string[] => {
-  const closedFormulaTimes = Object.keys(prescription.enteralDetails?.closedFormula?.bagQuantities || {});
-  const openFormulaTimes = (prescription.enteralDetails?.openFormulas || []).flatMap((formula) => formula.times || []);
-  const enteralModuleTimes = (prescription.enteralDetails?.modules || []).flatMap((module) => module.times || []);
-  const hydrationTimes = prescription.enteralDetails?.hydration?.times || prescription.hydrationSchedules || [];
-  const oralThickenerTimes = prescription.oralDetails?.thickenerTimes || [];
-  const formulaSchedules = (prescription.formulas || []).flatMap((formula) => formula.schedules || []);
-  const moduleSchedules = (prescription.modules || []).flatMap((module) => module.schedules || []);
-
-  return sanitizeScheduleTimes([
-    ...closedFormulaTimes,
-    ...openFormulaTimes,
-    ...enteralModuleTimes,
-    ...hydrationTimes,
-    ...oralThickenerTimes,
-    ...formulaSchedules,
-    ...moduleSchedules,
-  ]);
-};
-
 const toNumericValue = (value?: string | number | null): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
@@ -405,7 +385,7 @@ const formatEnteralAccessLabel = (access?: string): string => {
   }
 };
 
-const buildGenericFormulaDescriptor = (formula?: ExtendedCatalogFormula): string => {
+const buildGenericFormulaDescriptor = (formula?: ExtendedCatalogFormula, access?: string): string => {
   const preferredDescription = cleanNoteText(formula?.description || formula?.descriptionForEvolution);
   if (preferredDescription) {
     return preferredDescription;
@@ -426,8 +406,14 @@ const buildGenericFormulaDescriptor = (formula?: ExtendedCatalogFormula): string
     [formula?.classification, formula?.specialCharacteristics].filter(Boolean).join(", "),
   );
 
+  const baseLabel = access === "VO"
+    ? formula?.type === "infant-formula"
+      ? "Fórmula infantil"
+      : "Fórmula por via oral"
+    : "Dieta enteral";
+
   return [
-    "Dieta enteral",
+    baseLabel,
     complexity,
     otherCharacteristics,
     fiberText,
@@ -760,11 +746,33 @@ const PrescriptionNew = () => {
         : null;
   const ageFilterHint = null;
 
+  const formulaNeedsAgeWarning = useCallback((formula: ExtendedCatalogFormula) => {
+    if (patientAgeYears === undefined) return true;
+
+    if (formula.type === "infant-formula") return patientAgeYears > 3;
+
+    return false;
+  }, [patientAgeYears]);
+
+  const getFormulaAgeWarningMessage = useCallback((formula?: ExtendedCatalogFormula | null) => {
+    if (!formula || patientAgeYears === undefined) return null;
+    if (!formulaNeedsAgeWarning(formula)) return null;
+
+    return `Alerta: ${formula.name} esta cadastrada como formula infantil e o paciente tem ${patientAgeYears} ano(s). Confirme se o uso esta correto antes de seguir.`;
+  }, [formulaNeedsAgeWarning, patientAgeYears]);
+
+  const warnFormulaAgeMismatch = useCallback((formula?: ExtendedCatalogFormula | null) => {
+    const message = getFormulaAgeWarningMessage(formula);
+    if (message) {
+      toast.warning(message);
+    }
+  }, [getFormulaAgeWarningMessage]);
+
   const formulaMatchesPatient = useCallback((formula: ExtendedCatalogFormula) => {
     if (patientAgeYears === undefined) return true;
 
-    if (formula.type === "infant-formula" && patientAgeYears > 3) {
-      return false;
+    if (formula.type === "infant-formula") {
+      return true;
     }
 
     if (formula.ageGroup === "infant") {
@@ -816,6 +824,21 @@ const PrescriptionNew = () => {
       && allowsAdministrationRoute(formula, "oral"),
     );
   }, [availableFormulas, formulaMatchesPatient]);
+
+  const selectedClosedFormulaMeta = useMemo(
+    () => availableFormulas.find((formula) => formula.id === closedFormula.formulaId) || null,
+    [availableFormulas, closedFormula.formulaId],
+  );
+
+  const selectedOpenFormulaWarnings = useMemo(
+    () => openFormulas.map((entry) => ({
+      id: entry.id,
+      message: getFormulaAgeWarningMessage(
+        availableFormulas.find((formula) => formula.id === entry.formulaId) || null,
+      ),
+    })),
+    [availableFormulas, getFormulaAgeWarningMessage, openFormulas],
+  );
 
   const thickenerModuleOptions = useMemo(() => {
     const configuredThickeners = availableModules.filter((moduleItem) => moduleItem.isThickener === true);
@@ -932,6 +955,13 @@ const PrescriptionNew = () => {
     return "Usando horario personalizado";
   }, [baseScheduleSource, patientDefaultScheduleTimes, prescriptionScheduleTimes, wardScheduleTimes]);
 
+  const alignScheduleTimesToBase = useCallback((times: Array<string | null | undefined>, fallbackCount = 0) => {
+    const filtered = sanitizeScheduleTimes(times).filter((time) => baseScheduleTimes.includes(time));
+    if (filtered.length > 0) return filtered;
+    if (fallbackCount > 0) return baseScheduleTimes.slice(0, fallbackCount);
+    return [];
+  }, [baseScheduleTimes]);
+
   // Oral supplement handlers
   const addOralSupplement = () => {
     if (oralSupplements.length >= 3) { toast.error("Máximo de 3 suplementos"); return; }
@@ -942,6 +972,7 @@ const PrescriptionNew = () => {
     const updated = [...oralSupplements];
     if (field === 'supplementId') {
       const formula = availableFormulas.find(f => f.id === value);
+      warnFormulaAgeMismatch(formula);
       updated[i] = { ...updated[i], supplementId: value, supplementName: formula?.name || '' };
     } else if (field === 'amount') {
       updated[i] = { ...updated[i], amount: value ? parseFloat(value) : undefined };
@@ -991,6 +1022,13 @@ const PrescriptionNew = () => {
       setOralThickenerTimes([]);
     }
   }, [oralNeedsThickener]);
+
+  useEffect(() => {
+    if (!oralNeedsThickener) return;
+    if (oralThickenerTimes.length > 0) return;
+    if (baseScheduleTimes.length === 0) return;
+    setOralThickenerTimes(baseScheduleTimes);
+  }, [baseScheduleTimes, oralNeedsThickener, oralThickenerTimes.length]);
 
   useEffect(() => {
     if (oralThickenerModuleId || !oralThickenerProduct) return;
@@ -1107,7 +1145,6 @@ const PrescriptionNew = () => {
   const applyLoadedPrescription = useCallback((prescription: Prescription, options?: { editMode?: boolean; resetRoutes?: boolean }) => {
     const editMode = options?.editMode ?? false;
     const resetRoutes = options?.resetRoutes ?? false;
-    const loadedScheduleTimes = collectPrescriptionScheduleTimes(prescription);
 
     if (prescription.tneGoals) {
       setGoalTargetKcalPerKg(prescription.tneGoals.targetKcalPerKg);
@@ -1117,14 +1154,6 @@ const PrescriptionNew = () => {
     }
     if (prescription.unintentionalCalories) {
       setUnintentionalCal(prescription.unintentionalCalories);
-    }
-
-    if (loadedScheduleTimes.length > 0) {
-      setPrescriptionScheduleTimes((current) => (
-        resetRoutes
-          ? loadedScheduleTimes
-          : sanitizeScheduleTimes([...current, ...loadedScheduleTimes])
-      ));
     }
 
     if (resetRoutes) {
@@ -1183,7 +1212,7 @@ const PrescriptionNew = () => {
               formulaId: formula.formulaId || "",
               volume: formula.volume || "",
               diluteTo: formula.diluteTo || "",
-              times: sanitizeScheduleTimes(formula.times || []),
+              times: alignScheduleTimesToBase(formula.times || [], sanitizeScheduleTimes(formula.times || []).length),
               manipulationTimes: [],
             }))
             : prescription.formulas && prescription.formulas.length > 0
@@ -1192,7 +1221,10 @@ const PrescriptionNew = () => {
               formulaId: formula.formulaId,
               volume: formula.volume ? String(formula.volume) : "",
               diluteTo: "",
-              times: sanitizeScheduleTimes(formula.schedules || []),
+              times: alignScheduleTimesToBase(
+                formula.schedules || [],
+                formula.timesPerDay || sanitizeScheduleTimes(formula.schedules || []).length,
+              ),
               manipulationTimes: [],
             }))
             : [{ id: "1", formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }],
@@ -1214,22 +1246,26 @@ const PrescriptionNew = () => {
             moduleId: module.moduleId || "",
             quantity: module.quantity || "",
             unit: module.unit || "g",
-            times: sanitizeScheduleTimes(module.times || []),
+            times: alignScheduleTimesToBase(module.times || [], sanitizeScheduleTimes(module.times || []).length),
           }))
           : (prescription.modules || []).map((module, index) => ({
           id: `loaded-module-${index + 1}`,
           moduleId: module.moduleId,
           quantity: module.amount ? String(module.amount) : "",
           unit: module.unit || "g",
-          times: sanitizeScheduleTimes(
+          times: alignScheduleTimesToBase(
             module.schedules || baseScheduleTimes.slice(0, Math.max(0, module.timesPerDay || 0)),
+            module.timesPerDay || sanitizeScheduleTimes(module.schedules || []).length,
           ),
         })),
       );
 
       setHydration({
         volume: enteralDetails?.hydration?.volume || (prescription.hydrationVolume ? String(prescription.hydrationVolume) : ""),
-        times: sanitizeScheduleTimes(enteralDetails?.hydration?.times || prescription.hydrationSchedules || []),
+        times: alignScheduleTimesToBase(
+          enteralDetails?.hydration?.times || prescription.hydrationSchedules || [],
+          sanitizeScheduleTimes(enteralDetails?.hydration?.times || prescription.hydrationSchedules || []).length,
+        ),
       });
       setEquipmentVolume(
         enteralDetails?.equipmentVolume
@@ -1252,7 +1288,12 @@ const PrescriptionNew = () => {
       setOralThickenerProduct(oralDetails?.thickenerProduct || "");
       setOralThickenerGrams(oralDetails?.thickenerGrams ? String(oralDetails.thickenerGrams) : "");
       setOralThickenerVolume(oralDetails?.thickenerVolume ? String(oralDetails.thickenerVolume) : "");
-      setOralThickenerTimes(sanitizeScheduleTimes(oralDetails?.thickenerTimes || []));
+      setOralThickenerTimes(
+        alignScheduleTimesToBase(
+          oralDetails?.thickenerTimes || [],
+          sanitizeScheduleTimes(oralDetails?.thickenerTimes || []).length,
+        ),
+      );
       setOralEstimatedVET(oralDetails?.estimatedVET ?? prescription.totalCalories ?? 0);
       setOralEstimatedProtein(oralDetails?.estimatedProtein ?? prescription.totalProtein ?? 0);
       setOralEstimatedCarbs(oralDetails?.estimatedCarbs ?? prescription.totalCarbs ?? 0);
@@ -1313,7 +1354,7 @@ const PrescriptionNew = () => {
 
     setCompletedSteps([1, 2]);
     setCurrentStep(2);
-  }, [ORAL_MEAL_SCHEDULES, baseScheduleTimes]);
+  }, [ORAL_MEAL_SCHEDULES, alignScheduleTimesToBase, baseScheduleTimes]);
 
   // Load patient from URL
   useEffect(() => {
@@ -1716,6 +1757,13 @@ const PrescriptionNew = () => {
 
           if (!formula || stageVolume <= 0 || stageCount <= 0) return "";
 
+          if (enteralAccess === "VO") {
+            const descriptor = formula.type === "infant-formula"
+              ? "Fórmula infantil"
+              : buildGenericFormulaDescriptor(formula, enteralAccess);
+            return `- ${descriptor}, fracionada em ${stageCount} ofertas de ${formatDecimalValue(stageVolume)} ml por via oral;`;
+          }
+
           if (openInfusionMode === "bolus") {
             return `- ${buildGenericFormulaDescriptor(formula)}, fracionada em ${stageCount} etapas de ${formatDecimalValue(stageVolume)} ml, em bolus;`;
           }
@@ -1733,6 +1781,9 @@ const PrescriptionNew = () => {
         lines.push("SISTEMA ABERTO:");
         lines.push(`Dieta enteral em sistema aberto, administrada através de ${routeLabel}:`);
         lines.push(...openFormulaLines);
+        if (enteralAccess === "VO") {
+          lines[lines.length - openFormulaLines.length - 1] = "Fórmula por via oral:";
+        }
       }
     }
 
@@ -2130,7 +2181,14 @@ const PrescriptionNew = () => {
   // Handlers
   const addOpenFormula = () => setOpenFormulas([...openFormulas, { id: Date.now().toString(), formulaId: "", volume: "", diluteTo: "", times: [], manipulationTimes: [] }]);
   const removeOpenFormula = (id: string) => { if (openFormulas.length > 1) setOpenFormulas(openFormulas.filter(f => f.id !== id)); };
-  const updateOpenFormula = (id: string, field: keyof FormulaEntry, value: any) => setOpenFormulas((current) => current.map(f => f.id === id ? { ...f, [field]: value } : f));
+  const updateOpenFormula = (id: string, field: keyof FormulaEntry, value: any) => {
+    if (field === "formulaId") {
+      const formula = availableFormulas.find((item) => item.id === value);
+      warnFormulaAgeMismatch(formula);
+    }
+
+    setOpenFormulas((current) => current.map(f => f.id === id ? { ...f, [field]: value } : f));
+  };
   const toggleFormulaTime = (formulaId: string, time: string) => {
     const f = openFormulas.find(f => f.id === formulaId);
     if (f) {
@@ -2227,6 +2285,31 @@ const PrescriptionNew = () => {
         toast.error("Sincronize formulas e modulos cadastrados antes de salvar a prescricao.");
         setIsSaving(false);
         return;
+      }
+
+      if (feedingRoutes.oral && oralNeedsThickener) {
+        const hasSelectedThickener = Boolean(
+          oralThickenerModuleId
+          || oralThickenerProduct.trim(),
+        );
+
+        if (!hasSelectedThickener) {
+          toast.error("Selecione o modulo espessante antes de salvar a prescricao.");
+          setIsSaving(false);
+          return;
+        }
+
+        if (!(parseFloat(oralThickenerGrams) > 0 || parseFloat(oralThickenerVolume) > 0)) {
+          toast.error("Informe a quantidade ou o volume da agua espessada antes de salvar.");
+          setIsSaving(false);
+          return;
+        }
+
+        if (oralThickenerTimes.length === 0) {
+          toast.error("Selecione pelo menos um horario para a agua espessada.");
+          setIsSaving(false);
+          return;
+        }
       }
 
       const closedBagSchedules = Object.keys(closedFormula.bagQuantities);
@@ -2470,7 +2553,7 @@ const PrescriptionNew = () => {
               times: hydration.times,
             },
           },
-          notes: `TNE: ${systemType === "closed" ? "Fórmula Enteral de Sistema Fechado" : "Fórmula Enteral de Sistema Aberto"} | Acesso: ${enteralAccess || "-"} | Infusão: ${(systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || "-"} | Volume para equipo: ${systemType === "open" ? (equipmentVolume || "-") : "n/a"} ml`,
+          notes: enteralAccess === "VO" ? `TNE por via oral | Acesso: ${enteralAccess || "-"} | Formula(s): ${openFormulas.filter((formula) => formula.formulaId).map((formula) => { const formulaItem = availableFormulas.find((item) => item.id === formula.formulaId); return formulaItem?.type === "infant-formula" ? "Formula infantil" : buildGenericFormulaDescriptor(formulaItem, enteralAccess); }).filter(Boolean).join(", ") || "-"} | Horarios: ${openFormulas.flatMap((formula) => formula.times).filter((time, index, array) => array.indexOf(time) === index).join(", ") || "-"}` : `TNE: ${systemType === "closed" ? "Formula Enteral de Sistema Fechado" : "Formula Enteral de Sistema Aberto"} | Acesso: ${enteralAccess || "-"} | Infusao: ${(systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || "-"} | Volume para equipo: ${systemType === "open" ? (equipmentVolume || "-") : "n/a"} ml`,
         });
         savedRoutes.push("TNE");
       }
@@ -3075,10 +3158,15 @@ const PrescriptionNew = () => {
                   )}
                   {enteralAvailableClosedFormulas.length === 0 && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                      Nenhuma formula fechada compativel com a faixa etaria e a rota cadastradas para este paciente.
+                      Nenhuma formula fechada compativel com a rota cadastrada para este paciente.
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Fórmula *</Label><Select value={closedFormula.formulaId} onValueChange={v => setClosedFormula({ ...closedFormula, formulaId: v })}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableClosedFormulas.map(f => <SelectItem key={f.id} value={f.id}>{f.name} ({f.composition.density} kcal/ml)</SelectItem>)}</SelectContent></Select></div>
+                  <div className="space-y-2"><Label>Fórmula *</Label><Select value={closedFormula.formulaId} onValueChange={v => { const formula = availableFormulas.find((item) => item.id === v); warnFormulaAgeMismatch(formula); setClosedFormula({ ...closedFormula, formulaId: v }); }}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableClosedFormulas.map(f => <SelectItem key={f.id} value={f.id}>{f.name}{formulaNeedsAgeWarning(f) ? " [faixa etaria usual]" : ""} ({f.composition.density} kcal/ml)</SelectItem>)}</SelectContent></Select></div>
+                  {getFormulaAgeWarningMessage(selectedClosedFormulaMeta) && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      {getFormulaAgeWarningMessage(selectedClosedFormulaMeta)}
+                    </div>
+                  )}
                   <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-2 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${closedFormula.infusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setClosedFormula({ ...closedFormula, infusionMode: m.v as any })}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
                   {closedFormula.infusionMode && <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label>Velocidade *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.rate} onChange={e => setClosedFormula({ ...closedFormula, rate: e.target.value })} onBlur={e => checkHighSpeed(e.target.value, closedFormula.infusionMode)} /><span className="text-sm whitespace-nowrap">{closedFormula.infusionMode === "pump" ? "ml/h" : "gotas/min"}</span></div></div><div className="space-y-2"><Label>Tempo de Infusão *</Label><div className="flex items-center gap-2"><Input type="number" value={closedFormula.duration} onChange={e => setClosedFormula({ ...closedFormula, duration: e.target.value })} /><span className="text-sm">horas/dia</span></div></div></div>}
                   {bagCalculation && <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg"><p className="font-semibold text-blue-800">Volume prescrito para 24h: {bagCalculation.totalVolume} ml</p><p className="text-blue-700">A fórmula possui {bagCalculation.bagSize} ml por bolsa</p><p className="font-medium text-blue-800">Enviar para 24h: {bagCalculation.numBags} bolsa(s) necessárias</p></div>}
@@ -3131,7 +3219,7 @@ const PrescriptionNew = () => {
             {/* Step 5 - Open System */}
             {currentStep === 6 && systemType === "open" && (
               <Card>
-                <CardHeader><CardTitle>5. Sistema Aberto</CardTitle></CardHeader>
+                <CardHeader><CardTitle>{enteralAccess === "VO" ? "5. Fórmulas por Via Oral" : "5. Sistema Aberto"}</CardTitle></CardHeader>
                 <CardContent className="space-y-6">
                   {ageFilterHint && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -3140,11 +3228,19 @@ const PrescriptionNew = () => {
                   )}
                   {enteralAvailableOpenFormulas.length === 0 && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                      Nenhuma formula aberta compativel com a faixa etaria e a rota cadastradas para este paciente.
+                      Nenhuma formula aberta compativel com a rota cadastrada para este paciente.
                     </div>
                   )}
-                  <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }, { v: "bolus", l: "Bolus", d: "Infusão do volume total em um curto período de tempo" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
-                  {(openInfusionMode === "pump" || openInfusionMode === "gravity") && (
+                  {/* Aviso especifico para via oral */}
+                  {enteralAccess === "VO" && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+                      Para via oral, a prescricao usa horarios de oferta. Bomba, gravidade e bolus nao precisam ser considerados neste fluxo.
+                    </div>
+                  )}
+                  {enteralAccess !== "VO" && (
+                    <>
+                      <div className="space-y-2"><Label>Modo de Infusão *</Label><div className="grid grid-cols-3 gap-4">{[{ v: "pump", l: "Infusão através de BIC", d: "velocidade calculada em ml/h" }, { v: "gravity", l: "Infusão em modo gravitacional", d: "velocidade calculada em gotas/min" }, { v: "bolus", l: "Bolus", d: "Infusão do volume total em um curto período de tempo" }].map(m => <div key={m.v} className={`p-4 border-2 rounded-lg cursor-pointer ${openInfusionMode === m.v ? "border-primary bg-primary/5" : "border-muted"}`} onClick={() => setOpenInfusionMode(m.v as any)}><span className="font-medium">{m.l}</span><p className="text-xs text-muted-foreground">{m.d}</p></div>)}</div></div>
+                      {(openInfusionMode === "pump" || openInfusionMode === "gravity") && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Tempo para infusão de cada etapa de NE</Label>
@@ -3173,18 +3269,34 @@ const PrescriptionNew = () => {
                       </div>
                     </div>
                   )}
+                    </>
+                  )}
                   <div className="space-y-4"><div className="flex justify-between items-center"><Label className="text-lg">Fórmulas</Label><Button variant="outline" size="sm" onClick={addOpenFormula}><Plus className="h-4 w-4 mr-1" />Adicionar</Button></div>
+                    {enteralAccess === "VO" && (
+                      <p className="text-sm font-medium text-muted-foreground">Ofertas programadas</p>
+                    )}
                     {openFormulas.map((f, i) => (
                       <div key={f.id} className="p-4 border rounded-lg space-y-4 bg-muted/30">
                         <div className="flex justify-between"><h4 className="font-semibold">Fórmula {i + 1}</h4>{openFormulas.length > 1 && <Button variant="ghost" size="sm" onClick={() => removeOpenFormula(f.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>}</div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="space-y-2"><Label>Fórmula</Label><Select value={f.formulaId} onValueChange={v => updateOpenFormula(f.id, "formulaId", v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableOpenFormulas.map(af => <SelectItem key={af.id} value={af.id}>{af.name}</SelectItem>)}</SelectContent></Select></div>
-                          <div className="space-y-2"><Label>Quantidade por etapa (ml ou g)</Label><Input type="number" value={f.volume} onChange={e => updateOpenFormula(f.id, "volume", e.target.value)} /></div>
+                          <div className="space-y-2"><Label>Fórmula</Label><Select value={f.formulaId} onValueChange={v => updateOpenFormula(f.id, "formulaId", v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{enteralAvailableOpenFormulas.map(af => <SelectItem key={af.id} value={af.id}>{af.name}{formulaNeedsAgeWarning(af) ? " [faixa etaria usual]" : ""}</SelectItem>)}</SelectContent></Select></div>
+                          {selectedOpenFormulaWarnings.find((warning) => warning.id === f.id)?.message && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 md:col-span-3">
+                              {selectedOpenFormulaWarnings.find((warning) => warning.id === f.id)?.message}
+                            </div>
+                          )}
+                          <div className="space-y-2"><Label>{enteralAccess === "VO" ? "Quantidade por oferta (ml ou g)" : "Quantidade por etapa (ml ou g)"}</Label><Input type="number" value={f.volume} onChange={e => updateOpenFormula(f.id, "volume", e.target.value)} /></div>
                           <div className="space-y-2"><Label>Diluir até (ml) - opcional</Label><Input type="number" value={f.diluteTo} onChange={e => updateOpenFormula(f.id, "diluteTo", e.target.value)} /></div>
                         </div>
-                        <p className="text-sm text-muted-foreground">Preencher volume total somente se for necessário adicionar água para diluição da fórmula. A velocidade de infusão será baseada no volume total.</p>
+                        <p className="text-sm text-muted-foreground">{enteralAccess === "VO" ? "Preencha o volume total apenas se for necessário adicionar água para diluição da fórmula." : "Preencher volume total somente se for necessário adicionar água para diluição da fórmula. A velocidade de infusão será baseada no volume total."}</p>
+                        {enteralAccess === "VO" && (
+                          <p className="text-sm text-muted-foreground">Para via oral, esses volumes representam ofertas e não exigem bomba, gravidade ou bolus.</p>
+                        )}
                         <div className="space-y-2">
                           <Label>Horários</Label>
+                          {enteralAccess === "VO" && (
+                            <p className="text-xs text-muted-foreground">Horários das ofertas por via oral.</p>
+                          )}
                           <div className="flex flex-wrap gap-2">
                             {prescriptionScheduleTimes.map(t => <Button type="button" key={t} variant={f.times.includes(t) ? "default" : "outline"} size="sm" onClick={() => toggleFormulaTime(f.id, t)}>{t}</Button>)}
                           </div>
@@ -3204,7 +3316,7 @@ const PrescriptionNew = () => {
                     />
                     <p className="text-xs text-muted-foreground">Este texto aparece no mapa/requisição no lugar de observações automáticas.</p>
                   </div>
-                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={!openInfusionMode || openFormulas.every(f => !f.formulaId)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
+                  <div className="flex justify-between"><Button variant="outline" onClick={() => setCurrentStep(getPrevStep(6))}>Voltar</Button><Button onClick={() => completeStep(6)} disabled={(enteralAccess !== "VO" && !openInfusionMode) || openFormulas.every(f => !f.formulaId)}>Próximo <ChevronRight className="ml-2 h-4 w-4" /></Button></div>
                 </CardContent>
               </Card>
             )}
@@ -3310,8 +3422,13 @@ const PrescriptionNew = () => {
                               <Label>Modulo espessante</Label>
                               {thickenerModuleOptions.length > 0 ? (
                                 <Select
-                                  value={thickenerModuleOptions.some((moduleItem) => moduleItem.id === oralThickenerModuleId) ? oralThickenerModuleId : ""}
+                                  value={thickenerModuleOptions.some((moduleItem) => moduleItem.id === oralThickenerModuleId) ? oralThickenerModuleId : "__none__"}
                                   onValueChange={(value) => {
+                                    if (value === "__none__") {
+                                      setOralThickenerModuleId("");
+                                      setOralThickenerProduct("");
+                                      return;
+                                    }
                                     const selectedModule = thickenerModuleOptions.find((moduleItem) => moduleItem.id === value);
                                     setOralThickenerModuleId(value);
                                     setOralThickenerProduct(selectedModule?.name || "");
@@ -3319,6 +3436,7 @@ const PrescriptionNew = () => {
                                 >
                                   <SelectTrigger><SelectValue placeholder={oralThickenerProduct || "Selecione o modulo espessante"} /></SelectTrigger>
                                   <SelectContent>
+                                    <SelectItem value="__none__">Nenhum espessante selecionado</SelectItem>
                                     {thickenerModuleOptions.map((moduleItem) => <SelectItem key={moduleItem.id} value={moduleItem.id!}>{moduleItem.name}</SelectItem>)}
                                   </SelectContent>
                                 </Select>
@@ -3399,7 +3517,7 @@ const PrescriptionNew = () => {
                                 </div>
                                 <Select value={sup.supplementId} onValueChange={val => updateOralSupplement(index, 'supplementId', val)}>
                                   <SelectTrigger><SelectValue placeholder="Selecione o suplemento" /></SelectTrigger>
-                                  <SelectContent>{oralAvailableSupplements.map(f => <SelectItem key={f.id} value={f.id!}>{f.name} - {f.caloriesPerUnit}kcal/100ml{f.ageGroup ? ` | ${f.ageGroup}` : ""}</SelectItem>)}</SelectContent>
+                                  <SelectContent>{oralAvailableSupplements.map(f => <SelectItem key={f.id} value={f.id!}>{f.name}{formulaNeedsAgeWarning(f) ? " [faixa etaria usual]" : ""} - {f.caloriesPerUnit}kcal/100ml{f.ageGroup ? ` | ${f.ageGroup}` : ""}</SelectItem>)}</SelectContent>
                                 </Select>
                                 <div className="grid grid-cols-2 gap-3">
                                   <div className="space-y-1"><Label className="text-sm">Quantidade por oferta</Label><Input type="number" value={sup.amount || ''} onChange={e => updateOralSupplement(index, 'amount', e.target.value)} placeholder="Ex: 200" /></div>
@@ -3647,6 +3765,9 @@ const PrescriptionNew = () => {
 };
 
 export default PrescriptionNew;
+
+
+
 
 
 

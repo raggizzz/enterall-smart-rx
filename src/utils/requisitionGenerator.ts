@@ -3,6 +3,7 @@ import { RequisitionData, DietMapItem, ConsolidatedItem } from '@/types/requisit
 import { getPrescriptionRateLabel } from '@/lib/prescriptionInfusion';
 import { compareBedLabels } from '@/lib/patientDisplay';
 import { isPatientActiveForOperations } from '@/lib/patientStatus';
+import { getOperationalSlotDate } from '@/lib/scheduleTimes';
 
 // Native Date helpers to replace date-fns
 const startOfDay = (date: Date): Date => {
@@ -46,6 +47,12 @@ const formatDateTime = (date: Date): string => {
         minute: '2-digit'
     }).format(date);
 };
+
+const isSameCalendarDay = (left: Date, right: Date) => (
+    left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate()
+);
 
 const countInclusiveDays = (startDate: Date, endDate: Date): number => {
     const start = startOfDay(startDate);
@@ -113,6 +120,8 @@ interface GenerateOptions {
         prescriber: string;
         manager: string;
     };
+    includeAutomaticSets?: boolean;
+    includeAutomaticBottles?: boolean;
 }
 
 export const generateRequisitionData = ({
@@ -126,7 +135,9 @@ export const generateRequisitionData = ({
     startDate,
     endDate,
     selectedTimes,
-    signatures
+    signatures,
+    includeAutomaticSets = true,
+    includeAutomaticBottles = true,
 }: GenerateOptions): RequisitionData => {
     const normalizeLookupText = (value?: string) =>
         (value || "")
@@ -141,6 +152,16 @@ export const generateRequisitionData = ({
     const consolidatedMap = new Map<string, ConsolidatedItem>();
     const patientsById = new Map(patients.map((patient) => [patient.id, patient]));
     const selectedTimeSet = new Set(orderedSelectedTimes);
+    const operationalReferenceDate = (
+        isSameCalendarDay(startDate, endDate) && isSameCalendarDay(startDate, new Date())
+    ) ? new Date() : undefined;
+
+    const formatOperationalTimeLabel = (time: string) => {
+        const normalized = normalizeScheduleTime(time);
+        if (!normalized) return time;
+        const slotDate = getOperationalSlotDate(startDate, normalized, operationalReferenceDate);
+        return `${formatDate(slotDate)} ${normalized}`;
+    };
 
     // Helper to add to consolidated list
     const addToConsolidated = (
@@ -217,9 +238,41 @@ export const generateRequisitionData = ({
     const getBolusSupply = () =>
         findSupplyByCategory('bolus-set')
         || supplies.find((s) => s.isActive && s.isBillable !== false && s.type === 'set' && s.name.toLowerCase().includes('bolus'));
-    const getBottleSupply = () =>
-        findSupplyByCategory('feeding-bottle', 'baby-bottle')
-        || supplies.find((s) => s.type === 'bottle' && s.isActive && s.isBillable !== false);
+    const getBottleRangeLabel = (stageVolume: number) => {
+        if (stageVolume <= 100) return '0-100 mL';
+        if (stageVolume <= 300) return '101-300 mL';
+        if (stageVolume <= 500) return '301-500 mL';
+        return 'acima de 500 mL';
+    };
+    const getBottleSupplyForVolume = (stageVolume: number) => {
+        const activeBottleSupplies = supplies
+            .filter((s) =>
+                s.type === 'bottle'
+                && s.isActive
+                && s.isBillable !== false
+                && s.category !== 'hydration-water'
+                && (s.category === 'feeding-bottle'
+                    || s.category === 'baby-bottle'
+                    || normalizeLookupText(s.name).includes('frasco')
+                    || normalizeLookupText(s.name).includes('mamadeira'))
+            )
+            .sort((left, right) => Number(left.capacityMl || 0) - Number(right.capacityMl || 0));
+
+        if (activeBottleSupplies.length === 0) return undefined;
+
+        const classifiedBottle = activeBottleSupplies.find((supply) => {
+            const capacity = Number(supply.capacityMl || 0);
+            if (stageVolume <= 100) return capacity > 0 && capacity <= 100;
+            if (stageVolume <= 300) return capacity >= 101 && capacity <= 300;
+            if (stageVolume <= 500) return capacity >= 301 && capacity <= 500;
+            return false;
+        });
+
+        if (classifiedBottle) return classifiedBottle;
+
+        return activeBottleSupplies.find((supply) => Number(supply.capacityMl || 0) >= stageVolume)
+            || activeBottleSupplies[activeBottleSupplies.length - 1];
+    };
     const getWaterSupply = () =>
         findSupplyByCategory('hydration-water')
         || supplies.find((s) => s.isActive && s.isBillable !== false && normalizeLookupText(s.name).includes('agua'));
@@ -241,6 +294,25 @@ export const generateRequisitionData = ({
             totalQuantity,
             billedByContainer ? 'unit' : billingUnit,
             supply.unitPrice || 0,
+            'supply',
+        );
+    };
+
+    const addBottleCharge = (stageVolume: number, administrations: number) => {
+        if (!includeAutomaticBottles) return;
+        if (!Number.isFinite(stageVolume) || stageVolume <= 0) return;
+        if (!Number.isFinite(administrations) || administrations <= 0) return;
+
+        const bottleSupply = getBottleSupplyForVolume(stageVolume);
+        if (!bottleSupply) return;
+        const rangeLabel = getBottleRangeLabel(stageVolume);
+
+        addToConsolidated(
+            bottleSupply.code,
+            `${bottleSupply.name} (${rangeLabel})`,
+            administrations,
+            bottleSupply.billingUnit === 'unit' ? 'unit' : bottleSupply.billingUnit || 'unit',
+            bottleSupply.unitPrice || 0,
             'supply',
         );
     };
@@ -279,8 +351,8 @@ export const generateRequisitionData = ({
 
         let mainDailySetCount = 0;
         let hydrationDailySetCount = 0;
-        let dailyBottles = 0;
         let hasMappedDelivery = false;
+        const isEnteralViaOral = p.therapyType === 'enteral' && (p.enteralDetails?.access === 'VO' || p.feedingRoute === 'VO');
 
         // --- Process Formulas ---
         p.formulas.forEach((f, formulaIndex) => {
@@ -309,7 +381,7 @@ export const generateRequisitionData = ({
                     stageVolume: finalStageVolume,
                     stageVolumeUnit: 'ml',
                     rate: getPrescriptionRateLabel(p, finalStageVolume),
-                    times: matchingTimes,
+                    times: matchingTimes.map(formatOperationalTimeLabel),
                     productCode: formulaObj?.code || f.formulaId,
                     observation,
                 });
@@ -396,8 +468,10 @@ export const generateRequisitionData = ({
 
                 // Heuristic for Bottles: If Open System, 1 bottle per administration?
                 if (p.systemType === 'open') {
-                    dailyBottles += matchingTimes.length;
-                    mainDailySetCount = 1;
+                    if (!isEnteralViaOral) {
+                        addBottleCharge(finalStageVolume, matchingTimes.length * dayDiff);
+                        mainDailySetCount = 1;
+                    }
                 }
             }
         });
@@ -417,7 +491,7 @@ export const generateRequisitionData = ({
                     productName: m.moduleName,
                     volumeOrAmount: m.amount,
                     unit: m.unit || 'g',
-                    times: matchingTimes,
+                    times: matchingTimes.map(formatOperationalTimeLabel),
                     productCode: moduleObj?.code || m.moduleId,
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
@@ -461,7 +535,7 @@ export const generateRequisitionData = ({
                     unit: thickenerGrams > 0 ? 'g' : (thickenerSource?.billingUnit || 'ml'),
                     stageVolume: thickenerVolume || undefined,
                     stageVolumeUnit: thickenerVolume > 0 ? 'ml' : undefined,
-                    times: thickenerTimes,
+                    times: thickenerTimes.map(formatOperationalTimeLabel),
                     productCode: thickenerSource?.code || thickenerSource?.id,
                     observation: p.oralDetails?.observations || 'Água espessada',
                 });
@@ -507,33 +581,37 @@ export const generateRequisitionData = ({
                 .filter((time) => selectedTimeSet.has(time));
             matchingTimes.sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
             if (matchingTimes.length > 0 && p.hydrationVolume > 0) {
+                const waterSupply = getWaterSupply();
                 hasMappedDelivery = true;
                 dietMap.push({
                     ...patientInfo,
                     type: 'water',
                     productName: p.therapyType === 'oral' ? 'Água para hidratação' : 'Água para diluição/hidratação',
+                    productName: waterSupply?.name || (p.therapyType === 'oral' ? 'Agua para hidratacao' : 'Agua para diluicao/hidratacao'),
                     volumeOrAmount: p.hydrationVolume,
                     unit: 'ml',
                     stageVolume: p.hydrationVolume,
                     stageVolumeUnit: 'ml',
                     rate: p.infusionMode === 'bolus' ? 'Bolus' : undefined,
-                    times: matchingTimes,
-                    productCode: 'WATER-001',
+                    times: matchingTimes.map(formatOperationalTimeLabel),
+                    productCode: waterSupply?.code || 'WATER-001',
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
                 const totalVol = p.hydrationVolume * matchingTimes.length * dayDiff;
-                addSupplyCharge(getWaterSupply(), totalVol);
+                addSupplyCharge(waterSupply, totalVol);
                 // Exclude water from consolidated billing as requested
                 // addToConsolidated('WATER-001', 'ÁGUA FILTRADA', totalVol, 'ml', 0, 'diet');
 
-                dailyBottles += matchingTimes.length;
-                hydrationDailySetCount = 1;
+                if (!isEnteralViaOral) {
+                    addBottleCharge(p.hydrationVolume, matchingTimes.length * dayDiff);
+                    hydrationDailySetCount = 1;
+                }
             }
         }
 
         // --- Supplies Heuristics (Consolidated Only) ---
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
-            if (mainDailySetCount > 0) {
+            if (includeAutomaticSets && !isEnteralViaOral && mainDailySetCount > 0) {
                 if (p.infusionMode === 'pump') {
                     addSupplyCharge(getPumpSupply(p.systemType), mainDailySetCount * dayDiff);
                 } else if (p.infusionMode === 'gravity') {
@@ -543,21 +621,16 @@ export const generateRequisitionData = ({
                 }
             }
 
-            if (hydrationDailySetCount > 0) {
+            if (includeAutomaticSets && !isEnteralViaOral && hydrationDailySetCount > 0) {
                 addSupplyCharge(getGravitySupply(), hydrationDailySetCount * dayDiff);
-            }
-
-            // Bottles (Frascos)
-            if (dailyBottles > 0) {
-                const bottleSupply = getBottleSupply();
-                if (bottleSupply) {
-                    addSupplyCharge(bottleSupply, dailyBottles * dayDiff);
-                }
             }
         }
 
-        if (p.therapyType === 'oral' && p.oralDetails?.deliveryMethod === 'feeding-bottle') {
-            const feedingBottle = getBottleSupply();
+        if (includeAutomaticBottles && p.therapyType === 'oral' && p.oralDetails?.deliveryMethod === 'feeding-bottle') {
+            const averageStageVolume = p.formulas.length > 0
+                ? p.formulas.reduce((sum, formula) => sum + (Number(formula.volume || 0)), 0) / p.formulas.length
+                : 0;
+            const feedingBottle = getBottleSupplyForVolume(averageStageVolume);
             if (feedingBottle) {
                 const oralAdministrations = p.formulas.reduce((sum, formula) => {
                     const matchingTimes = (formula.schedules || [])
@@ -566,7 +639,14 @@ export const generateRequisitionData = ({
                     return sum + matchingTimes.length;
                 }, 0);
                 const totalUnits = Math.max(oralAdministrations, 1) * dayDiff;
-                addSupplyCharge(feedingBottle, totalUnits);
+                addToConsolidated(
+                    feedingBottle.code,
+                    feedingBottle.name,
+                    totalUnits,
+                    feedingBottle.billingUnit === 'unit' ? 'unit' : feedingBottle.billingUnit || 'unit',
+                    feedingBottle.unitPrice || 0,
+                    'supply',
+                );
             }
         }
 
@@ -593,7 +673,7 @@ export const generateRequisitionData = ({
         startDate: formatDate(startDate),
         endDate: formatDate(endDate),
         printDate: formatDateTime(new Date()),
-        selectedTimes: orderedSelectedTimes,
+        selectedTimes: orderedSelectedTimes.map(formatOperationalTimeLabel),
         dietMap,
         consolidated,
         signatures

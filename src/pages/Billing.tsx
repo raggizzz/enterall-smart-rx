@@ -26,13 +26,16 @@ import { isPatientActiveForOperations } from "@/lib/patientStatus";
 
 const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
-    { value: "all", label: "Todas as vias" },
     { value: "enteral", label: "Enteral" },
-    { value: "oral", label: "Via oral" },
-    { value: "parenteral", label: "Parenteral" },
+    { value: "thickener", label: "Agua Espessada" },
 ] as const;
 
 type TherapyFilter = (typeof THERAPY_OPTIONS)[number]["value"];
+
+const matchesTherapyFilter = (prescription: Prescription, therapyFilter: TherapyFilter) => {
+    if (therapyFilter === "enteral") return prescription.therapyType === "enteral";
+    return prescription.therapyType === "oral" && Boolean(prescription.oralDetails?.needsThickener);
+};
 
 const SIGNATURE_CONFIG = {
     signature1: "Nutricionista prescritor",
@@ -57,6 +60,39 @@ const formatCurrency = (value: number) => value.toLocaleString("pt-BR", {
 });
 
 type ManualRequestMode = "cancellation" | "extra";
+type ManualFreeItemDraft = {
+    ward: string;
+    productKey: string;
+    productCode: string;
+    productName: string;
+    category: ManualAdjustmentCategory;
+    quantity: string;
+    unit: string;
+    unitPrice: string;
+    subtotal: string;
+    observation: string;
+};
+
+const createEmptyManualFreeItem = (ward = ""): ManualFreeItemDraft => ({
+    ward,
+    productKey: "",
+    productCode: "",
+    productName: "",
+    category: "diet",
+    quantity: "",
+    unit: "un",
+    unitPrice: "",
+    subtotal: "",
+    observation: "",
+});
+
+const getManualDraftSubtotal = (item: ManualFreeItemDraft) => {
+    const explicitSubtotal = Number(item.subtotal) || 0;
+    if (explicitSubtotal > 0) return explicitSubtotal;
+    return (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+};
+
+const hasManualDraftContent = (item: ManualFreeItemDraft) => item.productName.trim() && Number(item.quantity) > 0;
 
 const collectPrescriptionTimes = (prescription: Prescription): string[] => [
     ...prescription.formulas.flatMap((formula) => formula.schedules || []),
@@ -125,8 +161,10 @@ const Billing = () => {
     const [startDate, setStartDate] = useState<Date | undefined>(new Date());
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
     const [unit, setUnit] = useState("all");
-    const [therapyFilter, setTherapyFilter] = useState<TherapyFilter>("all");
+    const [therapyFilter, setTherapyFilter] = useState<TherapyFilter>("enteral");
     const [selectedTimes, setSelectedTimes] = useState<string[]>([...SCHEDULE_TIMES]);
+    const [includeAutomaticSets, setIncludeAutomaticSets] = useState(true);
+    const [includeAutomaticBottles, setIncludeAutomaticBottles] = useState(true);
     const [selectedPatients, setSelectedPatients] = useState<string[]>([]);
     const [requisitionData, setRequisitionData] = useState<RequisitionData | null>(null);
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -140,18 +178,9 @@ const Billing = () => {
     const [manualCancelDate, setManualCancelDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [manualSelectedTimes, setManualSelectedTimes] = useState<string[]>([]);
     const [manualCancelSelectedItems, setManualCancelSelectedItems] = useState<string[]>([]);
-    const [manualFreeItem, setManualFreeItem] = useState({
-        ward: "",
-        productKey: "",
-        productCode: "",
-        productName: "",
-        category: "diet" as ManualAdjustmentCategory,
-        quantity: "",
-        unit: "un",
-        unitPrice: "",
-        subtotal: "",
-        observation: "",
-    });
+    const [inlineManualOpen, setInlineManualOpen] = useState(false);
+    const [manualFreeItems, setManualFreeItems] = useState<ManualFreeItemDraft[]>([]);
+    const [manualFreeItem, setManualFreeItem] = useState<ManualFreeItemDraft>(createEmptyManualFreeItem());
 
     const wards = useMemo(() => {
         const uniqueWards = new Set<string>();
@@ -172,7 +201,7 @@ const Billing = () => {
                 if (prescription.status !== "active") return false;
                 if (!isPatientActiveForOperations(patient, endDate || startDate || new Date())) return false;
                 if (unit !== "all" && (patient?.ward || prescription.patientWard) !== unit) return false;
-                if (therapyFilter !== "all" && prescription.therapyType !== therapyFilter) return false;
+                if (!matchesTherapyFilter(prescription, therapyFilter)) return false;
                 return true;
             })
             .flatMap(collectPrescriptionTimes);
@@ -197,7 +226,7 @@ const Billing = () => {
         return activePrescriptions.filter((prescription) => {
             const patient = patientsById.get(prescription.patientId);
             const matchesUnit = unit === "all" || (patient?.ward || prescription.patientWard) === unit;
-            const matchesTherapy = therapyFilter === "all" || prescription.therapyType === therapyFilter;
+            const matchesTherapy = matchesTherapyFilter(prescription, therapyFilter);
             const matchesPatient = selectedPatients.length === 0 || selectedPatients.includes(prescription.patientId);
             return matchesUnit && matchesTherapy && matchesPatient;
         });
@@ -209,7 +238,7 @@ const Billing = () => {
         activePrescriptions.forEach((prescription) => {
             const patient = patientsById.get(prescription.patientId);
             if (unit !== "all" && (patient?.ward || prescription.patientWard) !== unit) return;
-            if (therapyFilter !== "all" && prescription.therapyType !== therapyFilter) return;
+            if (!matchesTherapyFilter(prescription, therapyFilter)) return;
 
             const types = map.get(prescription.patientId) || new Set<string>();
             types.add(prescription.therapyType);
@@ -268,17 +297,19 @@ const Billing = () => {
             modules,
             supplies,
             unitName: unit,
-            therapyLabel: THERAPY_OPTIONS.find((option) => option.value === therapyFilter)?.label || "Todas as vias",
+            therapyLabel: THERAPY_OPTIONS.find((option) => option.value === therapyFilter)?.label || "Enteral",
             startDate,
             endDate,
             selectedTimes,
+            includeAutomaticSets,
+            includeAutomaticBottles,
             signatures: {
                 prescriber: SIGNATURE_CONFIG.signature1,
                 technician: SIGNATURE_CONFIG.signature2,
                 manager: SIGNATURE_CONFIG.signature3,
             },
         });
-    }, [endDate, filteredPrescriptions, formulas, modules, patients, selectedTimes, startDate, supplies, therapyFilter, unit]);
+    }, [endDate, filteredPrescriptions, formulas, includeAutomaticBottles, includeAutomaticSets, modules, patients, selectedTimes, startDate, supplies, therapyFilter, unit]);
 
     const manualPreviewRequisitionData = useMemo(() => {
         const effectiveDate = new Date(`${manualCancelDate}T00:00:00`);
@@ -291,17 +322,19 @@ const Billing = () => {
             modules,
             supplies,
             unitName: unit,
-            therapyLabel: THERAPY_OPTIONS.find((option) => option.value === therapyFilter)?.label || "Todas as vias",
+            therapyLabel: THERAPY_OPTIONS.find((option) => option.value === therapyFilter)?.label || "Enteral",
             startDate: effectiveDate,
             endDate: effectiveDate,
             selectedTimes: manualSelectedTimes,
+            includeAutomaticSets,
+            includeAutomaticBottles,
             signatures: {
                 prescriber: SIGNATURE_CONFIG.signature1,
                 technician: SIGNATURE_CONFIG.signature2,
                 manager: SIGNATURE_CONFIG.signature3,
             },
         });
-    }, [filteredPrescriptions, formulas, manualCancelDate, manualSelectedTimes, modules, patients, supplies, therapyFilter, unit]);
+    }, [filteredPrescriptions, formulas, includeAutomaticBottles, includeAutomaticSets, manualCancelDate, manualSelectedTimes, modules, patients, supplies, therapyFilter, unit]);
 
     const totalEstimated = useMemo(() => {
         if (!previewRequisitionData) return 0;
@@ -379,9 +412,8 @@ const Billing = () => {
 
     const manualCancelTotal = useMemo(() => {
         if (!manualCancelPatientId) {
-            const explicitSubtotal = Number(manualFreeItem.subtotal) || 0;
-            if (explicitSubtotal > 0) return explicitSubtotal;
-            return (Number(manualFreeItem.quantity) || 0) * (Number(manualFreeItem.unitPrice) || 0);
+            const currentDraftTotal = hasManualDraftContent(manualFreeItem) ? getManualDraftSubtotal(manualFreeItem) : 0;
+            return manualFreeItems.reduce((sum, item) => sum + getManualDraftSubtotal(item), 0) + currentDraftTotal;
         }
 
         return manualCancelCandidates
@@ -391,19 +423,49 @@ const Billing = () => {
         manualCancelCandidates,
         manualCancelPatientId,
         manualCancelSelectedItems,
-        manualFreeItem.quantity,
-        manualFreeItem.subtotal,
-        manualFreeItem.unitPrice,
+        manualFreeItem,
+        manualFreeItems,
     ]);
 
-    const openManualRequestDialog = (mode: ManualRequestMode) => {
+    const resetManualRequestState = (mode: ManualRequestMode, presetTimes?: string[]) => {
         setManualRequestMode(mode);
         setManualCancelPatientId("");
-        setManualSelectedTimes([]);
+        setManualSelectedTimes(presetTimes ?? []);
         setManualCancelSelectedItems([]);
-        setManualFreeItem({ ward: unit === "all" ? "" : unit, productKey: "", productCode: "", productName: "", category: "diet", quantity: "", unit: "un", unitPrice: "", subtotal: "", observation: "" });
+        setManualFreeItems([]);
+        setManualFreeItem(createEmptyManualFreeItem(unit === "all" ? "" : unit));
         setManualCancelDate(new Date().toISOString().split("T")[0]);
+    };
+
+    const openManualRequestDialog = (mode: ManualRequestMode) => {
+        resetManualRequestState(mode);
         setManualCancelOpen(true);
+    };
+
+    const openInlineManualPanel = (mode: ManualRequestMode) => {
+        resetManualRequestState(mode, [...availableScheduleTimes]);
+        setInlineManualOpen(true);
+    };
+
+    const closeInlineManualPanel = () => {
+        setInlineManualOpen(false);
+        setManualFreeItems([]);
+        setManualFreeItem(createEmptyManualFreeItem(unit === "all" ? "" : unit));
+    };
+
+    const appendManualFreeItem = () => {
+        if (!hasManualDraftContent(manualFreeItem)) {
+            toast.error("Preencha ao menos produto e quantidade para adicionar o item.");
+            return;
+        }
+
+        const wardValue = manualFreeItem.ward || (unit === "all" ? "" : unit);
+        setManualFreeItems((current) => [...current, { ...manualFreeItem, ward: wardValue }]);
+        setManualFreeItem(createEmptyManualFreeItem(wardValue));
+    };
+
+    const removeManualFreeItem = (index: number) => {
+        setManualFreeItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
     };
 
     const handleGenerateRequisition = () => {
@@ -428,7 +490,15 @@ const Billing = () => {
                 .map(({ item }) => item)
             : [];
 
-        const hasManualFreeItem = !manualCancelPatientId && manualFreeItem.productName.trim() && Number(manualFreeItem.quantity) > 0;
+        const effectiveManualItems = !manualCancelPatientId
+            ? [
+                ...manualFreeItems,
+                ...(hasManualDraftContent(manualFreeItem)
+                    ? [{ ...manualFreeItem, ward: manualFreeItem.ward || (unit === "all" ? "" : unit) }]
+                    : []),
+            ]
+            : [];
+        const hasManualFreeItem = effectiveManualItems.length > 0;
         if (manualCancelPatientId && selectedDietMap.length === 0) {
             toast.error("Selecione ao menos um item do paciente.");
             return;
@@ -438,45 +508,60 @@ const Billing = () => {
             return;
         }
 
-        const manualSubtotal = manualCancelTotal;
-        const manualUnitPrice = Number(manualFreeItem.unitPrice) || (
-            Number(manualFreeItem.quantity) > 0 ? manualSubtotal / Number(manualFreeItem.quantity) : 0
-        );
-        const manualWard = manualFreeItem.ward || (unit === "all" ? "Ala nao informada" : unit);
-        const freeDietMap = hasManualFreeItem
-            ? [{
-                patientId: `manual-${Date.now()}`,
+        const defaultWard = unit === "all" ? "Ala nao informada" : unit;
+        const manualWard = manualCancelPatientId
+            ? (selectedDietMap[0]?.ward || defaultWard)
+            : (effectiveManualItems[0]?.ward || defaultWard);
+        const firstManualItem = effectiveManualItems[0];
+        const manualSubtotal = firstManualItem ? getManualDraftSubtotal(firstManualItem) : 0;
+        const manualUnitPrice = firstManualItem
+            ? (Number(firstManualItem.unitPrice) || ((Number(firstManualItem.quantity) || 0) > 0
+                ? manualSubtotal / (Number(firstManualItem.quantity) || 0)
+                : 0))
+            : 0;
+        const freeDietMap = effectiveManualItems.map((item, index) => {
+            const subtotal = getManualDraftSubtotal(item);
+            const quantity = Number(item.quantity) || 0;
+            const unitPrice = Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0);
+
+            return {
+                patientId: `manual-${Date.now()}-${index}`,
                 patientName: "Ajuste manual",
                 patientRecord: undefined,
                 bed: "-",
-                ward: manualWard,
+                ward: item.ward || defaultWard,
                 dob: undefined,
                 route: "Manual",
                 type: "formula" as const,
-                productCode: manualFreeItem.productCode || undefined,
-                productName: manualFreeItem.productName.trim(),
-                volumeOrAmount: Number(manualFreeItem.quantity) || 0,
-                unit: manualFreeItem.unit || "un",
+                productCode: item.productCode || undefined,
+                productName: item.productName.trim(),
+                volumeOrAmount: quantity,
+                unit: item.unit || "un",
                 times: manualSelectedTimes,
-                observation: manualFreeItem.observation || "Lancamento manual sem vinculo com paciente",
-                unitPrice: manualUnitPrice,
-                subtotal: manualSubtotal,
-            }]
-            : [];
+                observation: item.observation || "Lancamento manual sem vinculo com paciente",
+                unitPrice,
+                subtotal,
+            };
+        });
 
         const documentType: RequisitionData["documentType"] = manualRequestMode === "cancellation" ? "cancellation" : "extra";
         const popupTitle = manualRequestMode === "cancellation" ? "Requisição de cancelamento" : "Requisição extra";
         const popup = createPrintPopup(popupTitle);
         const manualConsolidated = hasManualFreeItem
-            ? [{
-                code: manualFreeItem.productCode || "AJUSTE-MANUAL",
-                name: manualFreeItem.productName.trim(),
-                billingUnit: manualFreeItem.unit || "un",
-                totalQuantity: Number(manualFreeItem.quantity) || 0,
-                unitPrice: manualUnitPrice,
-                subtotal: manualSubtotal,
-                type: manualFreeItem.category,
-            }]
+            ? effectiveManualItems.map((item) => {
+                const subtotal = getManualDraftSubtotal(item);
+                const quantity = Number(item.quantity) || 0;
+
+                return {
+                    code: item.productCode || "AJUSTE-MANUAL",
+                    name: item.productName.trim(),
+                    billingUnit: item.unit || "un",
+                    totalQuantity: quantity,
+                    unitPrice: Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0),
+                    subtotal,
+                    type: item.category,
+                };
+            })
             : selectedDietMap.map((item) => ({
                 code: item.productCode || "AJUSTE-MANUAL",
                 name: item.productName,
@@ -487,7 +572,7 @@ const Billing = () => {
                 type: item.type === "module" ? "module" as const : "formula" as const,
             }));
 
-        if (hasManualFreeItem) {
+        if (hasManualFreeItem && false) {
             addManualBillingAdjustment({
                 hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
                 ward: manualWard,
@@ -505,6 +590,29 @@ const Billing = () => {
             toast.success("Guia de ajuste registrada para os relatórios.");
         }
 
+        if (hasManualFreeItem) {
+            effectiveManualItems.forEach((item) => {
+                const subtotal = getManualDraftSubtotal(item);
+                const quantity = Number(item.quantity) || 0;
+
+                addManualBillingAdjustment({
+                    hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
+                    ward: item.ward || defaultWard,
+                    effectiveDate: manualCancelDate,
+                    mode: manualRequestMode,
+                    productCode: item.productCode || undefined,
+                    productName: item.productName.trim(),
+                    quantity,
+                    unit: item.unit || "un",
+                    unitPrice: Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0),
+                    subtotal,
+                    category: item.category,
+                    observation: item.observation || undefined,
+                });
+            });
+            toast.success("Guia de ajuste registrada para os relatÃ³rios.");
+        }
+
         setRequisitionData({
             ...previewRequisitionData,
             unitName: manualWard,
@@ -517,11 +625,20 @@ const Billing = () => {
         });
 
         setManualCancelOpen(false);
+        setInlineManualOpen(false);
         setTimeout(() => printElementInPopup("requisition-print-document", popupTitle, popup), 120);
     };
 
     const handleGenerateManualRequest = () => {
-        const hasManualFreeItem = !manualCancelPatientId && manualFreeItem.productName.trim() && Number(manualFreeItem.quantity) > 0;
+        const effectiveManualItems = !manualCancelPatientId
+            ? [
+                ...manualFreeItems,
+                ...(hasManualDraftContent(manualFreeItem)
+                    ? [{ ...manualFreeItem, ward: manualFreeItem.ward || (unit === "all" ? "" : unit) }]
+                    : []),
+            ]
+            : [];
+        const hasManualFreeItem = effectiveManualItems.length > 0;
 
         if (!hasManualFreeItem) {
             handleGenerateManualCancellation();
@@ -530,58 +647,69 @@ const Billing = () => {
 
         if (!previewRequisitionData) return;
 
-        const manualSubtotal = manualCancelTotal;
-        const manualUnitPrice = Number(manualFreeItem.unitPrice) || (
-            Number(manualFreeItem.quantity) > 0 ? manualSubtotal / Number(manualFreeItem.quantity) : 0
-        );
-        const manualWard = manualFreeItem.ward || (unit === "all" ? "Ala nao informada" : unit);
+        const defaultWard = unit === "all" ? "Ala nao informada" : unit;
+        const manualWard = effectiveManualItems[0]?.ward || defaultWard;
         const effectiveManualTimes = manualSelectedTimes.length > 0 ? manualSelectedTimes : ["Nao se aplica"];
         const documentType: RequisitionData["documentType"] = manualRequestMode === "cancellation" ? "cancellation" : "extra";
         const popupTitle = manualRequestMode === "cancellation" ? "Requisicao de cancelamento" : "Requisicao extra";
         const popup = createPrintPopup(popupTitle);
 
-        const freeDietMap = [{
-            patientId: `manual-${Date.now()}`,
-            patientName: "Ajuste manual",
-            patientRecord: undefined,
-            bed: "-",
-            ward: manualWard,
-            dob: undefined,
-            route: "Manual",
-            type: "formula" as const,
-            productCode: manualFreeItem.productCode || undefined,
-            productName: manualFreeItem.productName.trim(),
-            volumeOrAmount: Number(manualFreeItem.quantity) || 0,
-            unit: manualFreeItem.unit || "un",
-            times: effectiveManualTimes,
-            observation: manualFreeItem.observation || "Lancamento manual sem vinculo com paciente",
-            unitPrice: manualUnitPrice,
-            subtotal: manualSubtotal,
-        }];
+        const freeDietMap = effectiveManualItems.map((item, index) => {
+            const subtotal = getManualDraftSubtotal(item);
+            const quantity = Number(item.quantity) || 0;
+            const unitPrice = Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0);
 
-        const manualConsolidated = [{
-            code: manualFreeItem.productCode || "AJUSTE-MANUAL",
-            name: manualFreeItem.productName.trim(),
-            billingUnit: manualFreeItem.unit || "un",
-            totalQuantity: Number(manualFreeItem.quantity) || 0,
-            unitPrice: manualUnitPrice,
-            subtotal: manualSubtotal,
-            type: manualFreeItem.category,
-        }];
+            return {
+                patientId: `manual-${Date.now()}-${index}`,
+                patientName: "Ajuste manual",
+                patientRecord: undefined,
+                bed: "-",
+                ward: item.ward || defaultWard,
+                dob: undefined,
+                route: "Manual",
+                type: "formula" as const,
+                productCode: item.productCode || undefined,
+                productName: item.productName.trim(),
+                volumeOrAmount: quantity,
+                unit: item.unit || "un",
+                times: effectiveManualTimes,
+                observation: item.observation || "Lancamento manual sem vinculo com paciente",
+                unitPrice,
+                subtotal,
+            };
+        });
 
-        addManualBillingAdjustment({
-            hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
-            ward: manualWard,
-            effectiveDate: manualCancelDate,
-            mode: manualRequestMode,
-            productCode: manualFreeItem.productCode || undefined,
-            productName: manualFreeItem.productName.trim(),
-            quantity: Number(manualFreeItem.quantity) || 0,
-            unit: manualFreeItem.unit || "un",
-            unitPrice: manualUnitPrice,
-            subtotal: manualSubtotal,
-            category: manualFreeItem.category,
-            observation: manualFreeItem.observation || undefined,
+        const manualConsolidated = effectiveManualItems.map((item) => {
+            const subtotal = getManualDraftSubtotal(item);
+            const quantity = Number(item.quantity) || 0;
+            return {
+                code: item.productCode || "AJUSTE-MANUAL",
+                name: item.productName.trim(),
+                billingUnit: item.unit || "un",
+                totalQuantity: quantity,
+                unitPrice: Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0),
+                subtotal,
+                type: item.category,
+            };
+        });
+
+        effectiveManualItems.forEach((item) => {
+            const subtotal = getManualDraftSubtotal(item);
+            const quantity = Number(item.quantity) || 0;
+            addManualBillingAdjustment({
+                hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
+                ward: item.ward || defaultWard,
+                effectiveDate: manualCancelDate,
+                mode: manualRequestMode,
+                productCode: item.productCode || undefined,
+                productName: item.productName.trim(),
+                quantity,
+                unit: item.unit || "un",
+                unitPrice: Number(item.unitPrice) || (quantity > 0 ? subtotal / quantity : 0),
+                subtotal,
+                category: item.category,
+                observation: item.observation || undefined,
+            });
         });
 
         toast.success("Guia de ajuste registrada para os relatorios.");
@@ -598,6 +726,7 @@ const Billing = () => {
         });
 
         setManualCancelOpen(false);
+        setInlineManualOpen(false);
         setTimeout(() => printElementInPopup("requisition-print-document", popupTitle, popup), 120);
     };
 
@@ -613,12 +742,14 @@ const Billing = () => {
             therapyLabel:
                 prescription.therapyType === "enteral"
                     ? "Enteral"
-                    : prescription.therapyType === "oral"
-                        ? "Via oral"
+                    : prescription.therapyType === "oral" && prescription.oralDetails?.needsThickener
+                        ? "Agua Espessada"
                         : "Parenteral",
             startDate: effectiveDate,
             endDate: effectiveDate,
             selectedTimes: cancelSelectedTimes.length > 0 ? cancelSelectedTimes : [...availableScheduleTimes],
+            includeAutomaticSets,
+            includeAutomaticBottles,
             signatures: {
                 prescriber: SIGNATURE_CONFIG.signature1,
                 technician: SIGNATURE_CONFIG.signature2,
@@ -782,7 +913,7 @@ const Billing = () => {
                 <Card>
                     <CardHeader>
                         <CardTitle>Filtros</CardTitle>
-                        <CardDescription>Monte a requisicao por setor, periodo, via e horarios.</CardDescription>
+                        <CardDescription>Monte a requisicao por setor, periodo, terapia e horarios.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -850,6 +981,29 @@ const Billing = () => {
                             </div>
                         </div>
 
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border p-4">
+                            <div className="flex items-center gap-3">
+                                <Checkbox
+                                    checked={includeAutomaticSets}
+                                    onCheckedChange={(checked) => setIncludeAutomaticSets(checked === true)}
+                                />
+                                <div>
+                                    <Label>Solicitar equipos automaticamente</Label>
+                                    <p className="text-xs text-muted-foreground">Mantem a solicitacao automatica de equipos na requisicao consolidada.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Checkbox
+                                    checked={includeAutomaticBottles}
+                                    onCheckedChange={(checked) => setIncludeAutomaticBottles(checked === true)}
+                                />
+                                <div>
+                                    <Label>Solicitar frascos automaticamente</Label>
+                                    <p className="text-xs text-muted-foreground">Classifica os frascos por capacidade conforme o volume de cada etapa.</p>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="border-t pt-4">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2">
@@ -861,12 +1015,12 @@ const Billing = () => {
                                     <Button variant="outline" size="sm" onClick={clearAllTimes}>Limpar</Button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 {availableScheduleTimes.map((time) => (
                                     <div
                                         key={time}
                                         onClick={() => toggleTime(time)}
-                                        className={`px-3 py-2 rounded-lg text-center cursor-pointer transition-all border-2 ${selectedTimes.includes(time)
+                                        className={`min-w-[72px] px-3 py-2 rounded-lg text-center cursor-pointer transition-all border-2 ${selectedTimes.includes(time)
                                             ? "bg-primary text-primary-foreground border-primary"
                                             : "bg-muted/50 border-muted hover:border-primary/50"
                                             }`}
@@ -1066,6 +1220,234 @@ const Billing = () => {
                                         Requisicao extra
                                     </Button>
                                 </div>
+                                <div className="grid gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => openInlineManualPanel("cancellation")}
+                                        disabled={!previewRequisitionData}
+                                    >
+                                        Cancelamento livre na tela
+                                    </Button>
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => openInlineManualPanel("extra")}
+                                        disabled={!previewRequisitionData}
+                                    >
+                                        Requisicao extra livre na tela
+                                    </Button>
+                                </div>
+                                {inlineManualOpen && (
+                                    <div className="rounded-md border p-4 space-y-4 bg-muted/20">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <p className="font-medium">
+                                                    {manualRequestMode === "cancellation" ? "Cancelamento livre" : "Requisicao extra livre"}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Monte varios itens sem paciente vinculado e gere uma unica guia.
+                                                </p>
+                                            </div>
+                                            <Button type="button" variant="ghost" onClick={closeInlineManualPanel}>
+                                                Fechar painel
+                                            </Button>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="space-y-2">
+                                                <Label>Data efetiva</Label>
+                                                <Input
+                                                    type="date"
+                                                    value={manualCancelDate}
+                                                    onChange={(event) => setManualCancelDate(event.target.value)}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Total da guia</Label>
+                                                <div className="rounded-md border bg-background px-3 py-2 font-semibold text-primary">
+                                                    {formatCurrency(manualCancelTotal)}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3 rounded-md border p-3 bg-background">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div>
+                                                    <Label>Horarios da guia</Label>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Esses horarios saem no documento dos itens livres.
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button type="button" variant="outline" size="sm" onClick={() => setManualSelectedTimes([...availableScheduleTimes])}>
+                                                        Todos
+                                                    </Button>
+                                                    <Button type="button" variant="outline" size="sm" onClick={() => setManualSelectedTimes([])}>
+                                                        Limpar
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {availableScheduleTimes.map((time) => (
+                                                    <button
+                                                        key={`inline-${time}`}
+                                                        type="button"
+                                                        onClick={() => toggleManualTime(time)}
+                                                        className={`min-w-[72px] rounded-md border px-3 py-2 text-sm transition-colors ${
+                                                            manualSelectedTimes.includes(time)
+                                                                ? "bg-primary text-primary-foreground border-primary"
+                                                                : "bg-background hover:border-primary/50"
+                                                        }`}
+                                                    >
+                                                        {time}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div className="space-y-2">
+                                                <Label>Ala</Label>
+                                                <Select
+                                                    value={manualFreeItem.ward}
+                                                    onValueChange={(value) => setManualFreeItem((current) => ({ ...current, ward: value }))}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Selecione a ala" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {(unit !== "all" ? [unit] : wards).map((ward) => (
+                                                            <SelectItem key={ward} value={ward}>
+                                                                {ward}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Produto cadastrado</Label>
+                                                <Select
+                                                    value={manualFreeItem.productKey}
+                                                    onValueChange={(value) => {
+                                                        const selectedProduct = manualProductOptions.find((product) => product.key === value);
+                                                        setManualFreeItem((current) => ({
+                                                            ...current,
+                                                            productKey: value,
+                                                            productCode: selectedProduct?.code || "",
+                                                            productName: selectedProduct?.name || current.productName,
+                                                            category: selectedProduct?.category || current.category,
+                                                            unit: selectedProduct?.unit || current.unit,
+                                                            unitPrice: selectedProduct?.unitPrice ? String(selectedProduct.unitPrice) : current.unitPrice,
+                                                        }));
+                                                    }}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Selecionar produto cadastrado" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {manualProductOptions.map((product) => (
+                                                            <SelectItem key={product.key} value={product.key}>
+                                                                {product.label}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Produto / item livre</Label>
+                                                <Input
+                                                    value={manualFreeItem.productName}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, productKey: "", productCode: "", productName: event.target.value, category: "diet" }))}
+                                                    placeholder="Ex: Peptamen 1.5, frasco, equipo"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Quantidade</Label>
+                                                <Input
+                                                    type="number"
+                                                    value={manualFreeItem.quantity}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, quantity: event.target.value }))}
+                                                    placeholder="Ex: 1000"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Unidade</Label>
+                                                <Input
+                                                    value={manualFreeItem.unit}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, unit: event.target.value }))}
+                                                    placeholder="ml, g, un"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Valor unitario</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.0001"
+                                                    value={manualFreeItem.unitPrice}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, unitPrice: event.target.value }))}
+                                                    placeholder="Ex: 0.08"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Valor total (opcional)</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.0001"
+                                                    value={manualFreeItem.subtotal}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, subtotal: event.target.value }))}
+                                                    placeholder="Ex: 125.50"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Observacoes</Label>
+                                                <Input
+                                                    value={manualFreeItem.observation}
+                                                    onChange={(event) => setManualFreeItem((current) => ({ ...current, observation: event.target.value }))}
+                                                    placeholder="Ex: admissao noturna, ajuste de estoque"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-background border px-3 py-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                Monte quantos itens precisar e gere tudo de uma vez.
+                                            </p>
+                                            <Button type="button" variant="secondary" onClick={appendManualFreeItem}>
+                                                Adicionar item
+                                            </Button>
+                                        </div>
+
+                                        {manualFreeItems.length > 0 && (
+                                            <div className="space-y-2">
+                                                <Label>Itens adicionados</Label>
+                                                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                                                    {manualFreeItems.map((item, index) => (
+                                                        <div key={`inline-item-${index}`} className="flex items-start justify-between gap-3 rounded-md border bg-background p-3">
+                                                            <div className="space-y-1">
+                                                                <p className="font-medium">{item.productName}</p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {[item.ward || "Ala nao informada", `${item.quantity || 0} ${item.unit || "un"}`, formatCurrency(getManualDraftSubtotal(item))].join(" | ")}
+                                                                </p>
+                                                                {item.observation && <p className="text-xs text-muted-foreground">{item.observation}</p>}
+                                                            </div>
+                                                            <Button type="button" variant="ghost" size="sm" onClick={() => removeManualFreeItem(index)}>
+                                                                Remover
+                                                            </Button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button type="button" onClick={handleGenerateManualRequest}>
+                                                {manualRequestMode === "cancellation" ? "Gerar cancelamento livre" : "Gerar requisicao extra livre"}
+                                            </Button>
+                                            <Button type="button" variant="outline" onClick={closeInlineManualPanel}>
+                                                Cancelar
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
                                 <p className="text-xs text-muted-foreground">
                                     As acoes manuais usam os itens reais do mapa filtrado e imprimem o documento com os valores por linha.
                                 </p>
@@ -1218,7 +1600,10 @@ const Billing = () => {
             </Dialog>
 
             <Dialog open={manualCancelOpen} onOpenChange={setManualCancelOpen}>
-                <DialogContent className="max-w-3xl print:hidden">
+                <DialogContent
+                    className="max-w-3xl max-h-[85vh] overflow-y-auto print:hidden"
+                    onInteractOutside={(event) => event.preventDefault()}
+                >
                     <DialogHeader>
                         <DialogTitle>{manualRequestMode === "cancellation" ? "Cancelamento manual" : "Requisicao extra manual"}</DialogTitle>
                         <DialogDescription>
@@ -1298,13 +1683,13 @@ const Billing = () => {
                                     </Button>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                            <div className="flex flex-wrap gap-2">
                                 {availableScheduleTimes.map((time) => (
                                     <button
                                         key={time}
                                         type="button"
                                         onClick={() => toggleManualTime(time)}
-                                        className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                                        className={`min-w-[72px] rounded-md border px-3 py-2 text-sm transition-colors ${
                                             manualSelectedTimes.includes(time)
                                                 ? "bg-primary text-primary-foreground border-primary"
                                                 : "bg-background hover:border-primary/50"
@@ -1484,6 +1869,42 @@ const Billing = () => {
                                         />
                                     </div>
                                 </div>
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-muted/40 px-3 py-2">
+                                    <p className="text-xs text-muted-foreground">
+                                        Monte quantos itens precisar e depois gere a guia de uma vez.
+                                    </p>
+                                    <Button type="button" variant="secondary" onClick={appendManualFreeItem}>
+                                        Adicionar item
+                                    </Button>
+                                </div>
+                                {manualFreeItems.length > 0 && (
+                                    <div className="space-y-2">
+                                        <Label>Itens adicionados</Label>
+                                        <div className="space-y-2">
+                                            {manualFreeItems.map((item, index) => (
+                                                <div key={`${item.productName}-${index}`} className="flex items-start justify-between gap-3 rounded-md border p-3">
+                                                    <div className="space-y-1">
+                                                        <p className="font-medium">{item.productName}</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {[item.ward || "Ala nao informada", `${item.quantity || 0} ${item.unit || "un"}`, formatCurrency(getManualDraftSubtotal(item))].join(" | ")}
+                                                        </p>
+                                                        {item.observation && (
+                                                            <p className="text-xs text-muted-foreground">{item.observation}</p>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeManualFreeItem(index)}
+                                                    >
+                                                        Remover
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
