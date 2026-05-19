@@ -494,8 +494,8 @@ const PrescriptionNew = () => {
   const { formulas: dbFormulas } = useFormulas();
   const { modules: dbModules } = useDbModules();
   const { supplies } = useSupplies();
-  const { wards } = useWards(selectedPatient?.hospitalId || currentHospitalId || undefined);
-  const { settings } = useSettings();
+  const { wards, isLoading: wardsLoading } = useWards(selectedPatient?.hospitalId || currentHospitalId || undefined);
+  const { settings, isLoading: settingsLoading } = useSettings();
   const availableFormulas = useMemo<ExtendedCatalogFormula[]>(
     () => dbFormulas
       .filter((formula) => !currentHospitalId || !formula.hospitalId || formula.hospitalId === currentHospitalId)
@@ -600,7 +600,7 @@ const PrescriptionNew = () => {
     if (!feedingRoutes.enteral || enteralAccess !== "VO") return;
 
     setSystemType("open");
-    setOpenInfusionMode("bolus");
+    setOpenInfusionMode("");
     setClosedFormula({ formulaId: "", infusionMode: "", rate: "", duration: "", bagQuantities: {} });
     if (currentStep === 5) {
       setCurrentStep(6);
@@ -935,6 +935,11 @@ const PrescriptionNew = () => {
   const baseScheduleTimes = useMemo(
     () => resolvePatientScheduleTimes({ settings, ward: selectedWard, patient: selectedPatient }),
     [selectedPatient, selectedWard, settings],
+  );
+
+  const schedulesReady = useMemo(
+    () => !settingsLoading && !wardsLoading,
+    [settingsLoading, wardsLoading],
   );
 
   const baseScheduleSource = useMemo<ScheduleSource>(() => {
@@ -1384,7 +1389,7 @@ const PrescriptionNew = () => {
 
   useEffect(() => {
     const resolvedPatientId = selectedPatient?.id || patientId;
-    if (hydratedFromPrescription || patients.length === 0 || prescriptions.length === 0 || !resolvedPatientId) return;
+    if (hydratedFromPrescription || !schedulesReady || patients.length === 0 || prescriptions.length === 0 || !resolvedPatientId) return;
 
     const targetPrescription = prescriptionIdFromUrl
       ? prescriptions.find((prescription) => prescription.id === prescriptionIdFromUrl)
@@ -1424,7 +1429,7 @@ const PrescriptionNew = () => {
     }
 
     setHydratedFromPrescription(true);
-  }, [hydratedFromPrescription, patientId, selectedPatient?.id, patients, prescriptions, prescriptionIdFromUrl, hydratePatientPrescriptions]);
+  }, [hydratedFromPrescription, schedulesReady, patientId, selectedPatient?.id, patients, prescriptions, prescriptionIdFromUrl, hydratePatientPrescriptions]);
 
   const latestPrescriptionsByType = useMemo(() => {
     if (!selectedPatient?.id) return { enteral: undefined, oral: undefined, parenteral: undefined } as Record<TherapyType, Prescription | undefined>;
@@ -2287,6 +2292,63 @@ const PrescriptionNew = () => {
         return;
       }
 
+      if (feedingRoutes.enteral) {
+        if (!enteralAccess) {
+          toast.error("Selecione o acesso da terapia enteral antes de salvar.");
+          setIsSaving(false);
+          return;
+        }
+
+        if (systemType === "closed") {
+          if (!closedFormula.formulaId) {
+            toast.error("Selecione a formula do sistema fechado antes de salvar.");
+            setIsSaving(false);
+            return;
+          }
+
+          if (!closedFormula.infusionMode || !closedFormula.rate || !closedFormula.duration) {
+            toast.error("Informe modo, velocidade e tempo de infusao do sistema fechado.");
+            setIsSaving(false);
+            return;
+          }
+        } else {
+          const touchedOpenFormulas = openFormulas.filter((formula) =>
+            Boolean(formula.formulaId || formula.volume || formula.diluteTo || formula.times.length > 0),
+          );
+          const selectedOpenFormulas = openFormulas.filter((formula) => isPersistedDbId(formula.formulaId));
+
+          if (selectedOpenFormulas.length === 0) {
+            toast.error("Selecione pelo menos uma formula antes de salvar a prescricao.");
+            setIsSaving(false);
+            return;
+          }
+
+          if (touchedOpenFormulas.some((formula) => !isPersistedDbId(formula.formulaId))) {
+            toast.error("Selecione a formula em todas as linhas preenchidas antes de salvar.");
+            setIsSaving(false);
+            return;
+          }
+
+          if (selectedOpenFormulas.some((formula) => !(parseFloat(formula.volume) > 0))) {
+            toast.error("Informe a quantidade por oferta/etapa em todas as formulas selecionadas.");
+            setIsSaving(false);
+            return;
+          }
+
+          if (selectedOpenFormulas.some((formula) => formula.times.length === 0)) {
+            toast.error("Selecione pelo menos um horario para cada formula.");
+            setIsSaving(false);
+            return;
+          }
+
+          if (enteralAccess !== "VO" && !openInfusionMode) {
+            toast.error("Selecione o modo de infusao do sistema aberto.");
+            setIsSaving(false);
+            return;
+          }
+        }
+      }
+
       if (feedingRoutes.oral && oralNeedsThickener) {
         const hasSelectedThickener = Boolean(
           oralThickenerModuleId
@@ -2490,20 +2552,20 @@ const PrescriptionNew = () => {
         await persistPrescription("enteral", {
           systemType: systemType || 'open',
           feedingRoute: enteralAccess || undefined,
-          infusionMode: (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) || undefined,
+          infusionMode: enteralAccess === "VO" ? undefined : (systemType === 'closed' ? closedFormula.infusionMode : openInfusionMode) || undefined,
           infusionRateMlH: systemType === 'closed'
             ? parseFloat(closedFormula.rate) || undefined
-            : openInfusionMode === "pump"
+            : enteralAccess !== "VO" && openInfusionMode === "pump"
               ? openDerivedRate.mlPerHour
               : undefined,
           infusionDropsMin: systemType === 'closed'
             ? closedFormula.infusionMode === "gravity"
               ? parseFloat(closedFormula.rate) || undefined
               : undefined
-            : openInfusionMode === "gravity"
+            : enteralAccess !== "VO" && openInfusionMode === "gravity"
               ? openDerivedRate.dropsPerMin
               : undefined,
-          infusionHoursPerDay: systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : parseFloat(openDurationPerStep) || undefined,
+          infusionHoursPerDay: enteralAccess === "VO" ? undefined : systemType === 'closed' ? parseFloat(closedFormula.duration) || undefined : parseFloat(openDurationPerStep) || undefined,
           equipmentVolume: systemType === 'open' ? parseFloat(equipmentVolume) || undefined : undefined,
           formulas: enteralFormulas,
           modules: enteralModules,
@@ -2519,9 +2581,9 @@ const PrescriptionNew = () => {
           enteralDetails: {
             access: enteralAccess || undefined,
             systemType: systemType || undefined,
-            infusionMode: (systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || undefined,
+            infusionMode: enteralAccess === "VO" ? undefined : (systemType === "closed" ? closedFormula.infusionMode : openInfusionMode) || undefined,
             equipmentVolume: systemType === "open" ? parseFloat(equipmentVolume) || undefined : undefined,
-            openDurationPerStep: openDurationPerStep || undefined,
+            openDurationPerStep: enteralAccess === "VO" ? undefined : openDurationPerStep || undefined,
             productionNotes: enteralProductionNotes.trim() || undefined,
             closedFormula: systemType === "closed"
               ? {

@@ -297,8 +297,12 @@ const Labels = () => {
             "em temperatura ambiente.",
         );
 
-        const getRate = (prescription: any, stageVolume?: number): string | undefined =>
-            getPrescriptionRateLabel(prescription, stageVolume);
+        const getRate = (prescription: any, stageVolume?: number): string | undefined => {
+            const isEnteralViaOral = prescription.therapyType === "enteral"
+                && (prescription.feedingRoute === "VO" || prescription.enteralDetails?.access === "VO");
+            if (isEnteralViaOral) return undefined;
+            return getPrescriptionRateLabel(prescription, stageVolume);
+        };
 
                 const buildControl = (
                     prescriptionId: string | undefined,
@@ -611,7 +615,7 @@ const Labels = () => {
                         }
                     } else {
                         // Open system
-                        const openTitle = "Dieta Enteral Sistema Aberto";
+                        const openTitle = route === "VO" ? "Formula infantil / suplemento VO" : "Dieta Enteral Sistema Aberto";
 
                         if (formulaEntries.length > 0) {
                             formulaEntries.forEach((formula, idx) => {

@@ -380,7 +380,7 @@ export const generateRequisitionData = ({
                     unit: formulaUnit,
                     stageVolume: finalStageVolume,
                     stageVolumeUnit: 'ml',
-                    rate: getPrescriptionRateLabel(p, finalStageVolume),
+                    rate: isEnteralViaOral ? undefined : getPrescriptionRateLabel(p, finalStageVolume),
                     times: matchingTimes.map(formatOperationalTimeLabel),
                     productCode: formulaObj?.code || f.formulaId,
                     observation,
@@ -591,7 +591,7 @@ export const generateRequisitionData = ({
                     unit: 'ml',
                     stageVolume: p.hydrationVolume,
                     stageVolumeUnit: 'ml',
-                    rate: p.infusionMode === 'bolus' ? 'Bolus' : undefined,
+                    rate: isEnteralViaOral ? undefined : p.infusionMode === 'bolus' ? 'Bolus' : undefined,
                     times: matchingTimes.map(formatOperationalTimeLabel),
                     productCode: waterSupply?.code || 'WATER-001',
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
