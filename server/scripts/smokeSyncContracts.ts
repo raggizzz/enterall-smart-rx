@@ -1,4 +1,7 @@
 const API_BASE = process.env.SMOKE_API_BASE || 'http://localhost:3000';
+const HOSPITAL_ID = process.env.SMOKE_HOSPITAL_ID || 'e28659d2-030a-48c3-a421-25e836dcfeb2';
+const USER_IDENTIFIER = process.env.SMOKE_IDENTIFIER || '100001';
+const USER_PASSWORD = process.env.SMOKE_PASSWORD || '12345678';
 
 const request = async (path: string, init?: RequestInit) => {
   const response = await fetch(`${API_BASE}${path}`, init);
@@ -28,6 +31,28 @@ const run = async () => {
   const health = await request('/health');
   assert(health.ok, 'Healthcheck falhou');
 
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      hospitalId: HOSPITAL_ID,
+      identifier: USER_IDENTIFIER,
+      password: USER_PASSWORD,
+      role: 'general_manager',
+    }),
+  });
+  assert(login.ok, 'Login de smoke falhou');
+
+  const loginBody = login.body as { token?: unknown; session?: { access_token?: unknown } };
+  const token = String(loginBody.token || loginBody.session?.access_token || '');
+  assert(token, 'Login de smoke nao retornou token');
+
+  const authHeaders = {
+    authorization: `Bearer ${token}`,
+  };
+
   const key = crypto.randomUUID();
   const createPayload = {
     name: `Hospital Smoke ${Date.now()}`,
@@ -37,6 +62,7 @@ const run = async () => {
   const createA = await request('/api/hospitals', {
     method: 'POST',
     headers: {
+      ...authHeaders,
       'content-type': 'application/json',
       'x-idempotency-key': key,
     },
@@ -46,6 +72,7 @@ const run = async () => {
   const createB = await request('/api/hospitals', {
     method: 'POST',
     headers: {
+      ...authHeaders,
       'content-type': 'application/json',
       'x-idempotency-key': key,
     },
@@ -73,6 +100,7 @@ const run = async () => {
   const updateA = await request(`/api/hospitals/${createdId}`, {
     method: 'PUT',
     headers: {
+      ...authHeaders,
       'content-type': 'application/json',
       'x-idempotency-key': updateKey,
       'x-expected-version': String(created.version),
@@ -83,6 +111,7 @@ const run = async () => {
   const updateB = await request(`/api/hospitals/${createdId}`, {
     method: 'PUT',
     headers: {
+      ...authHeaders,
       'content-type': 'application/json',
       'x-idempotency-key': updateKey,
       'x-expected-version': String(created.version),
@@ -96,6 +125,7 @@ const run = async () => {
   const deletion = await request(`/api/hospitals/${createdId}`, {
     method: 'DELETE',
     headers: {
+      ...authHeaders,
       'x-idempotency-key': deleteKey,
     },
   });

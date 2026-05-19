@@ -586,7 +586,6 @@ export const generateRequisitionData = ({
                 dietMap.push({
                     ...patientInfo,
                     type: 'water',
-                    productName: p.therapyType === 'oral' ? 'Água para hidratação' : 'Água para diluição/hidratação',
                     productName: waterSupply?.name || (p.therapyType === 'oral' ? 'Agua para hidratacao' : 'Agua para diluicao/hidratacao'),
                     volumeOrAmount: p.hydrationVolume,
                     unit: 'ml',
