@@ -1445,6 +1445,14 @@ const PrescriptionNew = () => {
     } satisfies Record<TherapyType, Prescription | undefined>;
   }, [selectedPatient, prescriptions]);
 
+  const latestGoalsPrescription = useMemo(() => {
+    if (!selectedPatient?.id) return undefined;
+
+    return prescriptions
+      .filter((prescription) => prescription.patientId === selectedPatient.id && Boolean(prescription.tneGoals))
+      .sort(sortByMostRecentStartDate)[0];
+  }, [selectedPatient, prescriptions]);
+
   const activePrescriptionsByType = useMemo(() => {
     if (!selectedPatient?.id) return { enteral: undefined, oral: undefined, parenteral: undefined } as Record<TherapyType, Prescription | undefined>;
 
@@ -1481,6 +1489,28 @@ const PrescriptionNew = () => {
     }));
     toast.success("Dados da prescrição anterior carregados para repetição.");
   };
+
+  const applyPreviousGoals = useCallback((multiplier = 1) => {
+    const goals = latestGoalsPrescription?.tneGoals;
+    if (!goals) {
+      toast.error("Nenhuma meta anterior encontrada para este paciente.");
+      return;
+    }
+
+    setGoalTargetKcalPerKg(
+      typeof goals.targetKcalPerKg === "number"
+        ? Number((goals.targetKcalPerKg * multiplier).toFixed(2))
+        : undefined,
+    );
+    setGoalTargetProteinPerKgActual(
+      typeof goals.targetProteinPerKgActual === "number"
+        ? Number((goals.targetProteinPerKgActual * multiplier).toFixed(2))
+        : undefined,
+    );
+    setEnergyWeightChoice(goals.targetKcalWeightBasis || null);
+    setProteinWeightChoice(goals.targetProteinWeightBasis || null);
+    toast.success(multiplier === 2 ? "Meta anterior dobrada." : "Meta anterior aplicada.");
+  }, [latestGoalsPrescription]);
 
   const completeStep = (step: number) => {
     if (!completedSteps.includes(step)) setCompletedSteps([...completedSteps, step]);
@@ -3013,6 +3043,37 @@ const PrescriptionNew = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {latestGoalsPrescription?.tneGoals && (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-emerald-900">Meta anterior encontrada</p>
+                            <p className="text-xs text-emerald-800">
+                              {latestGoalsPrescription.tneGoals.targetKcalPerKg ?? "-"} kcal/kg
+                              {" | "}
+                              {latestGoalsPrescription.tneGoals.targetProteinPerKgActual ?? "-"} g/kg
+                              {" | Energia "}
+                              {(latestGoalsPrescription.tneGoals.targetKcalWeightBasis || "PA").toUpperCase()}
+                              {" | Proteínas "}
+                              {(latestGoalsPrescription.tneGoals.targetProteinWeightBasis || "PA").toUpperCase()}
+                            </p>
+                            {latestGoalsPrescription.startDate && (
+                              <p className="text-xs text-emerald-700">
+                                Origem: {new Date(`${latestGoalsPrescription.startDate}T00:00:00`).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button type="button" size="sm" variant="outline" onClick={() => applyPreviousGoals(1)}>
+                              Usar meta anterior
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => applyPreviousGoals(2)}>
+                              Dobrar meta
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Meta kcal/kg ({effectiveEnergyWeight === 'ideal' ? 'PI' : 'PA'})</Label>

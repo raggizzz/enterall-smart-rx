@@ -156,11 +156,16 @@ export const generateRequisitionData = ({
         isSameCalendarDay(startDate, endDate) && isSameCalendarDay(startDate, new Date())
     ) ? new Date() : undefined;
 
-    const formatOperationalTimeLabel = (time: string) => {
+    const formatOperationalHeaderTimeLabel = (time: string) => {
         const normalized = normalizeScheduleTime(time);
         if (!normalized) return time;
         const slotDate = getOperationalSlotDate(startDate, normalized, operationalReferenceDate);
         return `${formatDate(slotDate)} ${normalized}`;
+    };
+
+    const formatDietMapTimeLabel = (time: string) => {
+        const normalized = normalizeScheduleTime(time);
+        return normalized || time;
     };
 
     // Helper to add to consolidated list
@@ -345,8 +350,10 @@ export const generateRequisitionData = ({
             ward: patient?.ward || p.patientWard || '-',
             dob: patient?.dob,
             route: p.therapyType === 'oral'
-                ? (p.oralDetails?.administrationRoute === 'translactation' ? 'Translactação' : 'Oral')
-                : p.feedingRoute || p.therapyType,
+                ? (p.oralDetails?.administrationRoute === 'translactation' ? 'Translactacao' : 'Oral')
+                : p.therapyType === 'enteral'
+                    ? (p.feedingRoute || p.enteralDetails?.access || p.therapyType)
+                    : p.feedingRoute || p.therapyType,
         };
 
         let mainDailySetCount = 0;
@@ -381,7 +388,7 @@ export const generateRequisitionData = ({
                     stageVolume: finalStageVolume,
                     stageVolumeUnit: 'ml',
                     rate: isEnteralViaOral ? undefined : getPrescriptionRateLabel(p, finalStageVolume),
-                    times: matchingTimes.map(formatOperationalTimeLabel),
+                    times: matchingTimes.map(formatDietMapTimeLabel),
                     productCode: formulaObj?.code || f.formulaId,
                     observation,
                 });
@@ -491,7 +498,7 @@ export const generateRequisitionData = ({
                     productName: m.moduleName,
                     volumeOrAmount: m.amount,
                     unit: m.unit || 'g',
-                    times: matchingTimes.map(formatOperationalTimeLabel),
+                    times: matchingTimes.map(formatDietMapTimeLabel),
                     productCode: moduleObj?.code || m.moduleId,
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
@@ -535,7 +542,7 @@ export const generateRequisitionData = ({
                     unit: thickenerGrams > 0 ? 'g' : (thickenerSource?.billingUnit || 'ml'),
                     stageVolume: thickenerVolume || undefined,
                     stageVolumeUnit: thickenerVolume > 0 ? 'ml' : undefined,
-                    times: thickenerTimes.map(formatOperationalTimeLabel),
+                    times: thickenerTimes.map(formatDietMapTimeLabel),
                     productCode: thickenerSource?.code || thickenerSource?.id,
                     observation: p.oralDetails?.observations || 'Água espessada',
                 });
@@ -592,7 +599,7 @@ export const generateRequisitionData = ({
                     stageVolume: p.hydrationVolume,
                     stageVolumeUnit: 'ml',
                     rate: isEnteralViaOral ? undefined : p.infusionMode === 'bolus' ? 'Bolus' : undefined,
-                    times: matchingTimes.map(formatOperationalTimeLabel),
+                    times: matchingTimes.map(formatDietMapTimeLabel),
                     productCode: waterSupply?.code || 'WATER-001',
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
                 });
@@ -672,7 +679,7 @@ export const generateRequisitionData = ({
         startDate: formatDate(startDate),
         endDate: formatDate(endDate),
         printDate: formatDateTime(new Date()),
-        selectedTimes: orderedSelectedTimes.map(formatOperationalTimeLabel),
+        selectedTimes: orderedSelectedTimes.map(formatOperationalHeaderTimeLabel),
         dietMap,
         consolidated,
         signatures

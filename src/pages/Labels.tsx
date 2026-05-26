@@ -466,7 +466,7 @@ const Labels = () => {
                 const route = normalize(
                     prescription.therapyType === "oral"
                         ? "VO"
-                        : prescription.feedingRoute || "SNE"
+                        : prescription.feedingRoute || prescription.enteralDetails?.access || "SNE"
                 );
                 const formulaEntries = prescription.formulas || [];
                 const moduleEntries = prescription.modules || [];

@@ -149,6 +149,12 @@ const formatDeliveryAmount = (
     return `${volumeOrAmount || 0} ${billingUnit}`;
 };
 
+const formatProtocolVolume = (item: { stageVolume?: number; volumeOrAmount: number; stageVolumeUnit?: string; unit: string }) => {
+    const amount = item.stageVolume || item.volumeOrAmount || 0;
+    const unit = item.stageVolumeUnit || item.unit || "mL";
+    return `${amount} ${unit}`;
+};
+
 const Billing = () => {
     const { patients, isLoading: patientsLoading } = usePatients();
     const { prescriptions, isLoading: prescriptionsLoading, refetch: refetchPrescriptions } = usePrescriptions();
@@ -340,6 +346,53 @@ const Billing = () => {
         if (!previewRequisitionData) return 0;
         return previewRequisitionData.consolidated.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     }, [previewRequisitionData]);
+
+    const deliveryProtocolItems = useMemo(() => {
+        if (!previewRequisitionData) return [];
+
+        return previewRequisitionData.dietMap
+            .filter((item) => item.type === "formula" || item.type === "water")
+            .flatMap((item) => {
+                const times = item.times && item.times.length > 0 ? item.times : ["-"];
+                const matchingPrescription = filteredPrescriptions.find((prescription) =>
+                    prescription.patientId === item.patientId
+                    && (
+                        (item.type === "formula" && prescription.formulas.some((formula) => formula.formulaId === item.productCode || formula.formulaName === item.productName))
+                        || (item.type === "water" && Number(prescription.hydrationVolume || 0) > 0)
+                    ),
+                );
+
+                return times.map((time) => {
+                    const hasModulesAtSameTime = item.type === "water" && previewRequisitionData.dietMap.some((relatedItem) =>
+                        relatedItem.patientId === item.patientId
+                        && relatedItem.type === "module"
+                        && relatedItem.times.includes(time),
+                    );
+
+                    return {
+                        ward: item.ward,
+                        bed: item.bed,
+                        patientName: item.patientName,
+                        systemType: matchingPrescription?.systemType || (item.observation?.toLowerCase().includes("fechado") ? "closed" : "open"),
+                        formulaName: item.type === "water"
+                            ? (hasModulesAtSameTime ? "Água com módulos" : "Água")
+                            : item.productName,
+                        billedAmount: item.type === "water"
+                            ? formatProtocolVolume(item)
+                            : matchingPrescription
+                                ? formatDeliveryAmount(
+                                    matchingPrescription,
+                                    item.productCode || "",
+                                    item.productName,
+                                    Number(item.volumeOrAmount || 0),
+                                    formulas,
+                                )
+                                : `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
+                        scheduleTime: time,
+                    };
+                });
+            });
+    }, [filteredPrescriptions, formulas, previewRequisitionData]);
 
     const manualCancelCandidates = useMemo(() => {
         if (!manualPreviewRequisitionData || !manualCancelPatientId) return [];
@@ -871,32 +924,7 @@ const Billing = () => {
                         <DeliveryProtocol
                             unitName={unit === "all" ? "Todas as Unidades" : unit}
                             date={startDate ? formatDate(startDate) : "-"}
-                            items={(previewRequisitionData?.dietMap || [])
-                                .filter((item) => item.type === "formula")
-                                .flatMap((item) => {
-                                    const times = item.times && item.times.length > 0 ? item.times : ["-"];
-                                    const matchingPrescription = filteredPrescriptions.find((prescription) =>
-                                        prescription.patientId === item.patientId
-                                        && prescription.formulas.some((formula) => formula.formulaId === item.productCode || formula.formulaName === item.productName),
-                                    );
-                                    return times.map((time) => ({
-                                        ward: item.ward,
-                                        bed: item.bed,
-                                        patientName: item.patientName,
-                                        systemType: matchingPrescription?.systemType || (item.observation?.toLowerCase().includes("fechado") ? "closed" : "open"),
-                                        formulaName: item.productName,
-                                        billedAmount: matchingPrescription
-                                            ? formatDeliveryAmount(
-                                                matchingPrescription,
-                                                item.productCode || "",
-                                                item.productName,
-                                                Number(item.volumeOrAmount || 0),
-                                                formulas,
-                                            )
-                                            : `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
-                                        scheduleTime: time,
-                                    }));
-                                })}
+                            items={deliveryProtocolItems}
                             signatures={previewRequisitionData?.signatures}
                         />
                         <Button variant="outline" onClick={handleGenerateRequisition} disabled={!previewRequisitionData || prescriptionsLoading}>
