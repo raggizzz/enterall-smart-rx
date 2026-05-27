@@ -1,0 +1,12 @@
+flowchart TD
+    A0["Abrir acompanhamento do paciente"] --> A1["Selecionar data e paciente"]
+    A1 --> A2["Recuperar prescrição ativa do dia"]
+    A2 --> A3["Informar volume prescrito"]
+    A3 --> A4["Informar volume efetivamente infundido"]
+    A4 --> A5["Registrar interrupções e intercorrências"]
+    A5 --> A6["Registrar calorias não intencionais"]
+    A6 --> A7["Registrar observações clínicas"]
+    A7 --> A8["Calcular % enteral infundida / prescrita"]
+    A8 --> A9["Consolidar indicadores do dia"]
+    A9 --> A10["Salvar evolução"]
+    A10 --> A11["Atualizar histórico assistencial e relatórios"]

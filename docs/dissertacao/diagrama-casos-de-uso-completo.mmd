@@ -1,0 +1,134 @@
+flowchart LR
+    GG["Gestor Geral"]
+    GL["Gestor Local"]
+    N["Nutricionista"]
+    T["Técnico"]
+
+    UC1["Autenticar-se no sistema"]
+    UC2["Selecionar unidade e contexto de trabalho"]
+    UC3["Gerenciar unidades hospitalares"]
+    UC4["Gerenciar alas/setores"]
+    UC5["Definir horários padrão por ala/unidade"]
+    UC6["Gerenciar perfis e permissões"]
+    UC7["Cadastrar profissionais"]
+    UC8["Cadastrar fórmulas"]
+    UC9["Cadastrar módulos"]
+    UC10["Cadastrar insumos"]
+    UC11["Configurar custos e parâmetros"]
+    UC12["Cadastrar e editar pacientes"]
+    UC13["Mover pacientes entre alas"]
+    UC14["Criar prescrição nutricional"]
+    UC15["Prescrever terapia enteral"]
+    UC16["Prescrever terapia oral"]
+    UC17["Prescrever terapia parenteral"]
+    UC18["Salvar padrão de horários por paciente"]
+    UC19["Registrar evolução diária"]
+    UC20["Registrar volume infundido e interrupções"]
+    UC21["Gerar etiquetas"]
+    UC22["Gerar mapa da dieta oral"]
+    UC23["Gerar requisição/faturamento"]
+    UC24["Emitir protocolo de entrega"]
+    UC25["Emitir cancelamento técnico"]
+    UC26["Usar calculadoras clínicas"]
+    UC27["Visualizar relatórios gerenciais"]
+    UC28["Exportar/importar backup"]
+    UC29["Sincronizar pendências offline"]
+    UC30["Consultar central de sincronização"]
+
+    GG --> UC1
+    GG --> UC2
+    GG --> UC3
+    GG --> UC4
+    GG --> UC5
+    GG --> UC6
+    GG --> UC7
+    GG --> UC8
+    GG --> UC9
+    GG --> UC10
+    GG --> UC11
+    GG --> UC12
+    GG --> UC13
+    GG --> UC14
+    GG --> UC15
+    GG --> UC16
+    GG --> UC17
+    GG --> UC18
+    GG --> UC19
+    GG --> UC20
+    GG --> UC21
+    GG --> UC22
+    GG --> UC23
+    GG --> UC24
+    GG --> UC25
+    GG --> UC26
+    GG --> UC27
+    GG --> UC28
+    GG --> UC29
+    GG --> UC30
+
+    GL --> UC1
+    GL --> UC2
+    GL --> UC4
+    GL --> UC5
+    GL --> UC6
+    GL --> UC7
+    GL --> UC8
+    GL --> UC9
+    GL --> UC10
+    GL --> UC11
+    GL --> UC12
+    GL --> UC13
+    GL --> UC14
+    GL --> UC15
+    GL --> UC16
+    GL --> UC17
+    GL --> UC18
+    GL --> UC19
+    GL --> UC20
+    GL --> UC21
+    GL --> UC22
+    GL --> UC23
+    GL --> UC24
+    GL --> UC25
+    GL --> UC26
+    GL --> UC27
+    GL --> UC28
+    GL --> UC29
+    GL --> UC30
+
+    N --> UC1
+    N --> UC2
+    N --> UC12
+    N --> UC13
+    N --> UC14
+    N --> UC15
+    N --> UC16
+    N --> UC17
+    N --> UC18
+    N --> UC19
+    N --> UC20
+    N --> UC21
+    N --> UC22
+    N --> UC23
+    N --> UC24
+    N --> UC26
+    N --> UC27
+    N --> UC29
+    N --> UC30
+
+    T --> UC1
+    T --> UC2
+    T --> UC21
+    T --> UC22
+    T --> UC23
+    T --> UC24
+    T --> UC25
+    T --> UC29
+    T --> UC30
+
+    UC14 --> UC15
+    UC14 --> UC16
+    UC14 --> UC17
+    UC19 --> UC20
+    UC23 --> UC24
+    UC23 --> UC25

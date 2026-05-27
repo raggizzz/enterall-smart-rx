@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apresentação do Sistema EnterAll Smart RX / ENMeta</title>
+  <style>
+    :root {
+      --bg: #f4f8f7;
+      --surface: #ffffff;
+      --surface-soft: #eef5f3;
+      --text: #15332c;
+      --muted: #55746c;
+      --line: #d7e4df;
+      --primary: #0f8f66;
+      --primary-dark: #0b6b4c;
+      --accent: #d8f3e8;
+      --shadow: 0 18px 45px rgba(18, 52, 43, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(15, 143, 102, 0.09), transparent 28%),
+        linear-gradient(180deg, #f8fbfa 0%, var(--bg) 100%);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 72px;
+    }
+
+    .hero {
+      background: linear-gradient(135deg, rgba(15, 143, 102, 0.96), rgba(9, 92, 72, 0.95));
+      color: white;
+      border-radius: 28px;
+      padding: 42px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 240px;
+      height: 240px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 50%;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 18px 0 12px;
+      font-size: 38px;
+      line-height: 1.1;
+    }
+
+    .hero p {
+      max-width: 760px;
+      font-size: 17px;
+      color: rgba(255,255,255,0.92);
+      margin: 0;
+    }
+
+    .meta {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .meta span {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+    }
+
+    section {
+      margin-top: 26px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 30px;
+      box-shadow: var(--shadow);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      color: var(--primary-dark);
+    }
+
+    .section-intro {
+      color: var(--muted);
+      margin: 0 0 22px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #fbfdfc);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      color: var(--text);
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--primary-dark);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    ul.clean {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    ul.clean li + li {
+      margin-top: 6px;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+    }
+
+    .matrix th,
+    .matrix td {
+      padding: 14px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    .matrix th {
+      background: var(--surface-soft);
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+
+    .matrix tr:last-child td {
+      border-bottom: none;
+    }
+
+    .yes {
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+
+    .no {
+      color: #9aa9a3;
+    }
+
+    .flow {
+      border: 1px dashed var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      background: #fbfdfc;
+    }
+
+    .flow ol {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    .flow li + li {
+      margin-top: 8px;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .grid.cols-2,
+      .grid.cols-3 {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 30px;
+      }
+
+      section,
+      .hero {
+        padding: 24px;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .page {
+        max-width: none;
+        padding: 0;
+      }
+
+      section,
+      .hero {
+        box-shadow: none;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <span class="eyebrow">Apresentação do Sistema</span>
+      <h1>EnterAll Smart RX / ENMeta</h1>
+      <p>
+        Documento executivo para apresentação ao cliente, descrevendo de forma organizada a arquitetura,
+        os perfis de acesso, os módulos funcionais e os principais fluxos operacionais do aplicativo.
+      </p>
+      <div class="meta">
+        <span>Aplicação web responsiva / PWA</span>
+        <span>Uso em smartphone, tablet e desktop</span>
+        <span>Foco em terapia nutricional</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>Visão Geral</h2>
+      <p class="section-intro">
+        O sistema foi concebido para integrar gestão, assistência nutricional e operação hospitalar em um único ambiente digital.
+        Ele concentra cadastro, prescrição, acompanhamento clínico, documentos operacionais e relatórios.
+      </p>
+      <div class="grid cols-3">
+        <div class="card">
+          <span class="tag">Arquitetura</span>
+          <h3>Modelo cliente-servidor</h3>
+          <p>Frontend em React + TypeScript, backend em Node.js + Express e persistência relacional em PostgreSQL com Prisma.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Disponibilidade</span>
+          <h3>Uso web e suporte local</h3>
+          <p>Funciona em navegador moderno e conta com persistência local de apoio para sincronização e operação com conectividade instável.</p>
+        </div>
+        <div class="card">
+          <span class="tag">Aplicação</span>
+          <h3>Foco assistencial e gerencial</h3>
+          <p>Atende fluxos clínicos, logísticos e administrativos associados à terapia nutricional hospitalar.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Perfis de Usuário</h2>
+      <p class="section-intro">O sistema organiza o acesso por perfil profissional, respeitando a responsabilidade funcional de cada ator.</p>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Gestor geral</h3>
+          <p>Responsável pela gestão ampla do sistema, incluindo unidades, perfis, permissões, parâmetros e visão gerencial completa.</p>
+        </div>
+        <div class="card">
+          <h3>Gestor local</h3>
+          <p>Atua na operação administrativa da unidade, com controle sobre alas, profissionais, permissões locais, cadastros e relatórios.</p>
+        </div>
+        <div class="card">
+          <h3>Nutricionista</h3>
+          <p>Executa o fluxo assistencial: cadastro e acompanhamento de pacientes, prescrição, documentação e consulta analítica.</p>
+        </div>
+        <div class="card">
+          <h3>Técnico</h3>
+          <p>Atua na operação prática, com foco em etiquetas, mapa oral, protocolos de entrega, requisições e cancelamentos técnicos.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Módulos Funcionais</h2>
+      <p class="section-intro">Os casos de uso do aplicativo foram reorganizados por macroprocesso, para facilitar a leitura pelo cliente.</p>
+      <div class="grid cols-2">
+        <div class="card">
+          <h3>Acesso e sincronização</h3>
+          <ul class="clean">
+            <li>Login e sessão do usuário</li>
+            <li>Seleção de unidade e contexto</li>
+            <li>Sincronização de pendências</li>
+            <li>Tratamento de conflitos de versão</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Gestão institucional</h3>
+          <ul class="clean">
+            <li>Unidades hospitalares</li>
+            <li>Alas e horários padrão</li>
+            <li>Perfis e permissões</li>
+            <li>Profissionais, custos, parâmetros e backup</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Cadastros</h3>
+          <ul class="clean">
+            <li>Pacientes</li>
+            <li>Fórmulas</li>
+            <li>Módulos</li>
+            <li>Insumos</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Prescrição nutricional</h3>
+          <ul class="clean">
+            <li>Terapia oral</li>
+            <li>Terapia enteral</li>
+            <li>Terapia parenteral</li>
+            <li>Padrões de horários por ala e paciente</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Acompanhamento clínico</h3>
+          <ul class="clean">
+            <li>Evolução diária</li>
+            <li>Volume prescrito x infundido</li>
+            <li>Interrupções e intercorrências</li>
+            <li>Histórico assistencial</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Operação e documentos</h3>
+          <ul class="clean">
+            <li>Etiquetas clínicas</li>
+            <li>Mapa da dieta oral</li>
+            <li>Requisição e faturamento</li>
+            <li>Protocolo de entrega e cancelamento técnico</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Matriz de Casos de Uso por Perfil</h2>
+      <p class="section-intro">A tabela abaixo resume a distribuição funcional dos principais macroprocessos do sistema.</p>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>Macroprocesso</th>
+            <th>Gestor geral</th>
+            <th>Gestor local</th>
+            <th>Nutricionista</th>
+            <th>Técnico</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Acesso e sincronização</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+          </tr>
+          <tr>
+            <td>Gestão institucional</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Cadastros de pacientes</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Cadastros de fórmulas, módulos e insumos</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Prescrição nutricional</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Monitoramento e evolução</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Etiquetas e mapa da dieta oral</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+          </tr>
+          <tr>
+            <td>Faturamento, protocolos e cancelamentos</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+          </tr>
+          <tr>
+            <td>Relatórios gerenciais</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+          </tr>
+          <tr>
+            <td>Ferramentas clínicas</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="yes">Sim</td>
+            <td class="no">Não</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Fluxos Principais do Sistema</h2>
+      <p class="section-intro">A seguir, os principais fluxos foram resumidos em linguagem mais executiva para apresentação ao cliente.</p>
+      <div class="grid cols-3">
+        <div class="flow">
+          <h3>Fluxo assistencial</h3>
+          <ol>
+            <li>Cadastro e atualização do paciente.</li>
+            <li>Definição da via nutricional.</li>
+            <li>Construção da prescrição oral, enteral ou parenteral.</li>
+            <li>Salvamento da prescrição com cálculo consolidado.</li>
+            <li>Registro do acompanhamento e da evolução diária.</li>
+          </ol>
+        </div>
+        <div class="flow">
+          <h3>Fluxo operacional</h3>
+          <ol>
+            <li>Seleção das prescrições ativas por período e horário.</li>
+            <li>Geração de etiquetas e mapa da dieta oral.</li>
+            <li>Consolidação de fórmulas, módulos e insumos.</li>
+            <li>Emissão de requisições e protocolo de entrega.</li>
+            <li>Tratamento de cancelamentos técnicos e ajustes extras.</li>
+          </ol>
+        </div>
+        <div class="flow">
+          <h3>Fluxo gerencial</h3>
+          <ol>
+            <li>Definição de unidades, alas e permissões.</li>
+            <li>Parametrização de custos e horários padrão.</li>
+            <li>Consulta de indicadores assistenciais.</li>
+            <li>Análise de consumo, custo e resíduos.</li>
+            <li>Uso de relatórios para apoio à decisão.</li>
+          </ol>
+        </div>
+      </div>
+      <p class="footer-note">
+        Para aprofundamento técnico, os diagramas Mermaid e o documento textual completo permanecem disponíveis na mesma pasta desta apresentação.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

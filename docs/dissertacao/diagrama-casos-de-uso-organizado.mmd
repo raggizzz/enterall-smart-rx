@@ -1,0 +1,154 @@
+flowchart LR
+    GG["Gestor Geral"]
+    GL["Gestor Local"]
+    N["Nutricionista"]
+    T["Técnico"]
+
+    subgraph A["Acesso e Sincronização"]
+        A1["Autenticar-se no sistema"]
+        A2["Selecionar unidade e contexto"]
+        A3["Sincronizar pendências"]
+        A4["Consultar central de sincronização"]
+    end
+
+    subgraph B["Gestão Institucional"]
+        B1["Gerenciar unidades"]
+        B2["Gerenciar alas e horários padrão"]
+        B3["Gerenciar perfis e permissões"]
+        B4["Cadastrar profissionais"]
+        B5["Configurar custos e parâmetros"]
+        B6["Exportar / importar backup"]
+    end
+
+    subgraph C["Cadastros"]
+        C1["Cadastrar e editar pacientes"]
+        C2["Mover pacientes entre alas"]
+        C3["Cadastrar fórmulas"]
+        C4["Cadastrar módulos"]
+        C5["Cadastrar insumos"]
+    end
+
+    subgraph D["Prescrição Nutricional"]
+        D1["Criar prescrição"]
+        D2["Prescrever terapia enteral"]
+        D3["Prescrever terapia oral"]
+        D4["Prescrever terapia parenteral"]
+        D5["Salvar padrão de horários por paciente"]
+    end
+
+    subgraph E["Acompanhamento"]
+        E1["Registrar evolução diária"]
+        E2["Registrar volume infundido e interrupções"]
+        E3["Consolidar histórico assistencial"]
+    end
+
+    subgraph F["Operação"]
+        F1["Gerar etiquetas"]
+        F2["Gerar mapa da dieta oral"]
+        F3["Gerar requisição / faturamento"]
+        F4["Emitir protocolo de entrega"]
+        F5["Emitir cancelamento técnico"]
+    end
+
+    subgraph G["Relatórios e Apoio Clínico"]
+        G1["Visualizar relatórios"]
+        G2["Usar calculadoras e ferramentas clínicas"]
+    end
+
+    GG --> A1
+    GG --> A2
+    GG --> A3
+    GG --> A4
+    GG --> B1
+    GG --> B2
+    GG --> B3
+    GG --> B4
+    GG --> B5
+    GG --> B6
+    GG --> C1
+    GG --> C2
+    GG --> C3
+    GG --> C4
+    GG --> C5
+    GG --> D1
+    GG --> D2
+    GG --> D3
+    GG --> D4
+    GG --> D5
+    GG --> E1
+    GG --> E2
+    GG --> E3
+    GG --> F1
+    GG --> F2
+    GG --> F3
+    GG --> F4
+    GG --> F5
+    GG --> G1
+    GG --> G2
+
+    GL --> A1
+    GL --> A2
+    GL --> A3
+    GL --> A4
+    GL --> B2
+    GL --> B3
+    GL --> B4
+    GL --> B5
+    GL --> B6
+    GL --> C1
+    GL --> C2
+    GL --> C3
+    GL --> C4
+    GL --> C5
+    GL --> D1
+    GL --> D2
+    GL --> D3
+    GL --> D4
+    GL --> D5
+    GL --> E1
+    GL --> E2
+    GL --> E3
+    GL --> F1
+    GL --> F2
+    GL --> F3
+    GL --> F4
+    GL --> F5
+    GL --> G1
+    GL --> G2
+
+    N --> A1
+    N --> A2
+    N --> A3
+    N --> A4
+    N --> C1
+    N --> C2
+    N --> D1
+    N --> D2
+    N --> D3
+    N --> D4
+    N --> D5
+    N --> E1
+    N --> E2
+    N --> E3
+    N --> F1
+    N --> F2
+    N --> F3
+    N --> F4
+    N --> G1
+    N --> G2
+
+    T --> A1
+    T --> A2
+    T --> A3
+    T --> A4
+    T --> F1
+    T --> F2
+    T --> F3
+    T --> F4
+    T --> F5
+
+    D1 --> D2
+    D1 --> D3
+    D1 --> D4
+    E1 --> E2
+    E2 --> E3

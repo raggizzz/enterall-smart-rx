@@ -1,0 +1,69 @@
+flowchart TD
+    A["Início"] --> B["Login"]
+    B --> C{"Sessão válida?"}
+    C -->|Não| B
+    C -->|Sim| D["Carregar perfil, unidade e permissões"]
+
+    D --> E{"Qual módulo acessar?"}
+
+    E --> F["Cadastros e Configurações"]
+    E --> G["Pacientes"]
+    E --> H["Prescrição"]
+    E --> I["Acompanhamento"]
+    E --> J["Operação"]
+    E --> K["Relatórios"]
+    E --> L["Ferramentas"]
+    E --> M["Sincronização"]
+
+    F --> F1["Unidades"]
+    F --> F2["Alas e horários padrão"]
+    F --> F3["Profissionais"]
+    F --> F4["Perfis e permissões"]
+    F --> F5["Fórmulas, módulos e insumos"]
+    F --> F6["Custos, assinaturas e parâmetros"]
+    F --> F7["Backup"]
+
+    G --> G1["Cadastrar paciente"]
+    G --> G2["Editar paciente"]
+    G --> G3["Mover paciente de ala"]
+    G --> G4["Atualizar via nutricional/status"]
+
+    H --> H1["Selecionar paciente"]
+    H1 --> H2{"Tipo de terapia?"}
+    H2 -->|Oral| H3["Definir dieta oral, consistência e suplementos"]
+    H2 -->|Enteral| H4["Definir fórmula, sistema aberto/fechado, via, horários, módulos e hidratação"]
+    H2 -->|Parenteral| H5["Definir composição e parâmetros da terapia"]
+
+    H3 --> H6["Calcular aporte nutricional"]
+    H4 --> H6
+    H5 --> H6
+
+    H6 --> H7["Salvar prescrição"]
+    H7 --> H8["Atualizar status nutricional do paciente"]
+
+    I --> I1["Selecionar paciente e data"]
+    I1 --> I2["Registrar evolução diária"]
+    I2 --> I3["Informar volume infundido, interrupções e intercorrências"]
+    I3 --> I4["Calcular percentual infundido / prescrito"]
+    I4 --> I5["Atualizar histórico assistencial"]
+
+    J --> J1["Etiquetas"]
+    J --> J2["Mapa da dieta oral"]
+    J --> J3["Faturamento / requisição"]
+    J --> J4["Protocolo de entrega"]
+    J --> J5["Cancelamento técnico"]
+
+    K --> K1["Gestão"]
+    K --> K2["Histórico assistencial"]
+    K --> K3["Consumo no período"]
+    K --> K4["Comparação por produto"]
+    K --> K5["Resíduos recicláveis"]
+
+    L --> L1["Calculadoras clínicas"]
+    L --> L2["Ferramentas nutricionais"]
+
+    M --> M1["Fila offline/local"]
+    M1 --> M2["Sincronizar pendências"]
+    M2 --> M3{"Conflito de versão?"}
+    M3 -->|Sim| M4["Usar dados atuais ou descartar operação"]
+    M3 -->|Não| M5["Confirmar sincronização"]

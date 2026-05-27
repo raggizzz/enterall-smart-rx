@@ -1,0 +1,17 @@
+flowchart TD
+    B0["Abrir módulo de faturamento"] --> B1["Filtrar período, unidade, via e horários"]
+    B1 --> B2["Selecionar prescrições ativas"]
+    B2 --> B3["Consolidar fórmulas, módulos e insumos"]
+    B3 --> B4["Calcular quantidade total"]
+    B4 --> B5["Calcular unidades estimadas e custo"]
+    B5 --> B6["Gerar requisição"]
+    B6 --> B7["Emitir documento para impressão"]
+
+    B2 --> B8["Gerar protocolo de entrega por horário"]
+    B8 --> B9["Listar paciente, leito, dieta, água e recebimento"]
+
+    B2 --> B10["Gerar etiquetas"]
+    B10 --> B11["Produzir rótulos por horário/etapa"]
+
+    B2 --> B12["Gerar cancelamento técnico ou requisição extra"]
+    B12 --> B13["Aplicar ajuste manual quando necessário"]

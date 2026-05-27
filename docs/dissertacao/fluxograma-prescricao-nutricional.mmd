@@ -1,0 +1,27 @@
+flowchart TD
+    P0["Abrir módulo de prescrição"] --> P1["Selecionar paciente ativo"]
+    P1 --> P2["Carregar dados clínicos, ala, horários padrão e prescrições anteriores"]
+    P2 --> P3{"Via nutricional escolhida"}
+
+    P3 -->|Oral| P4["Definir consistência, número de refeições, suplementação oral e espessantes"]
+    P3 -->|Enteral| P5["Definir sistema aberto ou fechado"]
+    P3 -->|Parenteral| P6["Definir composição da NP"]
+
+    P5 --> P7["Selecionar fórmula(s)"]
+    P7 --> P8["Definir volume, horários, diluição, modo de infusão e via"]
+    P8 --> P9["Adicionar módulos"]
+    P9 --> P10["Adicionar água/hidratação"]
+    P10 --> P11["Aplicar horários padrão da ala e/ou do paciente"]
+
+    P6 --> P12["Informar glicose, aminoácidos, lipídios, volume total e tempo de infusão"]
+    P12 --> P13["Calcular TIG e parâmetros derivados"]
+
+    P4 --> P14["Calcular totais nutricionais"]
+    P11 --> P14
+    P13 --> P14
+
+    P14 --> P15["Validar regras de segurança e consistência"]
+    P15 --> P16["Gerar resumo da terapia nutricional"]
+    P16 --> P17["Salvar prescrição"]
+    P17 --> P18["Atualizar via ativa do paciente"]
+    P18 --> P19["Disponibilizar prescrição para etiquetas, faturamento e monitoramento"]

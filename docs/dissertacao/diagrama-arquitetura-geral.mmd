@@ -1,0 +1,27 @@
+flowchart TD
+    U["Usuário (Gestor geral / Gestor local / Nutricionista / Técnico)"]
+    PWA["Frontend Web Responsivo / PWA<br/>React 18 + TypeScript + Vite"]
+    ROUTES["Rotas protegidas e controle de permissões"]
+    LOCAL["Persistência local de apoio<br/>IndexedDB / Dexie + fila offline"]
+    API["Backend REST API<br/>Node.js + Express + TypeScript"]
+    AUTH["Autenticação JWT<br/>Access token + refresh token"]
+    RULES["Regras de negócio<br/>prescrição, monitoramento, faturamento, etiquetas"]
+    ORM["Prisma ORM"]
+    DB["PostgreSQL"]
+    DEPLOY1["Frontend em produção: Vercel"]
+    DEPLOY2["Backend local/remoto exposto por serviço HTTP"]
+    OBS["Infraestrutura local de apoio<br/>Docker + Postgres + monitoramento"]
+
+    U --> PWA
+    PWA --> ROUTES
+    ROUTES --> AUTH
+    PWA --> LOCAL
+    PWA --> API
+    API --> AUTH
+    API --> RULES
+    RULES --> ORM
+    ORM --> DB
+
+    DEPLOY1 --> PWA
+    DEPLOY2 --> API
+    OBS --> DB
