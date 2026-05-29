@@ -67,6 +67,7 @@ import {
   isoDateToBirthDateInput,
 } from "@/lib/patientDisplay";
 import { ApiError } from "@/lib/api";
+import { useSession } from "@/hooks/useSession";
 
 const Patients = () => {
   const navigate = useNavigate();
@@ -77,6 +78,7 @@ const Patients = () => {
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [handledUrlAction, setHandledUrlAction] = useState("");
   const returnTo = searchParams.get("returnTo");
+  const { hospitalId: sessionHospitalId } = useSession();
 
   // Status Confirmation State
   const [statusDialogData, setStatusDialogData] = useState<{
@@ -154,7 +156,7 @@ const Patients = () => {
       record: "",
       bed: "",
       ward: "",
-      hospitalId: "",
+      hospitalId: sessionHospitalId || "",
       weight: "",
       height: "",
       notes: "",
@@ -163,6 +165,12 @@ const Patients = () => {
     });
     setEditingPatient(null);
   };
+
+  useEffect(() => {
+    if (editingPatient) return;
+    if (!sessionHospitalId) return;
+    setNewPatient((current) => current.hospitalId ? current : { ...current, hospitalId: sessionHospitalId });
+  }, [editingPatient, sessionHospitalId]);
 
   const returnAfterInlineEdit = () => {
     if (returnTo === "dashboard") {
@@ -733,4 +741,3 @@ const Patients = () => {
 };
 
 export default Patients;
-
