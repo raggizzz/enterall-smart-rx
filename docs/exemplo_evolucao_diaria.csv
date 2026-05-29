@@ -1,0 +1,5 @@
+data,hospital,ala,paciente_prontuario,paciente_nome_ficticio,prescricao_id_ficticio,volume_prescrito_ml,volume_infundido_ml,percentual_infusao,calorias_enterais,proteina_enteral_g,motivo_interrupcao,observacao
+2026-05-01,Hospital Piloto Teste,UTI Adulto,PT-0001,Paciente Ficticio 01,RX-001,1500,1350,90,2025,75.6,Pausa para exame,Exemplo ficticio
+2026-05-02,Hospital Piloto Teste,UTI Adulto,PT-0001,Paciente Ficticio 01,RX-001,1500,1500,100,2250,84,,Exemplo ficticio
+2026-05-01,Hospital Piloto Teste,UTI Adulto,PT-0002,Paciente Ficticio 02,RX-002,1000,700,70,910,52.5,Intolerancia gastrointestinal,Exemplo ficticio
+2026-05-03,Hospital Piloto Teste,Clinica Medica,PT-0003,Paciente Ficticio 03,RX-003,600,600,100,900,36,,Exemplo ficticio

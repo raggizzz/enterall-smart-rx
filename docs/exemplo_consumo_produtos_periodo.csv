@@ -1,0 +1,6 @@
+periodo_inicio,periodo_fim,hospital,ala,produto,categoria,via,unidade_faturamento,quantidade_total,volume_total_ml,unidades_estimadas,pacientes_unicos,paciente_dia,custo_total,custo_por_paciente_dia,observacao
+2026-05-01,2026-05-31,Hospital Piloto Teste,UTI Adulto,Dieta Enteral Polimerica 1.5 kcal/ml,formula,enteral,ml,184500,184500,185,24,210,9225.00,43.93,Exemplo ficticio
+2026-05-01,2026-05-31,Hospital Piloto Teste,UTI Adulto,Dieta Enteral Hiperproteica,formula,enteral,ml,76500,76500,77,11,96,4972.50,51.80,Exemplo ficticio
+2026-05-01,2026-05-31,Hospital Piloto Teste,Clinica Medica,Suplemento Oral Baunilha,formula,oral,un,420,84000,420,18,135,3780.00,28.00,Exemplo ficticio
+2026-05-01,2026-05-31,Hospital Piloto Teste,UTI Adulto,Modulo Proteico,module,enteral,g,6200,0,62,19,168,2480.00,14.76,Exemplo ficticio
+2026-05-01,2026-05-31,Hospital Piloto Teste,UTI Adulto,Equipo Bomba Enteral,supply,enteral,un,210,0,210,24,210,3150.00,15.00,Exemplo ficticio

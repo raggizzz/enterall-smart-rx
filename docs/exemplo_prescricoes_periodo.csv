@@ -1,0 +1,5 @@
+data_inicio,data_fim,hospital,ala,paciente_prontuario,paciente_nome_ficticio,tipo_terapia,sistema,modo_infusao,formula,volume_por_horario_ml,vezes_dia,volume_total_dia_ml,kcal_total_dia,proteina_total_dia_g,status
+2026-05-01,2026-05-07,Hospital Piloto Teste,UTI Adulto,PT-0001,Paciente Ficticio 01,enteral,closed,bomba,Dieta Enteral Polimerica 1.5 kcal/ml,250,6,1500,2250,84,active
+2026-05-01,2026-05-10,Hospital Piloto Teste,UTI Adulto,PT-0002,Paciente Ficticio 02,enteral,open,gravitacional,Dieta Enteral Hiperproteica,200,5,1000,1300,75,active
+2026-05-03,2026-05-15,Hospital Piloto Teste,Clinica Medica,PT-0003,Paciente Ficticio 03,oral,oral,oferta,Suplemento Oral Baunilha,200,3,600,900,36,active
+2026-05-05,2026-05-20,Hospital Piloto Teste,UTI Adulto,PT-0004,Paciente Ficticio 04,enteral,closed,bomba,Dieta Enteral Polimerica 1.5 kcal/ml,300,5,1500,2250,84,completed

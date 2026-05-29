@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<relatorioGestao geradoEm="2026-05-31T23:59:59.000Z">
+  <filtros>
+    <unidade>Hospital Piloto Teste</unidade>
+    <ala>Todas as alas</ala>
+    <dataInicial>2026-05-01</dataInicial>
+    <dataFinal>2026-05-31</dataFinal>
+  </filtros>
+  <resumo>
+    <pacientesAtendidos>42</pacientesAtendidos>
+    <prescricoes>88</prescricoes>
+    <pacienteDia>371</pacienteDia>
+    <produtos>5</produtos>
+    <custoFormulas>17977.50</custoFormulas>
+    <custoModulos>2480.00</custoModulos>
+    <custoInsumos>3150.00</custoInsumos>
+    <custoProdutos>23607.50</custoProdutos>
+    <custoMedioPacienteDia>63.63</custoMedioPacienteDia>
+  </resumo>
+  <consumoProdutos>
+    <produto id="FORM-001">
+      <nome>Dieta Enteral Polimerica 1.5 kcal/ml</nome>
+      <categoria>Formula</categoria>
+      <via>enteral</via>
+      <unidadeFaturamento>ml</unidadeFaturamento>
+      <quantidadeTotal>184500</quantidadeTotal>
+      <volumeMl>184500</volumeMl>
+      <unidadesEstimadas>185</unidadesEstimadas>
+      <pacientes>24</pacientes>
+      <pacienteDia>210</pacienteDia>
+      <custoTotal>9225.00</custoTotal>
+    </produto>
+  </consumoProdutos>
+</relatorioGestao>
