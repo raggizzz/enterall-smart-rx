@@ -833,6 +833,15 @@ const normalizeProfessional = (raw: any): Professional => ({
 });
 
 const normalizePrescription = (raw: any): Prescription => {
+    const payloadSnapshot = typeof raw.payloadSnapshot === "string"
+        ? (() => {
+            try {
+                return JSON.parse(raw.payloadSnapshot);
+            } catch {
+                return undefined;
+            }
+        })()
+        : raw.payloadSnapshot;
     const formulas = Array.isArray(raw.formulas) ? raw.formulas.map((formula: any) => ({
         formulaId: formula.formulaId,
         formulaName: formula.formulaName ?? formula.formula?.name ?? "",
@@ -885,12 +894,12 @@ const normalizePrescription = (raw: any): Prescription => {
         nursingCostTotal: toNumber(raw.nursingCostTotal),
         materialCostTotal: toNumber(raw.materialCostTotal),
         totalCost: toNumber(raw.totalCost),
-        tneGoals: raw.tneGoals,
-        unintentionalCalories: raw.unintentionalCalories,
+        tneGoals: raw.tneGoals ?? payloadSnapshot?.tneGoals,
+        unintentionalCalories: raw.unintentionalCalories ?? payloadSnapshot?.unintentionalCalories,
         enteralDetails: raw.enteralDetails,
         oralDetails: raw.oralDetails,
         parenteralDetails: raw.parenteralDetails,
-        payloadSnapshot: raw.payloadSnapshot,
+        payloadSnapshot,
         status: raw.status ?? "active",
         statusReason: raw.statusReason,
         statusChangedAt: toDateOnly(raw.statusChangedAt),

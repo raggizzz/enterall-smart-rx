@@ -26,13 +26,25 @@ import { isPatientActiveForOperations } from "@/lib/patientStatus";
 
 const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
-    { value: "enteral", label: "Enteral" },
-    { value: "thickener", label: "Agua Espessada" },
+    { value: "lactary", label: "Lactário" },
+    { value: "enteral", label: "Somente enteral" },
+    { value: "thickener", label: "Somente água espessada" },
 ] as const;
 
 type TherapyFilter = (typeof THERAPY_OPTIONS)[number]["value"];
 
 const matchesTherapyFilter = (prescription: Prescription, therapyFilter: TherapyFilter) => {
+    if (therapyFilter === "lactary") {
+        return prescription.therapyType === "enteral"
+            || (
+                prescription.therapyType === "oral"
+                && (
+                    (prescription.formulas || []).length > 0
+                    || (prescription.modules || []).length > 0
+                    || Boolean(prescription.oralDetails?.needsThickener)
+                )
+            );
+    }
     if (therapyFilter === "enteral") return prescription.therapyType === "enteral";
     return prescription.therapyType === "oral" && Boolean(prescription.oralDetails?.needsThickener);
 };
@@ -167,7 +179,7 @@ const Billing = () => {
     const [startDate, setStartDate] = useState<Date | undefined>(new Date());
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
     const [unit, setUnit] = useState("all");
-    const [therapyFilter, setTherapyFilter] = useState<TherapyFilter>("enteral");
+    const [therapyFilter, setTherapyFilter] = useState<TherapyFilter>("lactary");
     const [selectedTimes, setSelectedTimes] = useState<string[]>([...SCHEDULE_TIMES]);
     const [includeAutomaticSets, setIncludeAutomaticSets] = useState(true);
     const [includeAutomaticBottles, setIncludeAutomaticBottles] = useState(true);
@@ -1956,4 +1968,3 @@ const Billing = () => {
 };
 
 export default Billing;
-

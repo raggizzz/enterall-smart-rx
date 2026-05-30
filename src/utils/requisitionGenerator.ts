@@ -374,7 +374,13 @@ export const generateRequisitionData = ({
                     || p.enteralDetails?.openFormulas?.find((entry) => entry.formulaId === f.formulaId);
                 const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
                 const finalStageVolume = p.systemType === 'open' && diluteTo > 0 ? diluteTo : f.volume;
-                const dilutionWater = p.systemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
+                const formulaLookupText = normalizeLookupText(`${formulaObj?.name || ''} ${f.formulaName || ''}`);
+                const isPowderFormula = formulaObj?.presentationForm === 'po'
+                    || formulaLookupText.includes(' po')
+                    || formulaLookupText.includes(' em po')
+                    || formulaLookupText.includes('po ')
+                    || formulaLookupText.includes('po-');
+                const dilutionWater = !isPowderFormula && p.systemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
                 const formulaUnit = formulaObj?.presentationForm === 'po' ? 'g' : 'ml';
                 const productionNotes = p.enteralDetails?.productionNotes?.trim();
                 const observation = productionNotes || (dilutionWater > 0 ? `Agua de diluicao: ${Math.round(dilutionWater)} ml` : '');

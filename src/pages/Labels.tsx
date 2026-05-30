@@ -14,7 +14,7 @@ import LabelPreview, { LabelData } from "@/components/LabelPreview";
 import { useClinics, useFormulas, useModules, usePatients, usePrescriptions, useSettings, useSupplies, useWards } from "@/hooks/useDatabase";
 import type { Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
-import { DEFAULT_SCHEDULE_TIMES, findWardByReference, getOperationalSlotDate, resolveConfiguredScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
+import { DEFAULT_SCHEDULE_TIMES, findWardByReference, getOperationalSlotDate, resolveConfiguredScheduleTimes, sanitizeScheduleTimes, sortScheduleTimes } from "@/lib/scheduleTimes";
 import { isPatientActiveForOperations } from "@/lib/patientStatus";
 import { printElementInPopup } from "@/lib/printPopup";
 
@@ -115,6 +115,20 @@ const pickLatestPrescriptionPerPatientAndRoute = (prescriptions: Prescription[])
 
     return Array.from(latestByKey.values());
 };
+
+const collectPrescriptionTimes = (prescription: Prescription): string[] => [
+    ...(prescription.formulas || []).flatMap((formula) => formula.schedules || []),
+    ...(prescription.modules || []).flatMap((moduleItem) => moduleItem.schedules || []),
+    ...(prescription.hydrationSchedules || []),
+    ...Object.keys(prescription.enteralDetails?.closedFormula?.bagQuantities || {}),
+    ...(prescription.enteralDetails?.openFormulas || []).flatMap((formula) => [
+        ...(formula.times || []),
+        ...(formula.manipulationTimes || []),
+    ]),
+    ...(prescription.enteralDetails?.modules || []).flatMap((moduleItem) => moduleItem.times || []),
+    ...(prescription.enteralDetails?.hydration?.times || []),
+    ...(prescription.oralDetails?.thickenerTimes || []),
+];
 
 const Labels = () => {
     const [date, setDate] = useState<Date | undefined>(new Date());
@@ -264,10 +278,31 @@ const Labels = () => {
     }, [activeDate, clinics, currentHospitalId, patients, patientsById, prescriptions, wardObjects]);
 
     const availableScheduleTimes = useMemo(() => {
-        if (clinic === "all") return resolveConfiguredScheduleTimes({ settings });
         const wardObj = findWardByReference(wardObjects, undefined, clinic);
-        return resolveConfiguredScheduleTimes({ settings, ward: wardObj });
-    }, [clinic, settings, wardObjects]);
+        const configuredTimes = clinic === "all"
+            ? resolveConfiguredScheduleTimes({ settings })
+            : resolveConfiguredScheduleTimes({ settings, ward: wardObj });
+        const prescriptionTimes = uniquePrescriptions
+            .filter((prescription) => {
+                if (prescription.status !== "active") return false;
+                if (currentHospitalId && prescription.hospitalId && prescription.hospitalId !== currentHospitalId) return false;
+
+                const patient = patientsById.get(prescription.patientId);
+                if (!isPatientActiveForOperations(patient, activeDate)) return false;
+                if (clinic !== "all" && normalizeFilterText(patient?.ward || prescription.patientWard) !== normalizeFilterText(clinic)) return false;
+
+                const prescriptionStart = new Date(`${prescription.startDate}T00:00:00`);
+                const prescriptionEnd = prescription.endDate ? new Date(`${prescription.endDate}T23:59:59`) : null;
+
+                if (!Number.isNaN(prescriptionStart.getTime()) && prescriptionStart > activeDate) return false;
+                if (prescriptionEnd && !Number.isNaN(prescriptionEnd.getTime()) && prescriptionEnd < activeDate) return false;
+
+                return true;
+            })
+            .flatMap(collectPrescriptionTimes);
+
+        return sanitizeScheduleTimes([...configuredTimes, ...prescriptionTimes]);
+    }, [activeDate, clinic, currentHospitalId, patientsById, settings, uniquePrescriptions, wardObjects]);
 
     useEffect(() => {
         setSelectedTimes([...availableScheduleTimes]);
@@ -352,7 +387,7 @@ const Labels = () => {
             const details = [];
             if (isPowder && formula.volume) details.push(`${Math.round(formula.volume)} g`);
             if (!isPowder && formula.volume) details.push(`${Math.round(formula.volume)} mL`);
-            if (formula.diluteTo) details.push(`Água para diluição ${Math.round(formula.diluteTo)} mL`);
+            if (!isPowder && formula.diluteTo) details.push(`Água para diluição ${Math.round(formula.diluteTo)} mL`);
             if (meta?.classification) details.push(meta.classification);
             return truncate(details.join(", "), 180);
         };

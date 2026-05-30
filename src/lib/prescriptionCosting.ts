@@ -31,7 +31,7 @@ const getFormulaDailyBagCount = (
   if (prescription.therapyType !== "enteral" || prescription.systemType !== "closed") return 0;
 
   const explicitDailyBags = getExplicitDailyBagCount(prescription);
-  if (explicitDailyBags > 0 && prescription.formulas.length <= 1) return explicitDailyBags;
+  if (explicitDailyBags > 0 && (prescription.formulas || []).length <= 1) return explicitDailyBags;
 
   const totalVolume = formulaEntry.volume || 0;
   const bagSize = formula?.presentations?.[0] || 0;
@@ -136,16 +136,18 @@ export const calculatePrescriptionCosts = ({
 }): CostSummary => {
   const nursingCosts = settings?.nursingCosts;
   const indirectCosts = settings?.indirectCosts;
+  const prescriptionFormulas = Array.isArray(prescription.formulas) ? prescription.formulas : [];
+  const prescriptionModules = Array.isArray(prescription.modules) ? prescription.modules : [];
 
   let materialCostTotal = 0;
   let nursingTimeSeconds = 0;
 
-  prescription.formulas.forEach((formulaEntry) => {
+  prescriptionFormulas.forEach((formulaEntry) => {
     const formula = formulas.find((item) => item.id === formulaEntry.formulaId);
     materialCostTotal += calculateFormulaMaterialCost(prescription, formulaEntry, formula);
   });
 
-  prescription.modules.forEach((moduleEntry) => {
+  prescriptionModules.forEach((moduleEntry) => {
     const moduleItem = modules.find((item) => item.id === moduleEntry.moduleId);
     materialCostTotal += calculateModuleMaterialCost(moduleEntry, moduleItem);
   });
@@ -156,7 +158,7 @@ export const calculatePrescriptionCosts = ({
     const dailyHydrationStages = prescription.hydrationSchedules?.length || 0;
 
     if (prescription.systemType === "open") {
-      const dailyStages = prescription.formulas.reduce(
+      const dailyStages = prescriptionFormulas.reduce(
         (sum, formulaEntry) => sum + getAdministrationCount(formulaEntry.schedules, formulaEntry.timesPerDay),
         0,
       );
@@ -170,7 +172,7 @@ export const calculatePrescriptionCosts = ({
       const explicitDailyBags = getExplicitDailyBagCount(prescription);
       const dailyBags = explicitDailyBags > 0
         ? explicitDailyBags
-        : prescription.formulas.reduce((sum, formulaEntry) => {
+        : prescriptionFormulas.reduce((sum, formulaEntry) => {
           const formula = formulas.find((item) => item.id === formulaEntry.formulaId);
           return sum + getFormulaDailyBagCount(prescription, formulaEntry, formula);
         }, 0);

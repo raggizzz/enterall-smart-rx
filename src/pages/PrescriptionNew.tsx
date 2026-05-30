@@ -119,6 +119,13 @@ type ExtendedCatalogModule = CatalogModule & {
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription) =>
   (right.startDate || "").localeCompare(left.startDate || "");
 
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const normalizeFormulaType = (type?: string): CatalogFormula["type"] => {
   switch (type) {
     case "high-protein":
@@ -821,7 +828,10 @@ const PrescriptionNew = () => {
         "infant-formula",
       ].includes(formula.type)
       && formulaMatchesPatient(formula)
-      && allowsAdministrationRoute(formula, "oral"),
+      && (
+        allowsAdministrationRoute(formula, "oral")
+        || (formula.type === "infant-formula" && allowsAdministrationRoute(formula, "translactation"))
+      ),
     );
   }, [availableFormulas, formulaMatchesPatient]);
 
@@ -1511,6 +1521,17 @@ const PrescriptionNew = () => {
     setProteinWeightChoice(goals.targetProteinWeightBasis || null);
     toast.success(multiplier === 2 ? "Meta anterior dobrada." : "Meta anterior aplicada.");
   }, [latestGoalsPrescription]);
+
+  useEffect(() => {
+    const goals = latestGoalsPrescription?.tneGoals;
+    if (!selectedPatient?.id || !goals) return;
+    if (goalTargetKcalPerKg || goalTargetProteinPerKgActual) return;
+
+    setGoalTargetKcalPerKg(goals.targetKcalPerKg);
+    setGoalTargetProteinPerKgActual(goals.targetProteinPerKgActual);
+    setEnergyWeightChoice(goals.targetKcalWeightBasis || null);
+    setProteinWeightChoice(goals.targetProteinWeightBasis || null);
+  }, [latestGoalsPrescription?.id, selectedPatient?.id]);
 
   const completeStep = (step: number) => {
     if (!completedSteps.includes(step)) setCompletedSteps([...completedSteps, step]);
@@ -2508,7 +2529,7 @@ const PrescriptionNew = () => {
         status: 'active' as const,
       };
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateKey();
       const tneGoalsPayload = goalTargetKcalPerKg || goalTargetProteinPerKgActual
         ? {
           targetKcalPerKg: goalTargetKcalPerKg,
@@ -2526,13 +2547,17 @@ const PrescriptionNew = () => {
             ? "parenteral"
             : null;
       const persistPrescription = async (therapyType: TherapyType, data: Record<string, unknown>) => {
+        const editingId = editingPrescriptionIds[therapyType];
+        const editingStartDate = editingStartDates[therapyType];
+        const shouldUpdateExisting = Boolean(editingId)
+          && (Boolean(prescriptionIdFromUrl) || !editingStartDate || editingStartDate === today);
         const draftPrescription = {
           ...basePrescriptionData,
           ...data,
           tneGoals: tneGoalsPayload,
           unintentionalCalories: unintentionalCaloriesPayload,
           therapyType,
-          startDate: editingStartDates[therapyType] || today,
+          startDate: shouldUpdateExisting ? editingStartDate || today : today,
         } as Prescription;
         const costSummary = calculatePrescriptionCosts({
           prescription: draftPrescription,
@@ -2548,8 +2573,8 @@ const PrescriptionNew = () => {
           totalCost: costSummary.totalCost,
         };
 
-        if (editingPrescriptionIds[therapyType]) {
-          await updatePrescription(editingPrescriptionIds[therapyType] as string, payload);
+        if (shouldUpdateExisting && editingId) {
+          await updatePrescription(editingId, payload);
           return;
         }
 
@@ -3888,8 +3913,6 @@ const PrescriptionNew = () => {
 };
 
 export default PrescriptionNew;
-
-
 
 
 
