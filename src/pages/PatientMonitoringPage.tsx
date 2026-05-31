@@ -57,7 +57,10 @@ const getPreviousDay = (): string => {
 };
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription): number => {
-    return right.startDate.localeCompare(left.startDate);
+    return (
+        right.startDate.localeCompare(left.startDate) ||
+        right.createdAt.localeCompare(left.createdAt)
+    );
 };
 
 const getEvolutionTimestamp = (evolution: DailyEvolution): number => {

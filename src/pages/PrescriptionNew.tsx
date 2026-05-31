@@ -117,7 +117,8 @@ type ExtendedCatalogModule = CatalogModule & {
 };
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription) =>
-  (right.startDate || "").localeCompare(left.startDate || "");
+  (right.startDate || "").localeCompare(left.startDate || "") ||
+  (right.createdAt || "").localeCompare(left.createdAt || "");
 
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
@@ -3913,7 +3914,6 @@ const PrescriptionNew = () => {
 };
 
 export default PrescriptionNew;
-
 
 
 

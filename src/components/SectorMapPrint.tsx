@@ -19,7 +19,8 @@ const todayLabel = new Intl.DateTimeFormat("pt-BR", {
 }).format(new Date());
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription): number =>
-  right.startDate.localeCompare(left.startDate);
+  right.startDate.localeCompare(left.startDate) ||
+  right.createdAt.localeCompare(left.createdAt);
 
 const getActivePrescriptionsForPatient = (prescriptionList: Prescription[], patientId?: string) =>
   prescriptionList

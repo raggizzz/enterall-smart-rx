@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/health"
+      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/health/:path*"
+      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/api/:path*"
+      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
