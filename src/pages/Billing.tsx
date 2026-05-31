@@ -41,6 +41,8 @@ const matchesTherapyFilter = (prescription: Prescription, therapyFilter: Therapy
                 && (
                     (prescription.formulas || []).length > 0
                     || (prescription.modules || []).length > 0
+                    || (prescription.oralDetails?.supplements || []).length > 0
+                    || (prescription.oralDetails?.modules || []).length > 0
                     || Boolean(prescription.oralDetails?.needsThickener)
                 )
             );
@@ -391,7 +393,7 @@ const Billing = () => {
                             : item.productName,
                         billedAmount: item.type === "water"
                             ? formatProtocolVolume(item)
-                            : matchingPrescription
+                            : matchingPrescription?.systemType === "closed"
                                 ? formatDeliveryAmount(
                                     matchingPrescription,
                                     item.productCode || "",
@@ -399,7 +401,9 @@ const Billing = () => {
                                     Number(item.volumeOrAmount || 0),
                                     formulas,
                                 )
-                                : `${item.volumeOrAmount || 0} ${item.unit || "ml"}`,
+                                : item.stageVolume
+                                    ? formatProtocolVolume(item)
+                                    : "Volume total não informado",
                         scheduleTime: time,
                     };
                 });
@@ -577,13 +581,6 @@ const Billing = () => {
         const manualWard = manualCancelPatientId
             ? (selectedDietMap[0]?.ward || defaultWard)
             : (effectiveManualItems[0]?.ward || defaultWard);
-        const firstManualItem = effectiveManualItems[0];
-        const manualSubtotal = firstManualItem ? getManualDraftSubtotal(firstManualItem) : 0;
-        const manualUnitPrice = firstManualItem
-            ? (Number(firstManualItem.unitPrice) || ((Number(firstManualItem.quantity) || 0) > 0
-                ? manualSubtotal / (Number(firstManualItem.quantity) || 0)
-                : 0))
-            : 0;
         const freeDietMap = effectiveManualItems.map((item, index) => {
             const subtotal = getManualDraftSubtotal(item);
             const quantity = Number(item.quantity) || 0;
@@ -636,24 +633,6 @@ const Billing = () => {
                 subtotal: item.subtotal || 0,
                 type: item.type === "module" ? "module" as const : "formula" as const,
             }));
-
-        if (hasManualFreeItem && false) {
-            addManualBillingAdjustment({
-                hospitalId: typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || undefined : undefined,
-                ward: manualWard,
-                effectiveDate: manualCancelDate,
-                mode: manualRequestMode,
-                productCode: manualFreeItem.productCode || undefined,
-                productName: manualFreeItem.productName.trim(),
-                quantity: Number(manualFreeItem.quantity) || 0,
-                unit: manualFreeItem.unit || "un",
-                unitPrice: manualUnitPrice,
-                subtotal: manualSubtotal,
-                category: manualFreeItem.category,
-                observation: manualFreeItem.observation || undefined,
-            });
-            toast.success("Guia de ajuste registrada para os relatórios.");
-        }
 
         if (hasManualFreeItem) {
             effectiveManualItems.forEach((item) => {

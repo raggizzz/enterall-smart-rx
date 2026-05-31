@@ -1677,7 +1677,7 @@ const PrescriptionNew = () => {
       if (systemType === "closed" && closedFormula.formulaId) {
         const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
         if (formula && (bagCalculation?.totalVolume || 0) > 0) {
-          formulaLines.push(`${formula.name}: ${formatSummaryNumber(bagCalculation?.totalVolume || 0, 0)} mL/dia`);
+          formulaLines.push(`${buildGenericFormulaDescriptor(formula)}: ${formatSummaryNumber(bagCalculation?.totalVolume || 0, 0)} mL/dia`);
         }
       }
 
@@ -1689,7 +1689,7 @@ const PrescriptionNew = () => {
             if (!formula) return;
             const totalVolume = (toNumericValue(entry.volume) || 0) * entry.times.length;
             if (totalVolume > 0) {
-              formulaLines.push(`${formula.name}: ${formatSummaryNumber(totalVolume, 0)} ${formula.presentationForm === "po" ? "g" : "mL"}/dia`);
+              formulaLines.push(`${buildGenericFormulaDescriptor(formula, enteralAccess)}: ${formatSummaryNumber(totalVolume, 0)} ${formula.presentationForm === "po" ? "g" : "mL"}/dia`);
             }
           });
       }
@@ -1701,7 +1701,7 @@ const PrescriptionNew = () => {
           if (!moduleItem) return;
           const totalAmount = (toNumericValue(entry.quantity) || 0) * entry.times.length;
           if (totalAmount > 0) {
-            moduleLines.push(`${moduleItem.name}: ${formatSummaryNumber(totalAmount, 1)} ${entry.unit}/dia`);
+            moduleLines.push(`${buildGenericModuleDescriptor(moduleItem)}: ${formatSummaryNumber(totalAmount, 1)} ${entry.unit}/dia`);
           }
         });
     }
@@ -1709,17 +1709,22 @@ const PrescriptionNew = () => {
     if (feedingRoutes.oral) {
       oralSupplements.forEach((supplement) => {
         if (!isPersistedDbId(supplement.supplementId) || !supplement.supplementName) return;
+        const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
         const totalAmount = (supplement.amount || 0) * Object.values(supplement.schedules || {}).filter((value) => value === true).length;
         if (totalAmount > 0) {
-          formulaLines.push(`${supplement.supplementName}: ${formatSummaryNumber(totalAmount, 1)} ${supplement.unit || "mL"}/dia`);
+          formulaLines.push(`${buildGenericFormulaDescriptor(formula, "VO")}: ${formatSummaryNumber(totalAmount, 1)} ${supplement.unit || "mL"}/dia`);
         }
       });
 
       oralTherapyModules.forEach((moduleEntry) => {
         if (!isPersistedDbId(moduleEntry.moduleId) || !moduleEntry.moduleName) return;
+        const moduleItem = availableModules.find((item) => item.id === moduleEntry.moduleId);
         const totalAmount = (moduleEntry.amount || 0) * Object.values(moduleEntry.schedules || {}).filter((value) => value === true).length;
         if (totalAmount > 0) {
-          moduleLines.push(`${moduleEntry.moduleName}: ${formatSummaryNumber(totalAmount, 1)} ${moduleEntry.unit || "g"}/dia`);
+          const moduleDescription = moduleItem
+            ? buildGenericModuleDescriptor(moduleItem)
+            : moduleEntry.moduleName;
+          moduleLines.push(`${moduleDescription}: ${formatSummaryNumber(totalAmount, 1)} ${moduleEntry.unit || "g"}/dia`);
         }
       });
     }
@@ -1730,6 +1735,7 @@ const PrescriptionNew = () => {
     availableModules,
     bagCalculation?.totalVolume,
     closedFormula.formulaId,
+    enteralAccess,
     feedingRoutes.enteral,
     feedingRoutes.oral,
     modules,
@@ -1796,7 +1802,6 @@ const PrescriptionNew = () => {
         ? `${closedFormula.rate} ml/h`
         : `${closedFormula.rate} gotas/min`;
 
-      lines.push("SISTEMA FECHADO:");
       lines.push(`Dieta enteral em sistema fechado, administrada através de ${routeLabel}:`);
       lines.push(
         `- ${buildGenericFormulaDescriptor(formula)}, com velocidade de infusão de ${rateLabel}, totalizando ${formatDecimalValue(totalVolume)} ml/dia;`,
@@ -1835,7 +1840,6 @@ const PrescriptionNew = () => {
         .filter(Boolean);
 
       if (openFormulaLines.length > 0) {
-        lines.push("SISTEMA ABERTO:");
         lines.push(`Dieta enteral em sistema aberto, administrada através de ${routeLabel}:`);
         lines.push(...openFormulaLines);
         if (enteralAccess === "VO") {
@@ -1987,10 +1991,11 @@ const PrescriptionNew = () => {
       oralSupplements
         .filter((supplement) => supplement.supplementName || supplement.supplementId)
         .forEach((supplement) => {
+          const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
           const schedules = Object.entries(supplement.schedules || {})
             .filter(([, enabled]) => enabled === true)
             .map(([key]) => ORAL_MEAL_SCHEDULES.find((meal) => meal.key === key)?.label || key);
-          lines.push(`- Suplemento oral ${supplement.supplementName || "não informado"}, ${formatDecimalValue(Number(supplement.amount || 0))} ${supplement.unit || "ml"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
+          lines.push(`- Suplemento oral ${buildGenericFormulaDescriptor(formula, "VO")}, ${formatDecimalValue(Number(supplement.amount || 0))} ${supplement.unit || "ml"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
         });
     }
 
@@ -1998,20 +2003,27 @@ const PrescriptionNew = () => {
       oralTherapyModules
         .filter((moduleItem) => moduleItem.moduleName || moduleItem.moduleId)
         .forEach((moduleItem) => {
+          const catalogModule = availableModules.find((item) => item.id === moduleItem.moduleId);
           const schedules = Object.entries(moduleItem.schedules || {})
             .filter(([, enabled]) => enabled === true)
             .map(([key]) => ORAL_MEAL_SCHEDULES.find((meal) => meal.key === key)?.label || key);
-          lines.push(`- Módulo ${moduleItem.moduleName || "não informado"}, ${formatDecimalValue(Number(moduleItem.amount || 0))} ${moduleItem.unit || "g"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
+          const moduleDescription = catalogModule
+            ? buildGenericModuleDescriptor(catalogModule)
+            : moduleItem.moduleName || "não informado";
+          lines.push(`- Módulo ${moduleDescription}, ${formatDecimalValue(Number(moduleItem.amount || 0))} ${moduleItem.unit || "g"}, ${schedules.length || 0} vezes ao dia${schedules.length ? ` (${schedules.join(", ")})` : ""}.`);
         });
     }
 
     if (oralNeedsThickener) {
-      lines.push(`- Água espessada com ${oralThickenerProduct || "espessante não informado"}, ${oralThickenerGrams || "-"} g para ${oralThickenerVolume || "-"} ml de água, horários: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}.`);
+      const thickenerModule = availableModules.find((item) => item.id === oralThickenerModuleId);
+      lines.push(`- Água espessada com ${thickenerModule ? buildGenericModuleDescriptor(thickenerModule) : oralThickenerProduct || "espessante não informado"}, ${oralThickenerGrams || "-"} g para ${oralThickenerVolume || "-"} ml de água, horários: ${oralThickenerTimes.length > 0 ? oralThickenerTimes.join(", ") : "-"}.`);
     }
 
     return lines.join("\n");
   }, [
     ORAL_MEAL_SCHEDULES,
+    availableFormulas,
+    availableModules,
     feedingRoutes.oral,
     oralDietCharacteristics,
     oralDietConsistency,
@@ -2020,6 +2032,7 @@ const PrescriptionNew = () => {
     oralSupplements,
     oralTherapyModules,
     oralThickenerGrams,
+    oralThickenerModuleId,
     oralThickenerProduct,
     oralThickenerTimes,
     oralThickenerVolume,
@@ -3830,7 +3843,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {chartNoteSuggestion}
                             </div>
@@ -3842,7 +3855,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional - Via Oral</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {oralChartNoteSuggestion}
                             </div>
@@ -3854,7 +3867,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética / terapia nutricional - Parenteral</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {parenteralChartNoteSuggestion}
                             </div>
@@ -3914,6 +3927,3 @@ const PrescriptionNew = () => {
 };
 
 export default PrescriptionNew;
-
-
-

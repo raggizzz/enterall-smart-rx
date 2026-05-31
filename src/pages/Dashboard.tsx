@@ -154,9 +154,9 @@ const Dashboard = () => {
       })();
 
       const routeContribution = {
-        oral: latestEvolution?.oralKcal ?? patientPrescriptions.filter((prescription) => prescription.therapyType === "oral").reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0),
+        oral: latestEvolution?.oralKcal ?? 0,
         enteral: latestEvolution?.enteralKcal ?? 0,
-        parenteral: latestEvolution?.parenteralKcal ?? patientPrescriptions.filter((prescription) => prescription.therapyType === "parenteral").reduce((sum, prescription) => sum + (prescription.totalCalories || 0), 0),
+        parenteral: latestEvolution?.parenteralKcal ?? 0,
       };
       const goalRoutes = (Object.entries(routeContribution) as Array<[keyof typeof routeContribution, number]>)
         .filter(([, value]) => value > 0)
@@ -177,7 +177,9 @@ const Dashboard = () => {
         activeRoutes,
         goalRoutes,
         status: patientPrescription
-          ? targetKcal > 0 && totalDelivered >= targetKcal
+          ? !latestEvolution
+            ? 'warning'
+            : targetKcal > 0 && totalDelivered >= targetKcal
             ? 'goal_met'
             : 'below_goal'
           : 'no_diet',

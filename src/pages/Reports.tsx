@@ -456,7 +456,7 @@ const Reports = () => {
   const cohortPatients = useMemo(() => {
     return patients
       .filter((patient) => {
-        if (selectedHospital && patient.hospitalId !== selectedHospital) return false;
+        if (selectedHospital && patient.hospitalId && patient.hospitalId !== selectedHospital) return false;
         if (selectedWard !== "all" && patient.ward !== selectedWard) return false;
         return true;
       })
@@ -1080,7 +1080,6 @@ const Reports = () => {
   const managementSummary = useMemo(() => {
     const attendedPatients = new Set<string>();
     const patientDaySet = new Set<string>();
-    const enteralInfusionDaySet = new Set<string>();
     let nursingCostTotal = 0;
     let materialCostTotal = 0;
     let therapyCostTotal = 0;
@@ -1090,19 +1089,23 @@ const Reports = () => {
       if (!hasEnteralInfusion) return;
 
       attendedPatients.add(evolution.patientId);
-      enteralInfusionDaySet.add(`${evolution.patientId}:${evolution.date}`);
+      patientDaySet.add(`${evolution.patientId}:${evolution.date}`);
     });
 
     enteralPrescriptions.forEach((prescription) => {
       const overlapDays = getOverlapDays(prescription.startDate, prescription.endDate, startDate, endDate);
       if (overlapDays <= 0) return;
 
+      attendedPatients.add(prescription.patientId);
+      daysInPeriod.forEach((day) => {
+        if (isPrescriptionActiveOn(prescription, day)) {
+          patientDaySet.add(`${prescription.patientId}:${day}`);
+        }
+      });
       nursingCostTotal += (prescription.nursingCostTotal || 0) * overlapDays;
       materialCostTotal += (prescription.materialCostTotal || 0) * overlapDays;
       therapyCostTotal += (prescription.totalCost || 0) * overlapDays;
     });
-
-    enteralInfusionDaySet.forEach((entry) => patientDaySet.add(entry));
 
     const formulasCost = reportProductUsage
       .filter((item) => item.category === "formula")
@@ -1123,9 +1126,9 @@ const Reports = () => {
 
     return {
       patientCount,
-      prescriptionCount: enteralInfusionDaySet.size,
+      prescriptionCount: patientDaySet.size,
       patientDays: averagePatientsPerDay,
-      prescriptionDays: enteralInfusionDaySet.size,
+      prescriptionDays: patientDaySet.size,
       productCount: reportProductUsage.length,
       formulasCost,
       modulesCost,
