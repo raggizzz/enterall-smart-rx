@@ -2,7 +2,14 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = "C:\Users\igorp\Documents\enterall-smart-rx"
 $logPath = Join-Path $projectRoot ".codex-cloudflared-current.log"
-$cloudflaredPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+$cloudflaredPath = @(
+    (Join-Path $env:LOCALAPPDATA "cloudflared\cloudflared.exe"),
+    "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $cloudflaredPath) {
+    throw "cloudflared.exe nao foi encontrado."
+}
 
 $existing = Get-Process cloudflared -ErrorAction SilentlyContinue
 if ($existing) {

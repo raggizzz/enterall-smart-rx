@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://orlando-stations-joined-wonderful.trycloudflare.com/health"
+      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://orlando-stations-joined-wonderful.trycloudflare.com/health/:path*"
+      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://orlando-stations-joined-wonderful.trycloudflare.com/api/:path*"
+      "destination": "https://cent-richard-treasures-overview.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
