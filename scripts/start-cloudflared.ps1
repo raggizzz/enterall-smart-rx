@@ -22,7 +22,7 @@ if (Test-Path $logPath) {
 }
 
 Start-Process -FilePath $cloudflaredPath `
-    -ArgumentList "tunnel", "--url", "http://127.0.0.1:3000", "--logfile", $logPath, "--protocol", "quic" `
+    -ArgumentList "tunnel", "--url", "http://127.0.0.1:3000", "--logfile", $logPath, "--protocol", "http2" `
     -WindowStyle Hidden
 
 Write-Output $logPath

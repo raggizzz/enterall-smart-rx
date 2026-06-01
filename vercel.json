@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/health"
+      "destination": "https://edt-prozac-horse-occasions.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/health/:path*"
+      "destination": "https://edt-prozac-horse-occasions.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://attachment-they-greensboro-ware.trycloudflare.com/api/:path*"
+      "destination": "https://edt-prozac-horse-occasions.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
