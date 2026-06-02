@@ -1221,8 +1221,8 @@ const queueDelete = async (
 };
 
 export const patientsService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('patients', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/patients', hospitalId))).map(normalizePatient),
         ) as Promise<Patient[]>;
@@ -1249,8 +1249,8 @@ export const patientsService = {
 };
 
 export const formulasService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('formulas', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/formulas', hospitalId))).map(normalizeFormula),
         ) as Promise<Formula[]>;
@@ -1279,8 +1279,8 @@ export const formulasService = {
 };
 
 export const modulesService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('modules', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/modules', hospitalId))).map(normalizeModule),
         ) as Promise<Module[]>;
@@ -1304,8 +1304,8 @@ export const modulesService = {
 };
 
 export const suppliesService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('supplies', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/supplies', hospitalId))).map(normalizeSupply),
         ) as Promise<Supply[]>;
@@ -1329,8 +1329,8 @@ export const suppliesService = {
 };
 
 export const professionalsService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('professionals', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/professionals', hospitalId))).map(normalizeProfessional),
         ) as Promise<Professional[]>;
@@ -1372,8 +1372,8 @@ export const prescriptionsService = {
             createdAt: toDateOnly(event.createdAt),
         })) as PrescriptionStatusEvent[];
     },
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('prescriptions', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/prescriptions', hospitalId))).map(normalizePrescription),
         ) as Promise<Prescription[]>;
@@ -1421,8 +1421,8 @@ export const prescriptionsService = {
 };
 
 export const evolutionsService = {
-    async getAll() {
-        const hospitalId = resolveSessionHospitalId();
+    async getAll(requestedHospitalId?: string) {
+        const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('evolutions', async () =>
             extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/evolutions', hospitalId)).catch(() => [])).map(normalizeEvolution),
         ) as Promise<DailyEvolution[]>;

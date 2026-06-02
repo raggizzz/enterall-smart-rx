@@ -121,10 +121,8 @@ router.post('/', async (req, res) => {
                         hospitalId,
                         patientId: payload.patientId,
                         date: targetDate,
-                        ...(payload.prescriptionId
-                            ? { prescriptionId: payload.prescriptionId }
-                            : {}),
-                    }
+                    },
+                    orderBy: { updatedAt: 'desc' },
                 })
                 : null;
 

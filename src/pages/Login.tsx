@@ -15,7 +15,6 @@ import {
   applyRolePermissionsFromDatabase,
   ROLE_OPTIONS,
   ROLE_LABELS,
-  hasActiveSession,
   normalizeRole,
 } from "@/lib/permissions";
 
@@ -37,12 +36,6 @@ const Login = () => {
       setFormData((prev) => ({ ...prev, hospital: hospitals[0].id || "" }));
     }
   }, [hospitals, formData.hospital]);
-
-  useEffect(() => {
-    if (hasActiveSession()) {
-      navigate("/dashboard");
-    }
-  }, [navigate]);
 
   const syncRolePermissions = async () => {
     try {

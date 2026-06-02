@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
+import { getLocalDateKey } from "@/lib/dateOnly";
 import {
     OralSupplementSchedule,
     OralModuleSchedule,
@@ -392,7 +393,7 @@ export default function OralTherapyPage() {
                 observations: observations || undefined,
             },
             status: "active" as const,
-            startDate: new Date().toISOString().split("T")[0],
+            startDate: getLocalDateKey(),
             notes: notesParts.join(" | "),
         };
 

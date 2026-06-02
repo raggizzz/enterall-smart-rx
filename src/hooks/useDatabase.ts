@@ -34,6 +34,7 @@ import {
 } from '@/lib/database';
 import { hasActiveSession, normalizeRole } from '@/lib/permissions';
 import { FORCE_REFRESH_EVENT } from '@/lib/syncEvents';
+import { getLocalDateKey } from '@/lib/dateOnly';
 
 /** Dados clínicos ativos (pacientes, prescrições, evoluções): 60 segundos */
 const CLINICAL_REFRESH_MS = 60_000;
@@ -107,20 +108,20 @@ export function useDatabaseInit() {
 // PATIENTS HOOKS
 // ============================================
 
-export function usePatients() {
+export function usePatients(hospitalId?: string) {
     const [patients, setPatients] = useState<Patient[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchPatients = useCallback(async () => {
         try {
-            const data = await patientsService.getAll();
+            const data = await patientsService.getAll(hospitalId);
             setPatients(data);
         } catch (error) {
             console.error('Error fetching patients:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchPatients, CLINICAL_REFRESH_MS, [fetchPatients]);
 
@@ -196,20 +197,20 @@ export function useActivePatients() {
 // FORMULAS HOOKS
 // ============================================
 
-export function useFormulas() {
+export function useFormulas(hospitalId?: string) {
     const [formulas, setFormulas] = useState<Formula[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchFormulas = useCallback(async () => {
         try {
-            const data = await formulasService.getAll();
+            const data = await formulasService.getAll(hospitalId);
             setFormulas(data);
         } catch (error) {
             console.error('Error fetching formulas:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchFormulas, CATALOG_REFRESH_MS, [fetchFormulas]);
 
@@ -285,20 +286,20 @@ export function useFormulasBySystem(systemType: 'open' | 'closed') {
 // MODULES HOOKS
 // ============================================
 
-export function useModules() {
+export function useModules(hospitalId?: string) {
     const [modules, setModules] = useState<Module[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchModules = useCallback(async () => {
         try {
-            const data = await modulesService.getAll();
+            const data = await modulesService.getAll(hospitalId);
             setModules(data);
         } catch (error) {
             console.error('Error fetching modules:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchModules, CATALOG_REFRESH_MS, [fetchModules]);
 
@@ -332,20 +333,20 @@ export function useModules() {
 // SUPPLIES HOOKS
 // ============================================
 
-export function useSupplies() {
+export function useSupplies(hospitalId?: string) {
     const [supplies, setSupplies] = useState<Supply[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchSupplies = useCallback(async () => {
         try {
-            const data = await suppliesService.getAll();
+            const data = await suppliesService.getAll(hospitalId);
             setSupplies(data);
         } catch (error) {
             console.error('Error fetching supplies:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchSupplies, CATALOG_REFRESH_MS, [fetchSupplies]);
 
@@ -431,20 +432,20 @@ export function useProfessionals(hospitalId?: string) {
 // PRESCRIPTIONS HOOKS
 // ============================================
 
-export function usePrescriptions() {
+export function usePrescriptions(hospitalId?: string) {
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchPrescriptions = useCallback(async () => {
         try {
-            const data = await prescriptionsService.getAll();
+            const data = await prescriptionsService.getAll(hospitalId);
             setPrescriptions(data);
         } catch (error) {
             console.error('Error fetching prescriptions:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchPrescriptions, CLINICAL_REFRESH_MS, [fetchPrescriptions]);
 
@@ -557,20 +558,20 @@ export function useActivePrescriptions() {
 // DAILY EVOLUTIONS HOOKS
 // ============================================
 
-export function useEvolutions() {
+export function useEvolutions(hospitalId?: string) {
     const [evolutions, setEvolutions] = useState<DailyEvolution[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const fetchEvolutions = useCallback(async () => {
         try {
-            const data = await evolutionsService.getAll();
+            const data = await evolutionsService.getAll(hospitalId);
             setEvolutions(data);
         } catch (error) {
             console.error('Error fetching evolutions:', error);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [hospitalId]);
 
     useAutoRefresh(fetchEvolutions, CLINICAL_REFRESH_MS, [fetchEvolutions]);
 
@@ -928,7 +929,7 @@ export function useBackup() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `enterall-backup-${backup.hospitalName || 'hospital'}-${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `enterall-backup-${backup.hospitalName || 'hospital'}-${getLocalDateKey()}.json`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -980,7 +981,7 @@ export function useDashboardData() {
 
     const fetchDashboardData = useCallback(async () => {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDateKey();
 
             const [patients, prescriptions, evolutions, formulas] = await Promise.all([
                 patientsService.getAll(),
@@ -1013,7 +1014,7 @@ export function useLabelData(date?: string) {
 
     const fetchLabelData = useCallback(async () => {
         try {
-            const targetDate = date || new Date().toISOString().split('T')[0];
+            const targetDate = date || getLocalDateKey();
             const active = await prescriptionsService.getActive();
             const filtered = active.filter(p =>
                 p.startDate <= targetDate && (!p.endDate || p.endDate >= targetDate)

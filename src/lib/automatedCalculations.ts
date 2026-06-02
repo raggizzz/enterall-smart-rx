@@ -404,6 +404,37 @@ export function calculateNitrogenBalance(
   };
 }
 
+export type EnergyEquation = 'mifflin-st-jeor' | 'harris-benedict-revised';
+
+export function calculateRestingEnergyExpenditure(
+  equation: EnergyEquation,
+  weightKg: number,
+  heightCm: number,
+  ageYears: number,
+  gender: 'male' | 'female'
+): number {
+  if (weightKg <= 0 || heightCm <= 0 || ageYears <= 0) return 0;
+
+  if (equation === 'harris-benedict-revised') {
+    return gender === 'male'
+      ? 88.362 + (13.397 * weightKg) + (4.799 * heightCm) - (5.677 * ageYears)
+      : 447.593 + (9.247 * weightKg) + (3.098 * heightCm) - (4.330 * ageYears);
+  }
+
+  return gender === 'male'
+    ? (10 * weightKg) + (6.25 * heightCm) - (5 * ageYears) + 5
+    : (10 * weightKg) + (6.25 * heightCm) - (5 * ageYears) - 161;
+}
+
+export function calculateTotalEnergyExpenditure(
+  restingEnergyExpenditure: number,
+  activityFactor = 1,
+  stressFactor = 1
+): number {
+  if (restingEnergyExpenditure <= 0 || activityFactor <= 0 || stressFactor <= 0) return 0;
+  return restingEnergyExpenditure * activityFactor * stressFactor;
+}
+
 /**
  * Generate comprehensive calculation report
  */

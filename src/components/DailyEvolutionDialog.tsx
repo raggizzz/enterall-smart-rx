@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Save } from "lucide-react";
 import { useEvolutions } from "@/hooks/useDatabase";
 import { useSession } from "@/hooks/useSession";
+import { getPreviousLocalDateKey } from "@/lib/dateOnly";
 
 interface DailyEvolutionDialogProps {
     open: boolean;
@@ -74,8 +75,6 @@ export function DailyEvolutionDialog({
 
         setIsSaving(true);
         try {
-            const targetDate = new Date();
-            targetDate.setDate(targetDate.getDate() - 1);
             const serializedIntercurrences = intercurrences.length > 0
                 ? `Intercorrências: ${intercurrences.join(", ")}`
                 : "";
@@ -87,7 +86,7 @@ export function DailyEvolutionDialog({
                 professionalId: sessionProfessionalId,
                 patientId,
                 prescriptionId,
-                date: targetDate.toISOString().slice(0, 10),
+                date: getPreviousLocalDateKey(),
                 volumeInfused: parseFloat(infusedVolume),
                 metaReached: Number(percentage.toFixed(2)),
                 notes: combinedNotes || undefined,

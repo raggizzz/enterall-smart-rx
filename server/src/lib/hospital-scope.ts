@@ -41,8 +41,9 @@ export const getScopedHospitalId = (
   req: Request,
   ...fallbackValues: Array<unknown>
 ): string | undefined => {
-  const authHospitalId = normalizeHospitalId(getAuthPayload(req)?.hospitalId);
-  if (authHospitalId) return authHospitalId;
+  const authPayload = getAuthPayload(req);
+  const authHospitalId = normalizeHospitalId(authPayload?.hospitalId);
+  if (authHospitalId && authPayload?.role !== 'general_manager') return authHospitalId;
 
   const fallbackCandidates: Array<unknown> = [
     ...fallbackValues,
@@ -56,7 +57,7 @@ export const getScopedHospitalId = (
     if (hospitalId) return hospitalId;
   }
 
-  return undefined;
+  return authHospitalId;
 };
 
 export const requireScopedHospitalId = (

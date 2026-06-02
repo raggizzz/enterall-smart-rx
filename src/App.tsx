@@ -9,7 +9,7 @@ import DatabaseProvider from "@/components/DatabaseProvider";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
 import SyncQueueProvider from "@/components/SyncQueueProvider";
-import { hasActiveSession } from "@/lib/permissions";
+import { useSession } from "@/hooks/useSession";
 
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -31,6 +31,11 @@ const SelectRoute = lazy(() => import("./pages/SelectRoute"));
 const Tools = lazy(() => import("./pages/Tools"));
 const Forbidden = lazy(() => import("./pages/Forbidden"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+const SessionEntryRoute = () => {
+  const { isAuthenticated, hospitalId } = useSession();
+  return isAuthenticated && hospitalId ? <Navigate to="/dashboard" replace /> : <Login />;
+};
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,7 +66,7 @@ const App = () => (
             <BrowserRouter>
               <Suspense fallback={<div className="flex h-screen w-full items-center justify-center text-slate-500 font-mono text-xs uppercase tracking-widest">Carregando Interface Clinica...</div>}>
                 <Routes>
-                  <Route path="/" element={hasActiveSession() ? <Navigate to="/dashboard" replace /> : <Login />} />
+                  <Route path="/" element={<SessionEntryRoute />} />
                   <Route path="/forbidden" element={<Forbidden />} />
                   <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                   <Route

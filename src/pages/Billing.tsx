@@ -23,6 +23,7 @@ import { DEFAULT_SCHEDULE_TIMES, findWardByReference, resolveConfiguredScheduleT
 import { createPrintPopup, printElementInPopup } from "@/lib/printPopup";
 import { addManualBillingAdjustment, ManualAdjustmentCategory } from "@/lib/manualAdjustments";
 import { isPatientActiveForOperations } from "@/lib/patientStatus";
+import { getLocalDateKey } from "@/lib/dateOnly";
 
 const SCHEDULE_TIMES = sortScheduleTimes([...DEFAULT_SCHEDULE_TIMES]);
 const THERAPY_OPTIONS = [
@@ -127,7 +128,7 @@ const formatDeliveryAmount = (
     formulaRef: string,
     formulaName: string,
     volumeOrAmount: number,
-    formulas: Array<{ id?: string; code?: string; name: string; billingUnit?: string; presentations: number[] }>,
+    formulas: Array<{ id?: string; code?: string; name: string; presentationForm?: string; billingUnit?: string; presentations: number[] }>,
 ) => {
     const normalizedName = formulaName.trim().toLowerCase();
     const formula = formulas.find((item) =>
@@ -135,7 +136,7 @@ const formatDeliveryAmount = (
         || item.code === formulaRef
         || item.name.trim().toLowerCase() === normalizedName,
     );
-    const billingUnit = formula?.billingUnit || "ml";
+    const billingUnit = formula?.presentationForm === "po" ? "g" : formula?.billingUnit || "ml";
     const bagSize = formula?.presentations?.[0] || 0;
 
     if (prescription.systemType === "closed") {
@@ -189,13 +190,13 @@ const Billing = () => {
     const [requisitionData, setRequisitionData] = useState<RequisitionData | null>(null);
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [cancelTarget, setCancelTarget] = useState<Prescription | null>(null);
-    const [cancelEffectiveDate, setCancelEffectiveDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [cancelEffectiveDate, setCancelEffectiveDate] = useState(() => getLocalDateKey());
     const [cancelSelectedTimes, setCancelSelectedTimes] = useState<string[]>([]);
     const [isCancelling, setIsCancelling] = useState(false);
     const [manualCancelOpen, setManualCancelOpen] = useState(false);
     const [manualRequestMode, setManualRequestMode] = useState<ManualRequestMode>("cancellation");
     const [manualCancelPatientId, setManualCancelPatientId] = useState("");
-    const [manualCancelDate, setManualCancelDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [manualCancelDate, setManualCancelDate] = useState(() => getLocalDateKey());
     const [manualSelectedTimes, setManualSelectedTimes] = useState<string[]>([]);
     const [manualCancelSelectedItems, setManualCancelSelectedItems] = useState<string[]>([]);
     const [inlineManualOpen, setInlineManualOpen] = useState(false);
@@ -447,7 +448,7 @@ const Billing = () => {
                 code: formula.code,
                 name: formula.name,
                 category: "formula" as ManualAdjustmentCategory,
-                unit: formula.billingUnit === "unit" ? "un" : formula.billingUnit || "ml",
+                unit: formula.presentationForm === "po" ? "g" : formula.billingUnit === "unit" ? "un" : formula.billingUnit || "ml",
                 unitPrice: formula.billingPrice || 0,
                 label: `${formula.name}${formula.code ? ` (${formula.code})` : ""}`,
             }));
@@ -503,7 +504,7 @@ const Billing = () => {
         setManualCancelSelectedItems([]);
         setManualFreeItems([]);
         setManualFreeItem(createEmptyManualFreeItem(unit === "all" ? "" : unit));
-        setManualCancelDate(new Date().toISOString().split("T")[0]);
+        setManualCancelDate(getLocalDateKey());
     };
 
     const openManualRequestDialog = (mode: ManualRequestMode) => {
@@ -810,7 +811,7 @@ const Billing = () => {
 
     const openTechnicalCancelDialog = (prescription: Prescription) => {
         setCancelTarget(prescription);
-        setCancelEffectiveDate(new Date().toISOString().split("T")[0]);
+        setCancelEffectiveDate(getLocalDateKey());
         setCancelSelectedTimes([...availableScheduleTimes]);
         setCancelDialogOpen(true);
     };

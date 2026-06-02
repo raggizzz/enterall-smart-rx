@@ -9,9 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Search, Clock, Calculator } from "lucide-react";
+import { Search, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
+import {
+  calculateNitrogenBalance,
+  calculateRestingEnergyExpenditure,
+  calculateTotalEnergyExpenditure,
+  type EnergyEquation,
+} from "@/lib/automatedCalculations";
 
 // --- Types for Predictive Equations ---
 type EquationType = "weight" | "height";
@@ -390,6 +396,41 @@ const Tools = () => {
   const [nrsAge, setNrsAge] = useState("65");
   const [nrsNutritionScore, setNrsNutritionScore] = useState("0");
   const [nrsDiseaseScore, setNrsDiseaseScore] = useState("0");
+
+  const [nitrogenProtein, setNitrogenProtein] = useState("");
+  const [nitrogenUun, setNitrogenUun] = useState("");
+  const [nitrogenAdditionalLosses, setNitrogenAdditionalLosses] = useState("4");
+  const nitrogenBalance = useMemo(() => {
+    if (!nitrogenProtein || !nitrogenUun) return null;
+    return calculateNitrogenBalance(
+      numberOrZero(nitrogenProtein),
+      numberOrZero(nitrogenUun),
+      numberOrZero(nitrogenAdditionalLosses),
+    );
+  }, [nitrogenProtein, nitrogenUun, nitrogenAdditionalLosses]);
+
+  const [energyEquation, setEnergyEquation] = useState<EnergyEquation>("mifflin-st-jeor");
+  const [energySex, setEnergySex] = useState<"male" | "female">("male");
+  const [energyWeight, setEnergyWeight] = useState("");
+  const [energyHeight, setEnergyHeight] = useState("");
+  const [energyAge, setEnergyAge] = useState("");
+  const [energyActivityFactor, setEnergyActivityFactor] = useState("1");
+  const [energyStressFactor, setEnergyStressFactor] = useState("1");
+  const energyResult = useMemo(() => {
+    const ree = calculateRestingEnergyExpenditure(
+      energyEquation,
+      numberOrZero(energyWeight),
+      numberOrZero(energyHeight),
+      numberOrZero(energyAge),
+      energySex,
+    );
+    const tee = calculateTotalEnergyExpenditure(
+      ree,
+      numberOrZero(energyActivityFactor),
+      numberOrZero(energyStressFactor),
+    );
+    return ree > 0 && tee > 0 ? { ree, tee } : null;
+  }, [energyEquation, energySex, energyWeight, energyHeight, energyAge, energyActivityFactor, energyStressFactor]);
 
   const nrsResult = useMemo(() => {
     const prescreenPositive = nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4;
@@ -946,56 +987,100 @@ const Tools = () => {
             </Card>
           </TabsContent>
 
-          {/* === NITROGEN BALANCE PLACEHOLDER === */}
+          {/* === NITROGEN BALANCE === */}
           <TabsContent value="balanco_n">
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div>
-                    <CardTitle>Balanço Nitrogenado</CardTitle>
-                    <CardDescription>Cálculo do balanço nitrogenado para avaliação do estado metabólico.</CardDescription>
-                  </div>
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Em breve
-                  </Badge>
-                </div>
+                <CardTitle>Balanço Nitrogenado</CardTitle>
+                <CardDescription>Estimativa pela ingestão proteica e pelo nitrogênio ureico urinário de 24 horas.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="rounded-full bg-muted p-6 mb-4">
-                    <Calculator className="h-10 w-10 text-muted-foreground" />
+              <CardContent className="space-y-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="nitrogen-protein">Proteína ingerida (g/dia)</Label>
+                    <Input id="nitrogen-protein" type="number" min="0" step="0.1" value={nitrogenProtein} onChange={(event) => setNitrogenProtein(event.target.value)} placeholder="Ex: 90" />
                   </div>
-                  <h3 className="font-semibold text-lg mb-2">Funcionalidade em Desenvolvimento</h3>
-                  <p className="text-muted-foreground max-w-md">O cálculo de balanço nitrogenado estará disponível em breve. Permitirá avaliar a ingestão proteica versus as perdas nitrogenadas do paciente.</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="nitrogen-uun">Nitrogênio ureico urinário - UUN (g/24h)</Label>
+                    <Input id="nitrogen-uun" type="number" min="0" step="0.1" value={nitrogenUun} onChange={(event) => setNitrogenUun(event.target.value)} placeholder="Ex: 12" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nitrogen-losses">Perdas adicionais estimadas (g/dia)</Label>
+                    <Input id="nitrogen-losses" type="number" min="0" step="0.1" value={nitrogenAdditionalLosses} onChange={(event) => setNitrogenAdditionalLosses(event.target.value)} />
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground">Fórmula: proteína / 6,25 - (UUN + perdas adicionais). O valor padrão de perdas adicionais é 4 g/dia e pode ser ajustado pela equipe.</p>
+                {nitrogenBalance && (
+                  <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-4">
+                    <div><p className="text-xs text-muted-foreground">Entrada de N</p><p className="text-xl font-bold">{nitrogenBalance.nitrogenIntake.toFixed(1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">Saída de N</p><p className="text-xl font-bold">{nitrogenBalance.nitrogenOutput.toFixed(1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">Balanço</p><p className="text-xl font-bold">{nitrogenBalance.balance.toFixed(1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">Interpretação</p><p className="text-lg font-semibold">{nitrogenBalance.status}</p></div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Ferramenta de apoio. O resultado deve ser interpretado junto ao quadro clínico, função renal e perdas não urinárias.</p>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* === ENERGY EXPENDITURE PLACEHOLDER === */}
+          {/* === ENERGY EXPENDITURE === */}
           <TabsContent value="gasto_energetico">
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div>
-                    <CardTitle>Estimativa de Gasto Energético</CardTitle>
-                    <CardDescription>Equações preditivas para estimativa de gasto energético basal e total.</CardDescription>
-                  </div>
-                  <Badge variant="secondary" className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    Em breve
-                  </Badge>
-                </div>
+                <CardTitle>Estimativa de Gasto Energético</CardTitle>
+                <CardDescription>Estimativa para adultos pelas equações de Mifflin-St Jeor ou Harris-Benedict revisada.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="rounded-full bg-muted p-6 mb-4">
-                    <Calculator className="h-10 w-10 text-muted-foreground" />
+              <CardContent className="space-y-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Equação</Label>
+                    <Select value={energyEquation} onValueChange={(value) => setEnergyEquation(value as EnergyEquation)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mifflin-st-jeor">Mifflin-St Jeor</SelectItem>
+                        <SelectItem value="harris-benedict-revised">Harris-Benedict revisada</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <h3 className="font-semibold text-lg mb-2">Funcionalidade em Desenvolvimento</h3>
-                  <p className="text-muted-foreground max-w-md">A estimativa de gasto energético estará disponível em breve. Incluirá equações como Harris-Benedict, Mifflin-St Jeor e fatores de correção.</p>
+                  <div className="space-y-2">
+                    <Label>Sexo</Label>
+                    <Select value={energySex} onValueChange={(value) => setEnergySex(value as "male" | "female")}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="male">Masculino</SelectItem>
+                        <SelectItem value="female">Feminino</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energy-age">Idade (anos)</Label>
+                    <Input id="energy-age" type="number" min="18" step="1" value={energyAge} onChange={(event) => setEnergyAge(event.target.value)} placeholder="Ex: 65" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energy-weight">Peso (kg)</Label>
+                    <Input id="energy-weight" type="number" min="0" step="0.1" value={energyWeight} onChange={(event) => setEnergyWeight(event.target.value)} placeholder="Ex: 70" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energy-height">Altura (cm)</Label>
+                    <Input id="energy-height" type="number" min="0" step="0.1" value={energyHeight} onChange={(event) => setEnergyHeight(event.target.value)} placeholder="Ex: 170" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energy-activity">Fator de atividade</Label>
+                    <Input id="energy-activity" type="number" min="0.1" step="0.05" value={energyActivityFactor} onChange={(event) => setEnergyActivityFactor(event.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="energy-stress">Fator de estresse</Label>
+                    <Input id="energy-stress" type="number" min="0.1" step="0.05" value={energyStressFactor} onChange={(event) => setEnergyStressFactor(event.target.value)} />
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground">Gasto total estimado = gasto energético de repouso x fator de atividade x fator de estresse. Os fatores iniciam em 1,00 e devem ser definidos pelo nutricionista.</p>
+                {energyResult && (
+                  <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-2">
+                    <div><p className="text-xs text-muted-foreground">Gasto energético de repouso</p><p className="text-2xl font-bold">{Math.round(energyResult.ree)} kcal/dia</p></div>
+                    <div><p className="text-xs text-muted-foreground">Gasto energético total estimado</p><p className="text-2xl font-bold">{Math.round(energyResult.tee)} kcal/dia</p></div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Ferramenta de apoio para adultos. Calorimetria indireta e avaliação clínica prevalecem quando disponíveis.</p>
               </CardContent>
             </Card>
           </TabsContent>

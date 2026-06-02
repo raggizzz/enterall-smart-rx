@@ -54,6 +54,7 @@ import {
     getMonitoringWeight,
     resolveTargetKcalForDay,
 } from "@/lib/monitoringCalculations";
+import { formatLocalDateKey } from "@/lib/dateOnly";
 
 interface MonitoringChartRow {
     date: string;
@@ -85,6 +86,7 @@ interface PatientMonitoringProps {
     parenteralFiber?: number;
     historyData?: MonitoringChartRow[];
     savedEvolution?: DailyEvolution;
+    monitoringDate: string;
 }
 
 export const PatientMonitoring = ({
@@ -107,16 +109,17 @@ export const PatientMonitoring = ({
     parenteralFiber = 0,
     historyData,
     savedEvolution,
+    monitoringDate,
 }: PatientMonitoringProps) => {
     // Estados locais
     const [goals, setGoals] = useState<TNEGoals>(savedEvolution?.tneGoals || patient.tneGoals || {});
     const [infusionPercentageInput, setInfusionPercentageInput] = useState(
         savedEvolution?.metaReached !== undefined
             ? String(savedEvolution.metaReached)
-            : String(patient.infusionPercentage24h ?? "")
+            : ""
     );
     const [interruptions, setInterruptions] = useState<TNEInterruptions>(
-        savedEvolution?.tneInterruptions || patient.tneInterruptions || {}
+        savedEvolution?.tneInterruptions || {}
     );
     const [unintentionalCal, setUnintentionalCal] = useState<UnintentionalCalories>(
         savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {}
@@ -141,9 +144,9 @@ export const PatientMonitoring = ({
         setInfusionPercentageInput(
             savedEvolution?.metaReached !== undefined
                 ? String(savedEvolution.metaReached)
-                : String(patient.infusionPercentage24h ?? "")
+                : ""
         );
-        setInterruptions(savedEvolution?.tneInterruptions || patient.tneInterruptions || {});
+        setInterruptions(savedEvolution?.tneInterruptions || {});
         setUnintentionalCal(savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {});
         setMonitoringNotes(patient.monitoringNotes || "");
         setOralPercentageInput(savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : "");
@@ -237,7 +240,7 @@ export const PatientMonitoring = ({
         enteralCarbs, oralCarbs, parenteralCarbs,
         enteralFat, oralFat, parenteralFat,
         enteralFiber, oralFiber, parenteralFiber,
-        monitoringWeight, idealWeight, unintentionalKcal.total,
+        monitoringWeight, idealWeight, unintentionalKcal.total, patient.prescriptions,
     ]);
 
     const actualNutrition = useMemo(() => {
@@ -403,7 +406,7 @@ export const PatientMonitoring = ({
                         </p>
                     </div>
                     <div className="rounded-xl border bg-white p-4">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Prescrição atual</p>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">Prescrição do dia acompanhado</p>
                         <p className="mt-2 text-2xl font-bold text-emerald-700">{totalNutrition.totalKcal.toFixed(0)} kcal</p>
                         <p className="text-sm text-muted-foreground">{totalNutrition.totalProtein.toFixed(1)} g de proteína</p>
                         <p className="mt-2 text-xs text-muted-foreground">
@@ -424,7 +427,7 @@ export const PatientMonitoring = ({
             <div className="space-y-1">
                 <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Fechamento do dia anterior</p>
                 <p className="text-sm text-muted-foreground">
-                    Registrar aqui o que efetivamente aconteceu nas últimas 24h.
+                    Referência: <span className="font-semibold text-foreground">{formatLocalDateKey(monitoringDate)}</span>. Registrar aqui o que efetivamente aconteceu nesse dia.
                 </p>
             </div>
 
@@ -814,9 +817,9 @@ export const PatientMonitoring = ({
             </Card>
 
             <div className="space-y-1">
-                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Prescrição atual</p>
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Prescrição do dia acompanhado</p>
                 <p className="text-sm text-muted-foreground">
-                    Esta parte projeta o aporte da prescrição nova, separada do fechamento efetivo do dia anterior.
+                    Esta parte apresenta o aporte prescrito para {formatLocalDateKey(monitoringDate)}, separado do fechamento efetivamente registrado.
                 </p>
             </div>
 
@@ -825,10 +828,10 @@ export const PatientMonitoring = ({
                 <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-green-700">
                         <Calculator className="h-5 w-5" />
-                        Aporte Nutricional Total da Prescrição Atual
+                        Aporte Nutricional Total da Prescrição do Dia Acompanhado
                     </CardTitle>
                     <CardDescription>
-                        Somatório das vias prescritas com inclusão das calorias não intencionais no total calórico. Aqui fica somente a previsão da prescrição atual.
+                        Somatório das vias prescritas em {formatLocalDateKey(monitoringDate)}, com inclusão das calorias não intencionais no total calórico.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

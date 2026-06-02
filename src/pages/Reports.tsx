@@ -39,6 +39,7 @@ import type { DailyEvolution, Formula, Module, Patient, Prescription, Supply } f
 import { printElementInPopup } from "@/lib/printPopup";
 import { getManualBillingAdjustmentsForPeriod } from "@/lib/manualAdjustments";
 import { clampPercent } from "@/lib/monitoringCalculations";
+import { getLocalDateKey } from "@/lib/dateOnly";
 
 type ChartRow = {
   date: string;
@@ -170,7 +171,7 @@ const buildDateRange = (startDate: string, endDate: string): string[] => {
   const loop = new Date(start);
 
   while (loop <= end) {
-    dates.push(loop.toISOString().split("T")[0]);
+    dates.push(getLocalDateKey(loop));
     loop.setDate(loop.getDate() + 1);
   }
 
@@ -270,6 +271,12 @@ const pickPrescriptionForType = (
   return [...candidates].sort(sortByMostRecentStartDate)[0];
 };
 
+const getEvolutionTimestamp = (evolution: DailyEvolution): number => {
+  const value = evolution.updatedAt || evolution.createdAt || evolution.date;
+  const timestamp = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
 const getOverlapDays = (startDate: string, endDate: string | undefined, filterStart: string, filterEnd: string): number => {
   const effectiveStart = startDate > filterStart ? startDate : filterStart;
   const effectiveEnd = endDate && endDate < filterEnd ? endDate : filterEnd;
@@ -301,6 +308,9 @@ const getFormulaCaloriesPerMl = (formula?: Formula): number => {
   return caloriesPerUnit > 10 ? caloriesPerUnit / 100 : caloriesPerUnit;
 };
 
+const getFormulaBillingUnit = (formula?: Formula): string =>
+  formula?.presentationForm === "po" ? "g" : formula?.billingUnit || "ml";
+
 const getModuleByName = (modules: Module[], moduleName?: string) => {
   if (!moduleName) return undefined;
   const normalized = moduleName.trim().toLowerCase();
@@ -316,6 +326,24 @@ const normalizeLookupText = (value?: string) =>
 const findSetByName = (supplies: Supply[], matcher: (name: string) => boolean): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.type === "set" && matcher(normalizeLookupText(supply.name)));
 
+const createAutomaticSupply = (
+  code: string,
+  name: string,
+  type: Supply["type"],
+  category: Supply["category"],
+): Supply => ({
+  code,
+  name,
+  type,
+  category,
+  billingUnit: "unit",
+  unitPrice: 0,
+  isBillable: true,
+  isActive: true,
+  createdAt: "",
+  updatedAt: "",
+});
+
 const getPumpSupply = (supplies: Supply[], systemType?: string): Supply | undefined => {
   const preferredCategory = systemType === "closed" ? "closed-pump-set" : systemType === "open" ? "open-pump-set" : "pump-set";
   return supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === preferredCategory)
@@ -327,22 +355,31 @@ const getPumpSupply = (supplies: Supply[], systemType?: string): Supply | undefi
       : undefined)
     || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "pump-set")
     || findSetByName(supplies, (name) => name.includes("bomba"))
-    || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.type === "set");
+    || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.type === "set")
+    || createAutomaticSupply(
+      systemType === "closed" ? "AUTO-EQUIPO-BOMBA-SF" : "AUTO-EQUIPO-BOMBA-SA",
+      `Equipo para bomba - sistema ${systemType === "closed" ? "fechado" : "aberto"}`,
+      "set",
+      "pump-set",
+    );
 };
 
 const getGravitySupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "gravity-set")
   || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("gravit"))
-  || supplies.find((supply) => supply.isActive && supply.type === "set");
+  || supplies.find((supply) => supply.isActive && supply.type === "set")
+  || createAutomaticSupply("AUTO-EQUIPO-GRAVITACIONAL", "Equipo gravitacional", "set", "gravity-set");
 
 const getBolusSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "bolus-set")
-  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bolus"));
+  || supplies.find((supply) => supply.isActive && supply.type === "set" && supply.name.toLowerCase().includes("bolus"))
+  || createAutomaticSupply("AUTO-EQUIPO-BOLUS", "Equipo para bolus", "set", "bolus-set");
 
 const getBottleSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "feeding-bottle")
   || supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "baby-bottle")
-  || supplies.find((supply) => supply.isActive && supply.type === "bottle");
+  || supplies.find((supply) => supply.isActive && supply.type === "bottle")
+  || createAutomaticSupply("AUTO-FRASCO-DIETA", "Frasco para dieta", "bottle", "feeding-bottle");
 
 const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
   supplies.find((supply) => supply.isActive && supply.isBillable !== false && supply.category === "hydration-water")
@@ -412,17 +449,17 @@ const Reports = () => {
   const navigate = useNavigate();
   const role = useCurrentRole();
   const isManagerView = can(role, "manage_units") || can(role, "manage_wards");
+  const [selectedHospital, setSelectedHospital] = useState("");
 
-  const { patients, isLoading: patientsLoading } = usePatients();
-  const { evolutions } = useEvolutions();
-  const { prescriptions } = usePrescriptions();
-  const { formulas, isLoading: formulasLoading } = useFormulas();
-  const { modules, isLoading: modulesLoading } = useModules();
-  const { supplies, isLoading: suppliesLoading } = useSupplies();
+  const { patients, isLoading: patientsLoading } = usePatients(selectedHospital || undefined);
+  const { evolutions } = useEvolutions(selectedHospital || undefined);
+  const { prescriptions } = usePrescriptions(selectedHospital || undefined);
+  const { formulas, isLoading: formulasLoading } = useFormulas(selectedHospital || undefined);
+  const { modules, isLoading: modulesLoading } = useModules(selectedHospital || undefined);
+  const { supplies, isLoading: suppliesLoading } = useSupplies(selectedHospital || undefined);
   const { settings } = useSettings();
   const { hospitals } = useHospitals();
 
-  const [selectedHospital, setSelectedHospital] = useState("");
   const { wards } = useWards(selectedHospital || undefined);
 
   const [selectedWard, setSelectedWard] = useState("all");
@@ -433,10 +470,11 @@ const Reports = () => {
   const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(today.getDate() - 7);
 
-  const [startDate, setStartDate] = useState(sevenDaysAgo.toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(getLocalDateKey(sevenDaysAgo));
+  const [endDate, setEndDate] = useState(getLocalDateKey(today));
 
   useEffect(() => {
+    if (selectedHospital) return;
     if (typeof window === "undefined") return;
     const storedHospital = localStorage.getItem("userHospitalId") || "";
     if (storedHospital) {
@@ -447,7 +485,7 @@ const Reports = () => {
     if (hospitals.length > 0 && hospitals[0].id) {
       setSelectedHospital(hospitals[0].id);
     }
-  }, [hospitals]);
+  }, [hospitals, selectedHospital]);
 
   useEffect(() => {
     setSelectedWard("all");
@@ -499,10 +537,20 @@ const Reports = () => {
   }, [modules]);
 
   const filteredEvolutions = useMemo(() => {
-    return evolutions.filter((evolution) => {
+    const latestByPatientAndDate = new Map<string, DailyEvolution>();
+
+    evolutions.filter((evolution) => {
       const matchesDate = evolution.date >= startDate && evolution.date <= endDate;
       return matchesDate && effectivePatientIds.has(evolution.patientId);
+    }).forEach((evolution) => {
+      const key = `${evolution.patientId}:${evolution.date}`;
+      const current = latestByPatientAndDate.get(key);
+      if (!current || getEvolutionTimestamp(evolution) > getEvolutionTimestamp(current)) {
+        latestByPatientAndDate.set(key, evolution);
+      }
     });
+
+    return Array.from(latestByPatientAndDate.values());
   }, [evolutions, startDate, endDate, effectivePatientIds]);
 
   const filteredPrescriptions = useMemo(() => {
@@ -675,7 +723,7 @@ const Reports = () => {
         const equipmentVolumePerDay = prescription.systemType === "open" && prescription.therapyType === "enteral"
           ? (prescription.equipmentVolume || 0) * administrationsPerDay
           : 0;
-        const billableUnit = formula?.billingUnit || "ml";
+        const billableUnit = getFormulaBillingUnit(formula);
         const bagSize = formula?.presentations?.[0] || 0;
         const billingPrice = formula?.billingPrice || 0;
         const openFormulaEntry = prescription.enteralDetails?.openFormulas?.find((item) => item.formulaId === entry.formulaId);

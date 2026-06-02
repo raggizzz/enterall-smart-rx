@@ -18,6 +18,7 @@ import {
     clampPercent,
     resolveTargetKcalForDay,
 } from "@/lib/monitoringCalculations";
+import { getLocalDateKey, getPreviousLocalDateKey } from "@/lib/dateOnly";
 
 type ChartRow = {
     date: string;
@@ -35,12 +36,13 @@ const formatLabelDate = (isoDate: string): string => {
 
 const buildLastSevenDays = (): string[] => {
     const days: string[] = [];
-    const today = new Date();
+    const lastCompletedDay = new Date();
+    lastCompletedDay.setDate(lastCompletedDay.getDate() - 1);
 
     for (let offset = 6; offset >= 0; offset -= 1) {
-        const current = new Date(today);
-        current.setDate(today.getDate() - offset);
-        days.push(current.toISOString().split("T")[0]);
+        const current = new Date(lastCompletedDay);
+        current.setDate(lastCompletedDay.getDate() - offset);
+        days.push(getLocalDateKey(current));
     }
 
     return days;
@@ -48,12 +50,6 @@ const buildLastSevenDays = (): string[] => {
 
 const isPrescriptionActiveOn = (prescription: Prescription, day: string): boolean => {
     return prescription.startDate <= day && (!prescription.endDate || prescription.endDate >= day);
-};
-
-const getPreviousDay = (): string => {
-    const date = new Date();
-    date.setDate(date.getDate() - 1);
-    return date.toISOString().split("T")[0];
 };
 
 const sortByMostRecentStartDate = (left: Prescription, right: Prescription): number => {
@@ -91,18 +87,6 @@ const pickPrescriptionForType = (
     }
 
     return [...candidates].sort(sortByMostRecentStartDate)[0];
-};
-
-const pickPrescriptionForTypeWithFallback = (
-    activePrescriptions: Prescription[],
-    patientPrescriptions: Prescription[],
-    therapyType: Prescription["therapyType"],
-    preferredId?: string,
-): Prescription | undefined => {
-    return (
-        pickPrescriptionForType(activePrescriptions, therapyType, preferredId) ||
-        pickPrescriptionForType(patientPrescriptions, therapyType, preferredId)
-    );
 };
 
 export default function PatientMonitoringPage() {
@@ -145,19 +129,16 @@ export default function PatientMonitoringPage() {
             };
         }
 
-        const targetDate = getPreviousDay();
+        const targetDate = getPreviousLocalDateKey();
         const prescriptionsOnTargetDate = prescriptions.filter(
             (prescription) =>
                 prescription.patientId === selectedPatient.id &&
                 isPrescriptionActiveOn(prescription, targetDate),
         );
-        const allPatientPrescriptions = prescriptions.filter(
-            (prescription) => prescription.patientId === selectedPatient.id,
-        );
         const patientPrescriptions = [
-            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "enteral"),
-            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "oral"),
-            pickPrescriptionForTypeWithFallback(prescriptionsOnTargetDate, allPatientPrescriptions, "parenteral"),
+            pickPrescriptionForType(prescriptionsOnTargetDate, "enteral"),
+            pickPrescriptionForType(prescriptionsOnTargetDate, "oral"),
+            pickPrescriptionForType(prescriptionsOnTargetDate, "parenteral"),
         ].filter((prescription): prescription is NonNullable<typeof prescription> => Boolean(prescription));
 
         return patientPrescriptions.reduce(
@@ -217,7 +198,7 @@ export default function PatientMonitoringPage() {
     const savedEvolution = useMemo(() => {
         if (!selectedPatient?.id) return undefined;
 
-        const targetDate = getPreviousDay();
+        const targetDate = getPreviousLocalDateKey();
         return pickLatestEvolutionForDate(evolutions, selectedPatient.id, targetDate);
     }, [selectedPatient, evolutions]);
 
@@ -250,20 +231,19 @@ export default function PatientMonitoringPage() {
                 "enteral",
                 evolutionOnDay?.prescriptionId,
             );
-            const oralPrescription = pickPrescriptionForType(prescriptionsOnDay, "oral");
-            const parenteralPrescription = pickPrescriptionForType(prescriptionsOnDay, "parenteral");
-
             const targetKcal = resolveTargetKcalForDay({
                 patient: selectedPatient,
                 evolution: evolutionOnDay,
                 prescriptionsOnDay,
             });
 
-            const oralKcal = evolutionOnDay?.oralKcal ?? oralPrescription?.totalCalories ?? 0;
+            const oralKcal = evolutionOnDay?.oralKcal ?? 0;
             const enteralInfusedKcal = evolutionOnDay?.enteralKcal
                 ?? (enteralPrescription?.totalCalories || 0) * ((evolutionOnDay?.metaReached || 0) / 100);
-            const parenteralKcal = evolutionOnDay?.parenteralKcal ?? parenteralPrescription?.totalCalories ?? 0;
-            const nonIntentionalKcal = calculateUnintentionalCaloriesBreakdown(evolutionOnDay || selectedPatient).total;
+            const parenteralKcal = evolutionOnDay?.parenteralKcal ?? 0;
+            const nonIntentionalKcal = evolutionOnDay
+                ? calculateUnintentionalCaloriesBreakdown(evolutionOnDay).total
+                : 0;
 
             const oralPct = targetKcal > 0 ? clampPercent((oralKcal / targetKcal) * 100) : 0;
             const enteralPct = targetKcal > 0 ? clampPercent((enteralInfusedKcal / targetKcal) * 100) : 0;
@@ -284,21 +264,13 @@ export default function PatientMonitoringPage() {
     const handleSave = async (data: Partial<Patient> & Partial<DailyEvolution>) => {
         if (selectedPatient?.id) {
             const updatedPatient = { ...selectedPatient, ...data };
-            const targetDate = getPreviousDay();
+            const targetDate = getPreviousLocalDateKey();
             const prescriptionsOnTargetDate = prescriptions.filter(
                 (prescription) =>
                     prescription.patientId === selectedPatient.id &&
                     isPrescriptionActiveOn(prescription, targetDate),
             );
-            const allPatientPrescriptions = prescriptions.filter(
-                (prescription) => prescription.patientId === selectedPatient.id,
-            );
-            const enteralPrescription = pickPrescriptionForTypeWithFallback(
-                prescriptionsOnTargetDate,
-                allPatientPrescriptions,
-                "enteral",
-            );
-            const referencePrescription = enteralPrescription || [...allPatientPrescriptions].sort(sortByMostRecentStartDate)[0];
+            const enteralPrescription = pickPrescriptionForType(prescriptionsOnTargetDate, "enteral");
             const existingEvolution = pickLatestEvolutionForDate(evolutions, selectedPatient.id, targetDate);
 
             await updatePatient(selectedPatient.id, {
@@ -322,7 +294,7 @@ export default function PatientMonitoringPage() {
             const evolutionPayload = {
                 hospitalId: updatedPatient.hospitalId || sessionHospitalId,
                 patientId: selectedPatient.id,
-                prescriptionId: enteralPrescription?.id ?? referencePrescription?.id,
+                prescriptionId: enteralPrescription?.id,
                 professionalId: typeof window !== "undefined" ? localStorage.getItem("userProfessionalId") || undefined : undefined,
                 date: targetDate,
                 prescribedVolume,
@@ -427,6 +399,7 @@ export default function PatientMonitoringPage() {
                     parenteralFiber={totals.parenteralFiber}
                     historyData={chartData}
                     savedEvolution={savedEvolution}
+                    monitoringDate={getPreviousLocalDateKey()}
                 />
             </div>
             <BottomNav />

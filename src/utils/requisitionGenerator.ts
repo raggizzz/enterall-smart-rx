@@ -469,7 +469,7 @@ export const generateRequisitionData = ({
                         ? undefined
                         : f.volume;
                 const dilutionWater = !isPowderFormula && p.systemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
-                const formulaUnit = formulaObj?.presentationForm === 'po' ? 'g' : 'ml';
+                const formulaUnit = isPowderFormula ? 'g' : 'ml';
                 const productionNotes = p.enteralDetails?.productionNotes?.trim();
                 const observation = productionNotes || (dilutionWater > 0 ? `Agua de diluicao: ${Math.round(dilutionWater)} ml` : '');
 
@@ -497,7 +497,7 @@ export const generateRequisitionData = ({
                 let rowSubtotal = 0;
 
                 // Formulas often billed by mL or Unit (bag).
-                const billingUnit = formulaObj?.billingUnit || 'ml';
+                const billingUnit = isPowderFormula ? 'g' : formulaObj?.billingUnit || 'ml';
                 const extraVolumePerDay = equipmentVolumePerAdministration * matchingTimes.length;
                 const totalExtraVolume = extraVolumePerDay * dayDiff;
                 const extraPowderPerAdministration = equipmentVolumePerAdministration > 0
