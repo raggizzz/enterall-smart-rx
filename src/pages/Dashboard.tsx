@@ -162,6 +162,10 @@ const Dashboard = () => {
         .filter(([, value]) => value > 0)
         .map(([route]) => route);
       const totalDelivered = routeContribution.oral + routeContribution.enteral + routeContribution.parenteral;
+      const hasExplicitTarget = Boolean(
+        (patient.tneGoals?.targetKcalPerKg && patient.weight)
+        || patient.targetKcal,
+      );
 
       let feedingRoute: WardBed["feedingRoute"] = 'oral';
       if (patient.nutritionType === 'enteral') feedingRoute = 'enteral';
@@ -179,9 +183,11 @@ const Dashboard = () => {
         status: patientPrescription
           ? !latestEvolution
             ? 'warning'
-            : targetKcal > 0 && totalDelivered >= targetKcal
-            ? 'goal_met'
-            : 'below_goal'
+            : hasExplicitTarget
+              ? targetKcal > 0 && totalDelivered >= targetKcal
+                ? 'goal_met'
+                : 'below_goal'
+              : null
           : 'no_diet',
         prescribedVolume: patientPrescription?.totalVolume || 0,
         prescribedCalories: patientPrescription?.totalCalories || 0,

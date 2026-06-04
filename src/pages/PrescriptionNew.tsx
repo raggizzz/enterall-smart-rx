@@ -3721,7 +3721,7 @@ const PrescriptionNew = () => {
                                   <SelectContent>{dbModules.map(m => <SelectItem key={m.id} value={m.id!}>{m.name}</SelectItem>)}</SelectContent>
                                 </Select>
                                 <div className="grid grid-cols-2 gap-3">
-                                  <div className="space-y-1"><Label className="text-sm">Quantidade por oferta</Label><Input type="number" value={om.amount || ''} onChange={e => updateOralModule(index, 'amount', e.target.value)} placeholder="Ex: 10" /></div>
+                                  <div className="space-y-1"><Label className="text-sm">Quantidade por oferta</Label><Input type="text" inputMode="decimal" value={om.amount || ''} onChange={e => updateOralModule(index, 'amount', e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder="Ex: 10" className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" /></div>
                                   <div className="space-y-1"><Label className="text-sm">Unidade</Label><Select value={om.unit || 'g'} onValueChange={val => updateOralModule(index, 'unit', val)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="g">g</SelectItem><SelectItem value="ml">ml</SelectItem></SelectContent></Select></div>
                                 </div>
                                 <div className="space-y-2">
@@ -3843,7 +3843,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética em qualquer modalidade e via</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {chartNoteSuggestion}
                             </div>
@@ -3855,7 +3855,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética em qualquer modalidade e via</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {oralChartNoteSuggestion}
                             </div>
@@ -3867,7 +3867,7 @@ const PrescriptionNew = () => {
                         <>
                           <Separator />
                           <div>
-                            <h4 className="font-semibold mb-2">Prescrição dietética</h4>
+                            <h4 className="font-semibold mb-2">Prescrição dietética em qualquer modalidade e via</h4>
                             <div className="bg-muted p-3 rounded text-xs select-all whitespace-pre-line">
                               {parenteralChartNoteSuggestion}
                             </div>

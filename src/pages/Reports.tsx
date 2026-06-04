@@ -491,15 +491,38 @@ const Reports = () => {
     setSelectedWard("all");
   }, [selectedHospital]);
 
+  const patientIdsFromMatchingPrescriptions = useMemo(() => {
+    const ids = new Set<string>();
+
+    prescriptions.forEach((prescription) => {
+      const matchesHospital = !selectedHospital || prescription.hospitalId === selectedHospital;
+      const patient = patients.find((item) => item.id === prescription.patientId);
+      const wardReference = patient?.ward || prescription.patientWard || "";
+      const matchesWard = selectedWard === "all" || wardReference === selectedWard;
+
+      if (matchesHospital && matchesWard && prescription.patientId) {
+        ids.add(prescription.patientId);
+      }
+    });
+
+    return ids;
+  }, [patients, prescriptions, selectedHospital, selectedWard]);
+
   const cohortPatients = useMemo(() => {
     return patients
       .filter((patient) => {
-        if (selectedHospital && patient.hospitalId && patient.hospitalId !== selectedHospital) return false;
-        if (selectedWard !== "all" && patient.ward !== selectedWard) return false;
-        return true;
+        const matchesHospital = !selectedHospital
+          || patient.hospitalId === selectedHospital
+          || patientIdsFromMatchingPrescriptions.has(patient.id || "");
+        if (!matchesHospital) return false;
+
+        const matchesWard = selectedWard === "all"
+          || patient.ward === selectedWard
+          || patientIdsFromMatchingPrescriptions.has(patient.id || "");
+        return matchesWard;
       })
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [patients, selectedHospital, selectedWard]);
+  }, [patientIdsFromMatchingPrescriptions, patients, selectedHospital, selectedWard]);
 
   useEffect(() => {
     if (selectedPatient === "all") return;

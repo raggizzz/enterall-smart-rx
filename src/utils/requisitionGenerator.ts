@@ -404,6 +404,10 @@ export const generateRequisitionData = ({
     const dayDiff = countInclusiveDays(startDate, endDate);
 
     activePrescriptions.forEach(p => {
+        const resolvedSystemType = p.systemType || p.enteralDetails?.systemType;
+        const resolvedInfusionMode = p.infusionMode
+            || p.enteralDetails?.infusionMode
+            || p.enteralDetails?.closedFormula?.infusionMode;
         const patient = patientsById.get(p.patientId);
         const patientInfo = {
             patientId: p.patientId,
@@ -423,7 +427,6 @@ export const generateRequisitionData = ({
         let hydrationDailySetCount = 0;
         let hasMappedDelivery = false;
         const isEnteralViaOral = p.therapyType === 'enteral' && (p.enteralDetails?.access === 'VO' || p.feedingRoute === 'VO');
-        const infusionMode = p.infusionMode || p.enteralDetails?.infusionMode;
         const formulaEntries = p.formulas.length > 0
             ? p.formulas
             : p.therapyType === 'oral'
@@ -463,12 +466,12 @@ export const generateRequisitionData = ({
                     || formulaLookupText.includes(' em po')
                     || formulaLookupText.includes('po ')
                     || formulaLookupText.includes('po-');
-                const finalStageVolume = p.systemType === 'open' && diluteTo > 0
+                const finalStageVolume = resolvedSystemType === 'open' && diluteTo > 0
                     ? diluteTo
                     : isPowderFormula
                         ? undefined
                         : f.volume;
-                const dilutionWater = !isPowderFormula && p.systemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
+                const dilutionWater = !isPowderFormula && resolvedSystemType === 'open' && diluteTo > f.volume ? diluteTo - f.volume : 0;
                 const formulaUnit = isPowderFormula ? 'g' : 'ml';
                 const productionNotes = p.enteralDetails?.productionNotes?.trim();
                 const observation = productionNotes || (dilutionWater > 0 ? `Agua de diluicao: ${Math.round(dilutionWater)} ml` : '');
@@ -481,16 +484,16 @@ export const generateRequisitionData = ({
                     unit: formulaUnit,
                     stageVolume: finalStageVolume,
                     stageVolumeUnit: finalStageVolume ? 'ml' : undefined,
-                    rate: isEnteralViaOral ? undefined : getPrescriptionRateLabel(p, finalStageVolume),
+                    rate: isEnteralViaOral ? undefined : getPrescriptionRateLabel({ ...p, infusionMode: resolvedInfusionMode, systemType: resolvedSystemType }, finalStageVolume),
                     times: matchingTimes.map(formatDietMapTimeLabel),
                     productCode: formulaObj?.code || f.formulaId,
                     observation,
                 });
 
-                const administrationsForVolume = p.systemType === 'closed' ? 1 : matchingTimes.length;
+                const administrationsForVolume = resolvedSystemType === 'closed' ? 1 : matchingTimes.length;
                 const totalVol = f.volume * administrationsForVolume * dayDiff;
                 const price = getFormulaPrice(f.formulaId);
-                const equipmentVolumePerAdministration = p.systemType === 'open' && p.therapyType === 'enteral'
+                const equipmentVolumePerAdministration = resolvedSystemType === 'open' && p.therapyType === 'enteral'
                     ? (p.equipmentVolume || 0)
                     : 0;
                 let rowUnitPrice = price;
@@ -509,7 +512,7 @@ export const generateRequisitionData = ({
                     ? totalVol + (extraPowderPerAdministration * matchingTimes.length * dayDiff)
                     : totalVol + totalExtraVolume;
 
-                if (p.systemType === 'closed') {
+                if (resolvedSystemType === 'closed') {
                     const bagSize = formulaObj?.presentations?.[0] || 1000;
                     const bagQuantities = p.enteralDetails?.closedFormula?.bagQuantities || {};
                     const hasExplicitBagQuantities = Boolean(p.enteralDetails?.closedFormula?.bagQuantitiesProvided)
@@ -568,7 +571,7 @@ export const generateRequisitionData = ({
                 }
 
                 // Heuristic for Bottles: If Open System, 1 bottle per administration?
-                if (p.systemType === 'open') {
+                if (resolvedSystemType === 'open') {
                     if (!isEnteralViaOral) {
                         addBottleCharge(finalStageVolume, matchingTimes.length * dayDiff);
                         mainDailySetCount = 1;
@@ -690,7 +693,7 @@ export const generateRequisitionData = ({
                     unit: 'ml',
                     stageVolume: p.hydrationVolume,
                     stageVolumeUnit: 'ml',
-                    rate: isEnteralViaOral ? undefined : infusionMode === 'bolus' ? 'Bolus' : undefined,
+                    rate: isEnteralViaOral ? undefined : resolvedInfusionMode === 'bolus' ? 'Bolus' : undefined,
                     times: matchingTimes.map(formatDietMapTimeLabel),
                     productCode: waterSupply?.code || 'WATER-001',
                     observation: p.enteralDetails?.productionNotes?.trim() || ''
@@ -710,11 +713,11 @@ export const generateRequisitionData = ({
         // --- Supplies Heuristics (Consolidated Only) ---
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
             if (includeAutomaticSets && !isEnteralViaOral && mainDailySetCount > 0) {
-                if (infusionMode === 'pump') {
-                    addSupplyCharge(getPumpSupply(p.systemType), mainDailySetCount * dayDiff);
-                } else if (infusionMode === 'gravity') {
+                if (resolvedInfusionMode === 'pump') {
+                    addSupplyCharge(getPumpSupply(resolvedSystemType), mainDailySetCount * dayDiff);
+                } else if (resolvedInfusionMode === 'gravity') {
                     addSupplyCharge(getGravitySupply(), mainDailySetCount * dayDiff);
-                } else if (infusionMode === 'bolus') {
+                } else if (resolvedInfusionMode === 'bolus') {
                     addSupplyCharge(getBolusSupply(), mainDailySetCount * dayDiff);
                 }
             }
