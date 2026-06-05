@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://follow-thompson-achieved-facilities.trycloudflare.com/health"
+      "destination": "https://understanding-text-above-las.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://follow-thompson-achieved-facilities.trycloudflare.com/health/:path*"
+      "destination": "https://understanding-text-above-las.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://follow-thompson-achieved-facilities.trycloudflare.com/api/:path*"
+      "destination": "https://understanding-text-above-las.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
