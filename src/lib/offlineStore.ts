@@ -415,7 +415,7 @@ export const queueEntityMutation = async (params: {
 
 const shouldQueueError = (error: unknown) => {
   if (!(error instanceof ApiError)) return true;
-  return [502, 503, 504].includes(error.status);
+  return [408, 425, 429, 500, 502, 503, 504].includes(error.status);
 };
 
 export const executeOrQueueMutation = async (params: {
