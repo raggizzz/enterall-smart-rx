@@ -79,6 +79,14 @@ const parseResponseBody = async (res: Response) => {
     }
 };
 
+const getErrorDetail = (body: unknown) => {
+    if (!body || typeof body !== "object") return undefined;
+
+    const record = body as Record<string, unknown>;
+    const detail = record.error || record.message;
+    return typeof detail === "string" && detail.trim().length > 0 ? detail : undefined;
+};
+
 const readStoredSession = (): StoredSession | null => {
     if (typeof window === "undefined") return null;
 
@@ -248,8 +256,10 @@ const request = async (
             clearInvalidSession();
         }
 
+        const method = init.method || "GET";
+        const detail = getErrorDetail(body) || res.statusText || "sem detalhes";
         throw new ApiError(
-            `API ${init.method || "GET"} Error: ${res.statusText}`,
+            `API ${method} Error ${res.status}: ${detail}`,
             res.status,
             body,
         );
