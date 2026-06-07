@@ -509,6 +509,8 @@ export interface IndirectCosts {
 
 export interface Clinic {
     id?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     hospitalId?: string;
     name: string;
     code: string;
@@ -579,6 +581,8 @@ export interface RolePermission {
 
 export interface AppTool {
     id?: string;
+    version?: number;
+    syncStatus?: 'synced' | 'pending' | 'failed';
     hospitalId?: string;
     code: string;
     name: string;
@@ -966,6 +970,18 @@ const normalizeEvolution = (raw: any): DailyEvolution => {
     };
 };
 
+const normalizeClinic = (raw: any): Clinic => ({
+    id: raw.id,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    hospitalId: raw.hospitalId,
+    name: raw.name || "",
+    code: raw.code || "",
+    type: raw.type ?? "other",
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+});
+
 const normalizeHospital = (raw: any): Hospital => ({
     id: raw.id,
     version: toNumber(raw.version),
@@ -990,6 +1006,21 @@ const normalizeWard = (raw: any): Ward => ({
     isActive: raw.isActive !== false,
     defaultSchedules: ensureArray<string>(raw.defaultSchedules),
     createdAt: raw.createdAt || new Date().toISOString(),
+});
+
+const normalizeAppTool = (raw: any): AppTool => ({
+    id: raw.id,
+    version: toNumber(raw.version),
+    syncStatus: raw.syncStatus ?? 'synced',
+    hospitalId: raw.hospitalId,
+    code: raw.code || "",
+    name: raw.name || "",
+    category: raw.category || "",
+    description: raw.description,
+    link: raw.link,
+    isActive: raw.isActive !== false,
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
 });
 
 const mapPatientPayload = (data: any) => ({
@@ -1448,15 +1479,25 @@ export const evolutionsService = {
 export const clinicsService = {
     async getAll() {
         const hospitalId = resolveSessionHospitalId();
-        return apiClient.get(appendHospitalIdQuery('/clinics', hospitalId)).catch(() => []);
+        return mergeRemoteWithOffline('clinics', async () =>
+            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/clinics', hospitalId))).map(normalizeClinic),
+        ) as Promise<Clinic[]>;
     },
     async getActive() {
-        const hospitalId = resolveSessionHospitalId();
-        return apiClient.get(appendHospitalIdQuery('/clinics', hospitalId)).catch(() => []);
+        return (await this.getAll()).filter((clinic: Clinic) => clinic.isActive);
     },
-    async create(data: any) { return (await apiClient.post('/clinics', data)).id; },
-    async update(id: string, data: any) { return apiClient.put(`/clinics/${id}`, data); },
-    async delete(id: string) { return apiClient.delete(`/clinics/${id}`); }
+    async create(data: any) {
+        const payload = {
+            ...data,
+            hospitalId: data.hospitalId ?? resolveSessionHospitalId(),
+        };
+        const result = await queueCreate('clinics', '/clinics', payload, normalizeClinic);
+        return String(result.entityId ?? result.id);
+    },
+    async update(id: string, data: any) {
+        return queueUpdate('clinics', `/clinics/${id}`, id, data, normalizeClinic);
+    },
+    async delete(id: string) { return queueDelete('clinics', `/clinics/${id}`, id); }
 };
 export const hospitalsService = {
     async getAll() {
@@ -1519,17 +1560,34 @@ export const rolePermissionsService = {
 export const appToolsService = {
     async getAll() {
         const hospitalId = resolveSessionHospitalId();
-        const query = hospitalId ? `?hospitalId=${encodeURIComponent(hospitalId)}` : '';
-        return (await apiClient.get(`/app-tools${query}`).catch(() => [])) as AppTool[];
+        return mergeRemoteWithOffline('app-tools', async () =>
+            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/app-tools', hospitalId))).map(normalizeAppTool),
+        ) as Promise<AppTool[]>;
     },
     async create(data: Omit<AppTool, "id" | "createdAt" | "updatedAt">) {
-        return (await apiClient.post('/app-tools', data)) as AppTool;
+        const payload = {
+            ...data,
+            hospitalId: data.hospitalId ?? resolveSessionHospitalId(),
+        };
+        const result = await queueCreate('app-tools', '/app-tools', payload, normalizeAppTool);
+        return normalizeAppTool({
+            ...payload,
+            ...result,
+            id: result.entityId ?? result.id,
+            syncStatus: result.queued ? 'pending' : 'synced',
+        });
     },
     async update(id: string, data: Partial<Omit<AppTool, "id" | "createdAt" | "updatedAt">>) {
-        return (await apiClient.put(`/app-tools/${id}`, data)) as AppTool;
+        const result = await queueUpdate('app-tools', `/app-tools/${id}`, id, data, normalizeAppTool);
+        return normalizeAppTool({
+            ...data,
+            ...result,
+            id,
+            syncStatus: result.queued ? 'pending' : 'synced',
+        });
     },
     async delete(id: string) {
-        await apiClient.delete(`/app-tools/${id}`);
+        await queueDelete('app-tools', `/app-tools/${id}`, id);
     },
 };
 
@@ -1647,14 +1705,26 @@ export const settingsService = {
 
         let persisted = next;
         try {
-            const remote = await apiClient.put(`/settings/${hospitalId}`, next, {
-                headers: typeof current.version === 'number'
-                    ? { 'x-expected-version': String(current.version) }
-                    : undefined,
-            });
-            persisted = normalizeSettings(remote, hospitalId);
+            const result = await queueUpdate(
+                'settings',
+                `/settings/${hospitalId}`,
+                hospitalId,
+                next as Record<string, unknown>,
+                (raw) => normalizeSettings(raw, hospitalId),
+            );
+            persisted = normalizeSettings({
+                ...next,
+                ...result,
+                id: hospitalId,
+                syncStatus: result.queued ? 'pending' : 'synced',
+            }, hospitalId);
         } catch (error) {
             console.error('Error saving settings to API, keeping local fallback:', error);
+            persisted = normalizeSettings({
+                ...next,
+                id: hospitalId,
+                syncStatus: 'pending',
+            }, hospitalId);
         }
 
         if (typeof window !== 'undefined') {

@@ -9,9 +9,11 @@ export type OfflineEntityType =
   | "professionals"
   | "prescriptions"
   | "evolutions"
+  | "clinics"
   | "hospitals"
   | "wards"
-  | "settings";
+  | "settings"
+  | "app-tools";
 
 export type OfflineOperationAction = "create" | "update" | "delete";
 
@@ -140,9 +142,11 @@ const getEntityDisplayName = (entityType: OfflineEntityType) => ({
   professionals: "o cadastro do profissional",
   prescriptions: "a prescricao",
   evolutions: "a evolucao",
+  clinics: "o cadastro da clinica",
   hospitals: "o cadastro da unidade",
   wards: "o cadastro da ala",
   settings: "as configuracoes",
+  "app-tools": "a ferramenta",
 }[entityType] || "este cadastro");
 
 const resolveOperationHospitalId = (params: {
