@@ -1,11 +1,14 @@
 import './lib/env';
 import express from 'express';
 import cors from 'cors';
+import { randomUUID } from 'crypto';
 import prisma from './lib/prisma';
 import {
     databaseHealth,
     getMetrics,
     getMetricsContentType,
+    httpActiveRequests,
+    httpErrorsTotal,
     httpRequestBytesTotal,
     httpRequestDurationSeconds,
     httpRequestsTotal,
@@ -32,6 +35,7 @@ import professionalRoutes from './routes/professionals';
 import clinicRoutes from './routes/clinics';
 import rolePermissionRoutes from './routes/role-permissions';
 import appToolRoutes from './routes/app-tools';
+import observabilityRoutes from './routes/observability';
 
 const defaultAllowedOrigins = [
   'http://localhost:8080',
@@ -70,20 +74,45 @@ app.use((req, res, next) => {
     }
 
     const startedAt = process.hrtime.bigint();
+    const startedMs = Date.now();
+    const requestId = req.get('x-request-id') || req.get('x-vercel-id') || randomUUID();
+    const activeRoute = req.path;
     const requestBytes = Number(req.get('content-length') || 0);
+    httpActiveRequests.inc({ method: req.method, route: activeRoute });
+    res.setHeader('x-request-id', requestId);
+
+    console.log(JSON.stringify({
+        level: 'info',
+        msg: 'http_start',
+        requestId,
+        method: req.method,
+        path: req.path,
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+    }));
+
     res.on('finish', () => {
         const route = req.route?.path
             ? `${req.baseUrl || ''}${req.route.path}`
             : req.path;
         const statusCode = String(res.statusCode);
+        const statusFamily = `${Math.floor(res.statusCode / 100)}xx`;
         const durationSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
         const responseBytes = Number(res.getHeader('content-length') || 0);
 
+        httpActiveRequests.dec({ method: req.method, route: activeRoute });
         httpRequestsTotal.inc({
             method: req.method,
             route,
             status_code: statusCode,
         });
+        if (res.statusCode >= 400) {
+            httpErrorsTotal.inc({
+                method: req.method,
+                route,
+                status_family: statusFamily,
+            });
+        }
         httpRequestBytesTotal.inc({
             method: req.method,
             route,
@@ -99,6 +128,18 @@ app.use((req, res, next) => {
             route,
             status_code: statusCode,
         }, durationSeconds);
+        console.log(JSON.stringify({
+            level: res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info',
+            msg: 'http_done',
+            requestId,
+            method: req.method,
+            route,
+            statusCode: res.statusCode,
+            statusFamily,
+            durationMs: Date.now() - startedMs,
+            requestBytes: Number.isFinite(requestBytes) ? requestBytes : 0,
+            responseBytes: Number.isFinite(responseBytes) ? responseBytes : 0,
+        }));
     });
     next();
 });
@@ -106,6 +147,7 @@ app.use((req, res, next) => {
 // Rotas públicas (sem autenticação)
 app.use('/api/auth', authRoutes);
 app.use('/api/hospitals', hospitalRoutes);
+app.use('/api/observability', observabilityRoutes);
 
 // Todas as demais rotas /api exigem JWT válido
 app.use('/api', requireAuth);

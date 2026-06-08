@@ -2,6 +2,7 @@
  * EnterAll Smart RX - API Client
  * Replaces Supabase BaaS with local REST API calls.
  */
+import { trackClientEvent, trackClientError } from "@/lib/observability";
 
 const resolveApiUrl = () => {
     const explicitUrl = import.meta.env.VITE_API_URL as string | undefined;
@@ -234,15 +235,32 @@ const request = async (
     options?: ApiRequestOptions,
     allowRetry = true,
 ) => {
+    const startedAt = performance.now();
+    const method = init.method || "GET";
     const headers = endpoint === "/auth/refresh"
         ? getBasicHeaders(options?.headers)
         : await getAuthHeaders(options?.headers);
 
-    const res = await fetch(`${API_URL}${endpoint}`, {
-        ...init,
-        headers,
-    });
-    const body = await parseResponseBody(res);
+    let res: Response;
+    let body: unknown;
+
+    try {
+        res = await fetch(`${API_URL}${endpoint}`, {
+            ...init,
+            headers,
+        });
+        body = await parseResponseBody(res);
+    } catch (error) {
+        if (endpoint !== "/observability") {
+            trackClientError(error, {
+                source: "api_fetch",
+                endpoint,
+                method,
+                durationMs: Math.round(performance.now() - startedAt),
+            });
+        }
+        throw error;
+    }
 
     if (!res.ok) {
         if (res.status === 401 && allowRetry && endpoint !== "/auth/login" && endpoint !== "/auth/refresh") {
@@ -256,13 +274,31 @@ const request = async (
             clearInvalidSession();
         }
 
-        const method = init.method || "GET";
         const detail = getErrorDetail(body) || res.statusText || "sem detalhes";
-        throw new ApiError(
+        const apiError = new ApiError(
             `API ${method} Error ${res.status}: ${detail}`,
             res.status,
             body,
         );
+        if (endpoint !== "/observability") {
+            trackClientEvent("api_error", {
+                endpoint,
+                method,
+                status: res.status,
+                detail,
+                durationMs: Math.round(performance.now() - startedAt),
+            });
+        }
+        throw apiError;
+    }
+
+    if (endpoint !== "/observability") {
+        trackClientEvent("api_request", {
+            endpoint,
+            method,
+            status: res.status,
+            durationMs: Math.round(performance.now() - startedAt),
+        });
     }
 
     return body;

@@ -37,9 +37,37 @@ export const httpResponseBytesTotal = new Counter({
   registers: [register],
 });
 
+export const httpActiveRequests = new Gauge({
+  name: 'enmeta_http_active_requests',
+  help: 'Quantidade de requisicoes HTTP em andamento no backend.',
+  labelNames: ['method', 'route'] as const,
+  registers: [register],
+});
+
+export const httpErrorsTotal = new Counter({
+  name: 'enmeta_http_errors_total',
+  help: 'Total de respostas HTTP com erro por familia de status.',
+  labelNames: ['method', 'route', 'status_family'] as const,
+  registers: [register],
+});
+
 export const databaseHealth = new Gauge({
   name: 'enmeta_database_up',
   help: 'Indica se a conexao com o banco esta saudavel (1 = ok, 0 = falha).',
+  registers: [register],
+});
+
+export const clientEventsTotal = new Counter({
+  name: 'enmeta_client_events_total',
+  help: 'Eventos de jornada emitidos pelo frontend.',
+  labelNames: ['event', 'route', 'role', 'online', 'server_reachable'] as const,
+  registers: [register],
+});
+
+export const clientErrorsTotal = new Counter({
+  name: 'enmeta_client_errors_total',
+  help: 'Erros capturados no frontend.',
+  labelNames: ['source', 'route', 'role'] as const,
   registers: [register],
 });
 
@@ -71,6 +99,20 @@ export const activeEntitiesTotal = new Gauge({
   registers: [register],
 });
 
+export const prescriptionsByRouteTotal = new Gauge({
+  name: 'enmeta_prescriptions_by_route_total',
+  help: 'Quantidade de prescricoes por modalidade/via efetiva.',
+  labelNames: ['therapy_type', 'status'] as const,
+  registers: [register],
+});
+
+export const offlineRelevantClinicalRecordsTotal = new Gauge({
+  name: 'enmeta_clinical_records_total',
+  help: 'Quantidade de registros clinicos essenciais para acompanhamento e fila offline.',
+  labelNames: ['entity'] as const,
+  registers: [register],
+});
+
 export const refreshApplicationMetrics = async (prisma: PrismaClient) => {
   const [
     hospitals,
@@ -93,6 +135,12 @@ export const refreshApplicationMetrics = async (prisma: PrismaClient) => {
     settings,
     rolePermissions,
     appTools,
+    activeEnteralPrescriptions,
+    activeOralPrescriptions,
+    activeParenteralPrescriptions,
+    inactiveEnteralPrescriptions,
+    inactiveOralPrescriptions,
+    inactiveParenteralPrescriptions,
   ] = await Promise.all([
     prisma.hospital.count(),
     prisma.hospital.count({ where: { isActive: true } }),
@@ -114,6 +162,12 @@ export const refreshApplicationMetrics = async (prisma: PrismaClient) => {
     prisma.appSettings.count(),
     prisma.rolePermission.count(),
     prisma.appTool.count(),
+    prisma.prescription.count({ where: { therapyType: 'enteral', status: 'active' } }),
+    prisma.prescription.count({ where: { therapyType: 'oral', status: 'active' } }),
+    prisma.prescription.count({ where: { therapyType: 'parenteral', status: 'active' } }),
+    prisma.prescription.count({ where: { therapyType: 'enteral', status: { not: 'active' } } }),
+    prisma.prescription.count({ where: { therapyType: 'oral', status: { not: 'active' } } }),
+    prisma.prescription.count({ where: { therapyType: 'parenteral', status: { not: 'active' } } }),
   ]);
 
   entitiesTotal.set({ entity: 'hospitals' }, hospitals);
@@ -137,6 +191,20 @@ export const refreshApplicationMetrics = async (prisma: PrismaClient) => {
   activeEntitiesTotal.set({ entity: 'modules' }, activeModules);
   activeEntitiesTotal.set({ entity: 'supplies' }, activeSupplies);
   activeEntitiesTotal.set({ entity: 'prescriptions' }, activePrescriptions);
+
+  prescriptionsByRouteTotal.set({ therapy_type: 'enteral', status: 'active' }, activeEnteralPrescriptions);
+  prescriptionsByRouteTotal.set({ therapy_type: 'oral', status: 'active' }, activeOralPrescriptions);
+  prescriptionsByRouteTotal.set({ therapy_type: 'parenteral', status: 'active' }, activeParenteralPrescriptions);
+  prescriptionsByRouteTotal.set({ therapy_type: 'enteral', status: 'inactive' }, inactiveEnteralPrescriptions);
+  prescriptionsByRouteTotal.set({ therapy_type: 'oral', status: 'inactive' }, inactiveOralPrescriptions);
+  prescriptionsByRouteTotal.set({ therapy_type: 'parenteral', status: 'inactive' }, inactiveParenteralPrescriptions);
+
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'patients' }, patients);
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'prescriptions' }, prescriptions);
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'evolutions' }, evolutions);
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'formulas' }, formulas);
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'modules' }, modules);
+  offlineRelevantClinicalRecordsTotal.set({ entity: 'supplies' }, supplies);
 };
 
 export const getMetrics = async () => register.metrics();

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 import { apiClient, ApiError } from "@/lib/api";
+import { trackClientEvent } from "@/lib/observability";
 
 export type OfflineEntityType =
   | "patients"
@@ -408,6 +409,12 @@ export const queueEntityMutation = async (params: {
   });
 
   emitSyncChange();
+  trackClientEvent("offline_operation_queued", {
+    entityType: params.entityType,
+    action: params.action,
+    method: params.method,
+    hospitalId: resolveOperationHospitalId(params) || "none",
+  });
 
   return {
     queueId,
@@ -749,6 +756,12 @@ export const flushPendingOperations = async () => {
       await removeShadowRecord(operation.entityType, finalEntityId);
       await offlineDb.pendingOperations.delete(operation.queueId);
       processed += 1;
+      trackClientEvent("offline_operation_synced", {
+        entityType: operation.entityType,
+        action: operation.action,
+        method: operation.method,
+        attempts: operation.attemptCount + 1,
+      });
     } catch (error) {
       if (error instanceof ApiError && error.status === 404 && operation.action === "delete") {
         const finalEntityId = replacements[operation.entityId] || resolvedEntityId;
@@ -789,6 +802,13 @@ export const flushPendingOperations = async () => {
         attemptCount: operation.attemptCount + 1,
         lastError: message,
         updatedAt: nowIso(),
+      });
+      trackClientEvent("offline_operation_sync_failed", {
+        entityType: operation.entityType,
+        action: operation.action,
+        method: operation.method,
+        status: error instanceof ApiError ? error.status : "network",
+        queueStatus: status,
       });
 
       if (isAuthenticationError || !(error instanceof ApiError) || error.status >= 500 || error.status === 409) {

@@ -3,6 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { toast } from "sonner";
 import { discardIrrecoverableOperations, flushPendingOperations, getPendingOperations, hasStoredAccessToken, reactivateAuthenticationFailures } from "@/lib/offlineStore";
 import { useConnectivityContext } from "@/components/ConnectivityProvider";
+import { trackClientEvent } from "@/lib/observability";
 
 interface SyncQueueContextValue {
   pendingCount: number;
@@ -70,6 +71,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
 
       if (result.processed > 0) {
         toast.success(`${result.processed} operacao(oes) sincronizada(s) com a unidade.`);
+        trackClientEvent("sync_queue_processed", { processed: result.processed, failed: result.failed });
       }
 
       if (reactivatedCount > 0 && result.processed === 0 && result.failed === 0) {
@@ -77,6 +79,7 @@ const SyncQueueProvider = ({ children }: SyncQueueProviderProps) => {
       }
 
       if (result.failed > 0 && result.failed > lastFailedCountRef.current) {
+        trackClientEvent("sync_queue_failed", { failed: result.failed });
         // Only toast when the failure count increases (new failures), not on every retry cycle
         if (failedToastCooldownRef.current) clearTimeout(failedToastCooldownRef.current);
         failedToastCooldownRef.current = setTimeout(() => {

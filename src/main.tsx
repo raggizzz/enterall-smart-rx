@@ -1,8 +1,11 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { installClientObservability } from "@/lib/observability";
 
 if (typeof window !== "undefined") {
+  installClientObservability();
+
   const chunkReloadKey = "enmeta-vite-preload-reload";
 
   if (import.meta.env.DEV && "serviceWorker" in navigator) {

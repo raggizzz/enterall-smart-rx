@@ -37,6 +37,42 @@ groups:
           summary: "Latencia p95 alta no backend"
           description: "A latencia p95 do backend do ENMeta ficou acima de 1 segundo por 5 minutos."
 
+      - alert: ENMetaHttp5xxBurst
+        expr: increase(enmeta_http_errors_total{status_family="5xx"}[10m]) > 3
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Erros 5xx acima do normal"
+          description: "O backend registrou mais de 3 erros 5xx nos ultimos 10 minutos."
+
+      - alert: ENMetaHttp4xxBurst
+        expr: increase(enmeta_http_errors_total{status_family="4xx"}[10m]) > 20
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Erros 4xx acima do normal"
+          description: "O backend registrou muitos erros de cliente/autorizacao/validacao nos ultimos 10 minutos."
+
+      - alert: ENMetaClientErrorsBurst
+        expr: increase(enmeta_client_errors_total[10m]) > 5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Erros no frontend acima do normal"
+          description: "O frontend enviou mais de 5 erros nos ultimos 10 minutos. Verifique o evento, rota e perfil nos logs."
+
+      - alert: ENMetaActiveRequestsHigh
+        expr: sum(enmeta_http_active_requests) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Muitas requisicoes em andamento"
+          description: "Ha mais de 20 requisicoes simultaneas por mais de 2 minutos."
+
       - alert: ENMetaVersionConflictsBurst
         expr: increase(enmeta_sync_conflicts_total[15m]) > 5
         for: 0m

@@ -2,14 +2,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Suspense, lazy } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { Suspense, lazy, useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import ConnectivityProvider from "@/components/ConnectivityProvider";
 import DatabaseProvider from "@/components/DatabaseProvider";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
 import SyncQueueProvider from "@/components/SyncQueueProvider";
 import { useSession } from "@/hooks/useSession";
+import { trackClientEvent } from "@/lib/observability";
 
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -55,6 +56,22 @@ const queryClient = new QueryClient({
   },
 });
 
+const RouteObservability = () => {
+  const location = useLocation();
+  const { role, hospitalId, isAuthenticated } = useSession();
+
+  useEffect(() => {
+    trackClientEvent("route_view", {
+      path: location.pathname,
+      role: role || "anonymous",
+      hospitalId: hospitalId || "none",
+      authenticated: isAuthenticated,
+    });
+  }, [hospitalId, isAuthenticated, location.pathname, role]);
+
+  return null;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -64,6 +81,7 @@ const App = () => (
         <SyncQueueProvider>
           <DatabaseProvider>
             <BrowserRouter>
+              <RouteObservability />
               <Suspense fallback={<div className="flex h-screen w-full items-center justify-center text-slate-500 font-mono text-xs uppercase tracking-widest">Carregando Interface Clinica...</div>}>
                 <Routes>
                   <Route path="/" element={<SessionEntryRoute />} />

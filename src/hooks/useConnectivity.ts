@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { trackClientEvent } from "@/lib/observability";
 
 const resolveHealthUrl = () => {
   const explicitUrl = import.meta.env.VITE_API_URL as string | undefined;
@@ -48,6 +49,12 @@ const checkServerHealth = async () => {
   }
 };
 
+const persistConnectivity = (online: boolean, reachable: boolean) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("enmeta-server-reachable", reachable ? "true" : "false");
+  localStorage.setItem("enmeta-browser-online", online ? "true" : "false");
+};
+
 export const useConnectivity = (): ConnectivityState => {
   const [isOnline, setIsOnline] = useState(
     typeof navigator === "undefined" ? true : navigator.onLine,
@@ -71,6 +78,7 @@ export const useConnectivity = (): ConnectivityState => {
     setIsOnline(online);
     if (!online) {
       setIsServerReachable(false);
+      persistConnectivity(false, false);
       setIsChecking(false);
       setLastCheckedAt(new Date());
       return;
@@ -81,6 +89,8 @@ export const useConnectivity = (): ConnectivityState => {
     if (!mountedRef.current) return;
 
     setIsServerReachable(reachable);
+    persistConnectivity(online, reachable);
+    trackClientEvent("connectivity_check", { online, reachable });
     setIsChecking(false);
     setLastCheckedAt(new Date());
   };
@@ -88,12 +98,15 @@ export const useConnectivity = (): ConnectivityState => {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      trackClientEvent("network_online");
       void refresh();
     };
 
     const handleOffline = () => {
       setIsOnline(false);
       setIsServerReachable(false);
+      persistConnectivity(false, false);
+      trackClientEvent("network_offline");
       setIsChecking(false);
       setLastCheckedAt(new Date());
     };
