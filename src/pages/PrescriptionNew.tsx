@@ -2047,7 +2047,9 @@ const PrescriptionNew = () => {
   ]);
 
   const sidebarSummary = useMemo(() => {
-    if (currentStep === 9 && feedingRoutes.oral) {
+    const selectedRouteCount = Number(feedingRoutes.oral) + Number(feedingRoutes.enteral) + Number(feedingRoutes.parenteral);
+
+    if (currentStep === 9 && feedingRoutes.oral && selectedRouteCount === 1) {
       return {
         title: "Resumo da via oral",
         calories: oralTotals.vet.toFixed(0),
@@ -2059,21 +2061,9 @@ const PrescriptionNew = () => {
       };
     }
 
-    if (currentStep === 10 && feedingRoutes.parenteral) {
-      return {
-        title: "Resumo da parenteral",
-        calories: parenteralVET.toFixed(0),
-        caloriesPerKg: parenteralPerKg.kcal.toFixed(1),
-        protein: parenteralAminoacids.toFixed(1),
-        proteinPerKg: parenteralPerKg.amino.toFixed(2),
-        freeWater: "-",
-        residues: "-",
-      };
-    }
-
     if (feedingRoutes.enteral) {
       return {
-        title: currentStep === 11 ? "Resumo das vias selecionadas" : "Resumo da Terapia Nutricional",
+        title: selectedRouteCount > 1 || currentStep !== 11 ? "Resumo da Terapia Nutricional Total" : "Resumo das vias selecionadas",
         calories: String(nutritionSummary.vet),
         caloriesPerKg: String(nutritionSummary.vetPerKg),
         protein: `${nutritionSummary.protein}`,
@@ -2084,7 +2074,7 @@ const PrescriptionNew = () => {
     }
 
     return {
-      title: "Resumo da prescrição",
+      title: selectedRouteCount > 1 ? "Resumo da Terapia Nutricional Total" : "Resumo da prescrição",
       calories: String(nutritionSummary.vet),
       caloriesPerKg: String(nutritionSummary.vetPerKg),
       protein: `${nutritionSummary.protein}`,
@@ -2092,7 +2082,7 @@ const PrescriptionNew = () => {
       freeWater: `${nutritionSummary.freeWater}ml`,
       residues: feedingRoutes.enteral ? `${nutritionSummary.residueTotal.toFixed(1)}g` : "-",
     };
-  }, [currentStep, feedingRoutes, oralTotals, parenteralVET, parenteralPerKg, parenteralAminoacids, nutritionSummary]);
+  }, [currentStep, feedingRoutes, oralTotals, nutritionSummary]);
 
   const currentCostSummary = useMemo(() => {
     let materialCostTotal = 0;
