@@ -56,6 +56,8 @@ import {
 } from "@/lib/monitoringCalculations";
 import { formatLocalDateKey } from "@/lib/dateOnly";
 
+const MONITORING_NOTE_MAX_LENGTH = 55;
+
 interface MonitoringChartRow {
     date: string;
     oralPct?: number;
@@ -124,7 +126,7 @@ export const PatientMonitoring = ({
     const [unintentionalCal, setUnintentionalCal] = useState<UnintentionalCalories>(
         savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {}
     );
-    const [monitoringNotes, setMonitoringNotes] = useState(patient.monitoringNotes || "");
+    const [monitoringNotes, setMonitoringNotes] = useState((savedEvolution?.notes || patient.monitoringNotes || "").slice(0, MONITORING_NOTE_MAX_LENGTH));
     const [oralPercentageInput, setOralPercentageInput] = useState(
         savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : ""
     );
@@ -148,7 +150,7 @@ export const PatientMonitoring = ({
         );
         setInterruptions(savedEvolution?.tneInterruptions || {});
         setUnintentionalCal(savedEvolution?.unintentionalCalories || patient.unintentionalCalories || {});
-        setMonitoringNotes(patient.monitoringNotes || "");
+        setMonitoringNotes((savedEvolution?.notes || patient.monitoringNotes || "").slice(0, MONITORING_NOTE_MAX_LENGTH));
         setOralPercentageInput(savedEvolution?.oralKcal !== undefined && oralKcal > 0 ? String(Math.round((savedEvolution.oralKcal / oralKcal) * 100)) : "");
         setParenteralPercentageInput(savedEvolution?.parenteralKcal !== undefined && parenteralKcal > 0 ? String(Math.round((savedEvolution.parenteralKcal / parenteralKcal) * 100)) : "");
     }, [patient, savedEvolution, oralKcal, oralProtein, parenteralKcal, parenteralProtein]);
@@ -588,7 +590,7 @@ export const PatientMonitoring = ({
                                 <ChevronDown className={`h-5 w-5 transition-transform text-muted-foreground ${interruptionsOpen ? 'rotate-180' : ''}`} />
                             </div>
                             <CardDescription>
-                                Use esta seção para justificar interrupções, intolerâncias ou barreiras operacionais observadas no fechamento do dia anterior.
+                                Use esta seção para registrar os motivos das interrupções da terapia nutricional enteral. Os principais motivos de interrupção de NE foram baseados em revisões sistemáticas (Pouwels, Nieuwkoop e Ramnarain, 2025; Lu et al., 2025).
                             </CardDescription>
                         </CardHeader>
                     </CollapsibleTrigger>
@@ -772,6 +774,11 @@ export const PatientMonitoring = ({
                             />
                         )}
                     </div>
+                    <div className="rounded-md bg-muted/40 p-2 text-[10px] leading-snug text-muted-foreground">
+                        <p className="font-semibold text-foreground/70">Referências:</p>
+                        <p>POUWELS, Sjaak; VAN NIEUWKOOP, Monica M.; RAMNARAIN, Dharmanand. Enteral Nutrition Interruptions in the Intensive Care Unit: A Systematic Review of Frequency, Causes, and Nutritional Implications. Cureus, 2025.</p>
+                        <p>LU, Xiaoyan; WANG, Xin; YU, Weixia; et al. Current status and influencing factors of enteral nutrition interruption among critical patients: a systematic review. Frontiers in Nutrition, v. 12, p. 1462131, 2025.</p>
+                    </div>
                         </CardContent>
                     </CollapsibleContent>
                 </Collapsible>
@@ -795,7 +802,7 @@ export const PatientMonitoring = ({
             <div className="space-y-1">
                 <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Registro clínico</p>
                 <p className="text-sm text-muted-foreground">
-                    Use este campo para resumir a evolução clínica e o raciocínio nutricional.
+                    Use este campo para o resumo da evolução clínica e conduta nutricional. Estas informações serão adicionadas ao mapa do nutricionista.
                 </p>
             </div>
 
@@ -803,16 +810,20 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle>Observações do Acompanhamento</CardTitle>
                     <CardDescription>
-                        Esse texto alimenta o mapa do nutricionista e acompanha a evolução clínica.
+                        Máximo de {MONITORING_NOTE_MAX_LENGTH} caracteres, para caber no mapa do nutricionista.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-2">
                     <Textarea
                         value={monitoringNotes}
-                        onChange={(event) => setMonitoringNotes(event.target.value)}
-                        placeholder="Ex: 11/03: tolerou bem a NE. 12/03: reduzida NP e mantida progressão da enteral."
-                        rows={4}
+                        onChange={(event) => setMonitoringNotes(event.target.value.slice(0, MONITORING_NOTE_MAX_LENGTH))}
+                        placeholder="Ex: tolerou NE; reduzir NP."
+                        maxLength={MONITORING_NOTE_MAX_LENGTH}
+                        rows={2}
                     />
+                    <p className="text-xs text-muted-foreground text-right">
+                        {monitoringNotes.length}/{MONITORING_NOTE_MAX_LENGTH} caracteres
+                    </p>
                 </CardContent>
             </Card>
 

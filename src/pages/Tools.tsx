@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+﻿import { useMemo, useState, useEffect } from "react";
 import Header from "@/components/Header";
 import BottomNav from "@/components/BottomNav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,23 +120,23 @@ const GIDS_SEVERE_DISPLAY_OPTIONS: Array<{ key: GidsSevereKey; label: string }> 
 
 const GIDS_RESULT_COPY: Record<number, { title: string; description: string }> = {
   0: {
-    title: "GIDS 0 - Sem risco imediato",
+    title: "GIDS 0 (sem risco)",
     description: "Sem sintomas, ou apenas um sintoma leve com ingestão oral mantida.",
   },
   1: {
-    title: "GIDS 1 - Risco aumentado",
+    title: "GIDS 1 (risco aumentado)",
     description: "Acúmulo inicial de sinais gastrointestinais ou ausência de ingestão oral.",
   },
   2: {
-    title: "GIDS 2 - Disfuncao gastrointestinal",
+    title: "GIDS 2 (disfunção gastrointestinal)",
     description: "Três ou mais critérios leves/de risco ou até dois critérios maiores.",
   },
   3: {
-    title: "GIDS 3 - Falencia gastrointestinal",
+    title: "GIDS 3 (falência gastrointestinal)",
     description: "Três ou mais critérios maiores, sugerindo perda importante de função.",
   },
   4: {
-    title: "GIDS 4 - Ameaça à vida",
+    title: "GIDS 4 (ameaça à vida)",
     description: "Há critério gastrointestinal imediatamente ameaçador à vida.",
   },
 };
@@ -298,7 +298,7 @@ const Tools = () => {
     const phenoPositive = glimWeightLoss !== "none" || glimBmi !== "none" || glimMuscleLoss !== "none";
     const etioPositive = glimReducedIntake || glimInflammation;
 
-    let diagnosis = "Sem diagnóstico de desnutrição (GLIM)";
+    let diagnosis = "Não desnutrido (GLIM, 2018).";
     let severity = "";
 
     if (phenoPositive && etioPositive) {
@@ -312,7 +312,7 @@ const Tools = () => {
         aguda_grave: "relacionada a doença aguda ou injúria com inflamação grave",
         social_ambiental: "relacionada a circunstâncias sociais ou ambientais",
       };
-      diagnosis = `${severity} ${diseaseMap[glimDisease] || ""}`;
+      diagnosis = `${severity} ${diseaseMap[glimDisease] || ""} (GLIM, 2018).`;
     }
 
     return diagnosis;
@@ -409,7 +409,7 @@ const Tools = () => {
     );
   }, [nitrogenProtein, nitrogenUun, nitrogenAdditionalLosses]);
 
-  const [energyEquation, setEnergyEquation] = useState<EnergyEquation>("mifflin-st-jeor");
+  const [energyEquation, setEnergyEquation] = useState<EnergyEquation>("pocket-formula");
   const [energySex, setEnergySex] = useState<"male" | "female">("male");
   const [energyWeight, setEnergyWeight] = useState("");
   const [energyHeight, setEnergyHeight] = useState("");
@@ -574,8 +574,12 @@ const Tools = () => {
                 </div>
 
                 <div className="md:col-span-2 mt-4 p-4 border-2 border-primary/20 rounded-lg bg-primary/5 text-center">
-                  <p className="text-xs uppercase text-muted-foreground mb-1">Diagnóstico Final</p>
+                  <p className="text-xs uppercase text-muted-foreground mb-1">Diagnóstico Nutricional:</p>
                   <p className="text-xl font-bold text-primary">{glimResult}</p>
+                </div>
+                <div className="md:col-span-2 rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                  <p className="font-semibold text-foreground/70">Referência:</p>
+                  <p>CEDERHOLM, T.; JENSEN, G. L.; CORREIA, M. I. T. D.; et al. GLIM criteria for the diagnosis of malnutrition - A consensus report from the global clinical nutrition community. Clinical Nutrition, v. 38, n. 1, p. 1-9, 2019.</p>
                 </div>
               </CardContent>
             </Card>
@@ -587,7 +591,7 @@ const Tools = () => {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Estimativa de Peso e Altura</CardTitle>
-                  <CardDescription>Preencha os campos para estimar peso e altura usando as equações padrão já validadas.</CardDescription>
+                  <CardDescription>Preencha os campos para estimar peso e estatura, utilizando as equações de Chumlea (1985; 1988).</CardDescription>
                 </div>
                 <Badge variant="secondary">Equações padronizadas</Badge>
               </CardHeader>
@@ -628,6 +632,11 @@ const Tools = () => {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">Para altura: preencha sexo, idade, raça/cor e altura do joelho. Para peso: informe também a circunferência do braço.</p>
+                  <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                    <p className="font-semibold text-foreground/70">Referências:</p>
+                    <p>CHUMLEA, William Cameron; ROCHE, Alex F.; STEINBAUGH, Maria L. Estimating Stature from Knee Height for Persons 60 to 90 Years of Age. Journal of the American Geriatrics Society, v. 33, n. 2, p. 116-120, 1985.</p>
+                    <p>CHUMLEA, W. C.; GUO, S.; ROCHE, A. F.; et al. Prediction of body weight for the nonambulatory elderly from anthropometry. Journal of the American Dietetic Association, v. 88, n. 5, p. 564-568, 1988.</p>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -682,7 +691,7 @@ const Tools = () => {
               <CardHeader>
                 <CardTitle>GIDS - Escore de Disfunção Gastrointestinal</CardTitle>
                 <CardDescription>
-                  Calculadora guiada pela lógica publicada do GIDS: um único sintoma leve com ingestão oral mantida permanece em GIDS 0.
+                  Calculadora elaborada a partir do GIDS (Reintam Blaser et al., 2021).
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -759,6 +768,10 @@ const Tools = () => {
                     </div>
                   </div>
                 </div>
+                <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                  <p className="font-semibold text-foreground/70">Referência:</p>
+                  <p>REINTAM BLASER, Annika; PADAR, Martin; MÄNDUL, Merli; et al. Development of the Gastrointestinal Dysfunction Score (GIDS) for critically ill patients - A prospective multicenter observational study (iSOFA study). Clinical Nutrition, v. 40, n. 8, p. 4932-4940, 2021.</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -791,7 +804,7 @@ const Tools = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Vasopressina</CardTitle>
-                  <CardDescription>Cálculo em UI/min (Sem peso)</CardDescription>
+                  <CardDescription>Cálculo em UI/min</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <Label>Velocidade (ml/h)</Label>
@@ -807,6 +820,10 @@ const Tools = () => {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+            <div className="mt-4 rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+              <p className="font-semibold text-foreground/70">Referência:</p>
+              <p>Gottschall CBA, Schneider CD, Rabito EI, Busnello FM. Guia prático de clínica nutricional: tabelas, valores e referências. São Paulo: Atheneu; 2012.</p>
             </div>
           </TabsContent>
 
@@ -894,6 +911,10 @@ const Tools = () => {
                       <p>Idade &gt;= 70 anos: {nrsResult.ageScore} ponto(s)</p>
                     </div>
                   </div>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                  <p className="font-semibold text-foreground/70">Referência:</p>
+                  <p>Kondrup J. Nutritional risk screening (NRS 2002): a new method based on an analysis of controlled clinical trials. Clin Nutr, n. 22, v. 3, p. 321-36, 2003.</p>
                 </div>
               </CardContent>
             </Card>
@@ -1028,7 +1049,6 @@ const Tools = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Estimativa de Gasto Energético</CardTitle>
-                <CardDescription>Estimativa para adultos pelas equações de Mifflin-St Jeor ou Harris-Benedict revisada.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1037,8 +1057,9 @@ const Tools = () => {
                     <Select value={energyEquation} onValueChange={(value) => setEnergyEquation(value as EnergyEquation)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="mifflin-st-jeor">Mifflin-St Jeor</SelectItem>
-                        <SelectItem value="harris-benedict-revised">Harris-Benedict revisada</SelectItem>
+                        <SelectItem value="pocket-formula">Fórmula de bolso (25 kcal/kg)</SelectItem>
+                        <SelectItem value="harris-benedict-revised">Harris-Benedict</SelectItem>
+                        <SelectItem value="ireton-jones">Ireton-Jones</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1073,14 +1094,14 @@ const Tools = () => {
                     <Input id="energy-stress" type="number" min="0.1" step="0.05" value={energyStressFactor} onChange={(event) => setEnergyStressFactor(event.target.value)} />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Gasto total estimado = gasto energético de repouso x fator de atividade x fator de estresse. Os fatores iniciam em 1,00 e devem ser definidos pelo nutricionista.</p>
+                <p className="text-xs text-muted-foreground">Gasto total estimado = gasto energético de repouso x fator de atividade x fator de estresse.</p>
                 {energyResult && (
                   <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-2">
                     <div><p className="text-xs text-muted-foreground">Gasto energético de repouso</p><p className="text-2xl font-bold">{Math.round(energyResult.ree)} kcal/dia</p></div>
                     <div><p className="text-xs text-muted-foreground">Gasto energético total estimado</p><p className="text-2xl font-bold">{Math.round(energyResult.tee)} kcal/dia</p></div>
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">Ferramenta de apoio para adultos. Calorimetria indireta e avaliação clínica prevalecem quando disponíveis.</p>
+                <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. A calorimetria direta é o método mais indicado.</p>
               </CardContent>
             </Card>
           </TabsContent>

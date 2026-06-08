@@ -504,7 +504,7 @@ const Dashboard = () => {
                   />
                   <Button variant="outline" onClick={handlePrintSectorMap} className="w-full sm:w-auto">
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir
+                    Imprimir mapa
                   </Button>
                 </div>
               </div>

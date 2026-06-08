@@ -1,8 +1,8 @@
 /**
- * LogoEnmeta - Official logo component using the PNG asset.
+ * LogoEnmeta - Official logo component using the current brand asset.
  * Renders the ENMet@ logo image with configurable sizes.
  */
-import logoSrc from "@/assets/logoenmeta.png";
+import logoSrc from "@/assets/logoenmeta.jpeg";
 
 interface LogoEnmetaProps {
     className?: string;

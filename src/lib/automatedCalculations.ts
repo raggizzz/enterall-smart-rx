@@ -404,7 +404,7 @@ export function calculateNitrogenBalance(
   };
 }
 
-export type EnergyEquation = 'mifflin-st-jeor' | 'harris-benedict-revised';
+export type EnergyEquation = 'pocket-formula' | 'harris-benedict-revised' | 'ireton-jones' | 'mifflin-st-jeor';
 
 export function calculateRestingEnergyExpenditure(
   equation: EnergyEquation,
@@ -413,7 +413,18 @@ export function calculateRestingEnergyExpenditure(
   ageYears: number,
   gender: 'male' | 'female'
 ): number {
-  if (weightKg <= 0 || heightCm <= 0 || ageYears <= 0) return 0;
+  if (weightKg <= 0 || ageYears <= 0) return 0;
+
+  if (equation === 'pocket-formula') {
+    return 25 * weightKg;
+  }
+
+  if (equation === 'ireton-jones') {
+    const sexFactor = gender === 'male' ? 1 : 0;
+    return 1784 - (11 * ageYears) + (5 * weightKg) + (244 * sexFactor);
+  }
+
+  if (heightCm <= 0) return 0;
 
   if (equation === 'harris-benedict-revised') {
     return gender === 'male'

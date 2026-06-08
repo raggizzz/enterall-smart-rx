@@ -239,14 +239,26 @@ export const generateRequisitionData = ({
 
         return enabled;
     };
+    const oralScheduleToBillingTime: Record<string, string> = {
+        desjejum: '06:00',
+        colacao: '09:00',
+        almoco: '12:00',
+        merenda: '15:00',
+        jantar: '18:00',
+        ceia: '18:00',
+    };
+    const mapOralScheduleToBillingTime = (value: string) =>
+        oralScheduleToBillingTime[normalizeLookupText(value)] || normalizeScheduleTime(value);
     const isClockSchedule = (value: string) => /^\d{1,2}(?::?\d{2})?\s*h?$/i.test(value.trim());
     const getMatchingSchedules = (scheduleTimes: string[] = [], therapyType?: Prescription['therapyType']) => {
         const normalizedSchedules = scheduleTimes
-            .map((time) => normalizeScheduleTime(time))
+            .map((time) => therapyType === 'oral' && !isClockSchedule(time)
+                ? mapOralScheduleToBillingTime(time)
+                : normalizeScheduleTime(time))
             .filter(Boolean);
 
         return normalizedSchedules
-            .filter((time) => therapyType === 'oral' && !isClockSchedule(time) ? true : selectedTimeSet.has(time))
+            .filter((time) => selectedTimeSet.has(time))
             .sort((left, right) => (scheduleOrder.get(left) ?? 999) - (scheduleOrder.get(right) ?? 999));
     };
 
@@ -490,6 +502,13 @@ export const generateRequisitionData = ({
                     observation,
                 });
 
+                if (p.therapyType === 'oral') {
+                    const oralFormulaRow = dietMap[dietMap.length - 1];
+                    oralFormulaRow.unitPrice = 0;
+                    oralFormulaRow.subtotal = 0;
+                    return;
+                }
+
                 const administrationsForVolume = resolvedSystemType === 'closed' ? 1 : matchingTimes.length;
                 const totalVol = f.volume * administrationsForVolume * dayDiff;
                 const price = getFormulaPrice(f.formulaId);
@@ -725,18 +744,6 @@ export const generateRequisitionData = ({
             if (includeAutomaticSets && !isEnteralViaOral && hydrationDailySetCount > 0) {
                 addSupplyCharge(getGravitySupply(), hydrationDailySetCount * dayDiff);
             }
-        }
-
-        if (includeAutomaticBottles && p.therapyType === 'oral' && p.oralDetails?.deliveryMethod === 'feeding-bottle') {
-            const averageStageVolume = formulaEntries.length > 0
-                ? formulaEntries.reduce((sum, formula) => sum + (Number(formula.volume || 0)), 0) / formulaEntries.length
-                : 0;
-            const oralAdministrations = formulaEntries.reduce((sum, formula) => {
-                const matchingTimes = getMatchingSchedules(formula.schedules || [], p.therapyType);
-                return sum + matchingTimes.length;
-            }, 0);
-            const totalUnits = Math.max(oralAdministrations, 1) * dayDiff;
-            addBottleCharge(averageStageVolume, totalUnits);
         }
 
     });

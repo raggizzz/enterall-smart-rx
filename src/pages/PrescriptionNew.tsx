@@ -1501,7 +1501,7 @@ const PrescriptionNew = () => {
     toast.success("Dados da prescrição anterior carregados para repetição.");
   };
 
-  const applyPreviousGoals = useCallback((multiplier = 1) => {
+  const applyPreviousGoals = useCallback(() => {
     const goals = latestGoalsPrescription?.tneGoals;
     if (!goals) {
       toast.error("Nenhuma meta anterior encontrada para este paciente.");
@@ -1510,17 +1510,17 @@ const PrescriptionNew = () => {
 
     setGoalTargetKcalPerKg(
       typeof goals.targetKcalPerKg === "number"
-        ? Number((goals.targetKcalPerKg * multiplier).toFixed(2))
+        ? Number(goals.targetKcalPerKg.toFixed(2))
         : undefined,
     );
     setGoalTargetProteinPerKgActual(
       typeof goals.targetProteinPerKgActual === "number"
-        ? Number((goals.targetProteinPerKgActual * multiplier).toFixed(2))
+        ? Number(goals.targetProteinPerKgActual.toFixed(2))
         : undefined,
     );
     setEnergyWeightChoice(goals.targetKcalWeightBasis || null);
     setProteinWeightChoice(goals.targetProteinWeightBasis || null);
-    toast.success(multiplier === 2 ? "Meta anterior dobrada." : "Meta anterior aplicada.");
+    toast.success("Meta anterior aplicada.");
   }, [latestGoalsPrescription]);
 
   useEffect(() => {
@@ -1742,6 +1742,67 @@ const PrescriptionNew = () => {
     openFormulas,
     oralSupplements,
     oralTherapyModules,
+    systemType,
+  ]);
+
+  const commercialProductSummary = useMemo(() => {
+    const names = new Set<string>();
+
+    if (feedingRoutes.enteral) {
+      if (systemType === "closed" && closedFormula.formulaId) {
+        const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
+        if (formula?.name) names.add(formula.name);
+      }
+
+      if (systemType === "open") {
+        openFormulas.forEach((entry) => {
+          const formula = availableFormulas.find((item) => item.id === entry.formulaId);
+          if (formula?.name) names.add(formula.name);
+        });
+      }
+
+      modules.forEach((entry) => {
+        const moduleItem = availableModules.find((item) => item.id === entry.moduleId);
+        if (moduleItem?.name) names.add(moduleItem.name);
+      });
+    }
+
+    if (feedingRoutes.oral) {
+      oralSupplements.forEach((supplement) => {
+        const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
+        if (formula?.name || supplement.supplementName) names.add(formula?.name || supplement.supplementName);
+      });
+
+      oralTherapyModules.forEach((moduleEntry) => {
+        const moduleItem = availableModules.find((item) => item.id === moduleEntry.moduleId);
+        if (moduleItem?.name || moduleEntry.moduleName) names.add(moduleItem?.name || moduleEntry.moduleName);
+      });
+
+      const thickenerModule = availableModules.find((item) => item.id === oralThickenerModuleId);
+      if (thickenerModule?.name || oralThickenerProduct.trim()) {
+        names.add(thickenerModule?.name || oralThickenerProduct.trim());
+      }
+    }
+
+    if (feedingRoutes.parenteral && parenteralVET > 0) {
+      names.add("Terapia nutricional parenteral");
+    }
+
+    return Array.from(names);
+  }, [
+    availableFormulas,
+    availableModules,
+    closedFormula.formulaId,
+    feedingRoutes.enteral,
+    feedingRoutes.oral,
+    feedingRoutes.parenteral,
+    modules,
+    openFormulas,
+    oralSupplements,
+    oralTherapyModules,
+    oralThickenerModuleId,
+    oralThickenerProduct,
+    parenteralVET,
     systemType,
   ]);
 
@@ -2429,6 +2490,18 @@ const PrescriptionNew = () => {
         }
       }
 
+      if (feedingRoutes.enteral && systemType === "closed") {
+        const hasClosedBagDelivery = Object.values(closedFormula.bagQuantities)
+          .some((quantity) => Number(quantity) > 0);
+
+        if (!hasClosedBagDelivery) {
+          toast.error("Você deve especificar a quantidade de bolsas de dieta em sistema fechado e horário de entrega.");
+          setCurrentStep(6);
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const closedBagSchedules = Object.keys(closedFormula.bagQuantities);
       const closedFormulaSchedules = closedBagSchedules.length > 0
         ? closedBagSchedules
@@ -2805,7 +2878,7 @@ const PrescriptionNew = () => {
   };
 
   const StepIndicator = ({ step, title, isActive, isCompleted }: { step: number; title: string; isActive: boolean; isCompleted: boolean }) => (
-    <div className={`flex min-w-[220px] shrink-0 items-center gap-3 p-3 rounded-lg transition-all cursor-pointer lg:min-w-0 ${isActive ? "bg-primary/10 border-2 border-primary" : isCompleted ? "bg-green-50 border border-green-200" : "bg-muted/50"}`} onClick={() => isCompleted && setCurrentStep(step)}>
+    <div className={`flex min-w-[220px] shrink-0 items-center gap-3 p-3 rounded-lg transition-all cursor-pointer lg:min-w-0 ${isActive ? "bg-primary/10 border-2 border-primary" : isCompleted ? "bg-green-50 border border-green-200" : "bg-muted/50"}`} onClick={() => (isCompleted || step === 11) && setCurrentStep(step)}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isActive ? "bg-primary text-white" : isCompleted ? "bg-green-500 text-white" : "bg-muted-foreground/20"}`}>
         {isCompleted ? <Check className="h-4 w-4" /> : step}
       </div>
@@ -3093,11 +3166,8 @@ const PrescriptionNew = () => {
                             )}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button type="button" size="sm" variant="outline" onClick={() => applyPreviousGoals(1)}>
+                            <Button type="button" size="sm" variant="outline" onClick={() => applyPreviousGoals()}>
                               Usar meta anterior
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => applyPreviousGoals(2)}>
-                              Dobrar meta
                             </Button>
                           </div>
                         </div>
@@ -3105,14 +3175,14 @@ const PrescriptionNew = () => {
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Meta kcal/kg ({effectiveEnergyWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <Label>Meta kcal/kg ({effectiveEnergyWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'})</Label>
                         <div className="flex rounded-lg border overflow-hidden">
                           <button
                             type="button"
                             className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveEnergyWeight === 'actual' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
                             onClick={() => setEnergyWeightChoice('actual')}
                           >
-                            PA {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
+                            Peso Atual {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
                           </button>
                           <button
                             type="button"
@@ -3120,7 +3190,7 @@ const PrescriptionNew = () => {
                             onClick={() => setEnergyWeightChoice('ideal')}
                             disabled={!calculatedIdealWeight}
                           >
-                            PI {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
+                            Peso Ideal {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
                           </button>
                         </div>
                         <Input type="number" step="0.1" value={goalTargetKcalPerKg || ''} onChange={e => setGoalTargetKcalPerKg(parseFloat(e.target.value) || undefined)} placeholder="Ex: 25" />
@@ -3131,14 +3201,14 @@ const PrescriptionNew = () => {
                         )}
                       </div>
                       <div className="space-y-2">
-                        <Label>Meta proteínas g/kg ({effectiveProteinWeight === 'ideal' ? 'PI' : 'PA'})</Label>
+                        <Label>Meta proteínas g/kg ({effectiveProteinWeight === 'ideal' ? 'Peso Ideal' : 'Peso Atual'})</Label>
                         <div className="flex rounded-lg border overflow-hidden">
                           <button
                             type="button"
                             className={`px-3 py-1.5 text-sm font-medium transition-colors ${effectiveProteinWeight === 'actual' ? 'bg-emerald-600 text-white' : 'bg-white text-muted-foreground hover:bg-gray-50'}`}
                             onClick={() => setProteinWeightChoice('actual')}
                           >
-                            PA {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
+                            Peso Atual {selectedPatient.weight ? `(${selectedPatient.weight}kg)` : ''}
                           </button>
                           <button
                             type="button"
@@ -3146,7 +3216,7 @@ const PrescriptionNew = () => {
                             onClick={() => setProteinWeightChoice('ideal')}
                             disabled={!calculatedIdealWeight}
                           >
-                            PI {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
+                            Peso Ideal {calculatedIdealWeight ? `(${calculatedIdealWeight.toFixed(1)}kg)` : ''}
                           </button>
                         </div>
                         <Input type="number" step="0.1" value={goalTargetProteinPerKgActual || ''} onChange={e => setGoalTargetProteinPerKgActual(parseFloat(e.target.value) || undefined)} placeholder="Ex: 1.2" />
@@ -3775,6 +3845,12 @@ const PrescriptionNew = () => {
                     <div className="p-4 bg-cyan-100 rounded-lg text-center"><p className="text-2xl font-bold text-cyan-700">{formatSummaryNumber(nutritionSummary.freeWater, 0)}ml</p><p className="text-sm text-muted-foreground">({formatSummaryNumber(nutritionSummary.freeWaterPerKg, 1)} ml/kg PA)</p><p className="text-xs font-medium mt-1">Água Livre</p></div>
                     <div className="p-4 bg-green-100 rounded-lg text-center"><p className="text-2xl font-bold text-green-700">{feedingRoutes.enteral ? `${formatSummaryNumber(nutritionSummary.residueTotal, 1)}g` : "-"}</p><p className="text-xs font-medium mt-1">{feedingRoutes.enteral ? "Resíduos Recicláveis" : "Resíduos (somente enteral)"}</p></div>
                   </div>
+                  {commercialProductSummary.length > 0 && (
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                      <p className="font-semibold">Produtos comerciais no resumo da prescrição</p>
+                      <p className="text-muted-foreground">{commercialProductSummary.join(" | ")}</p>
+                    </div>
+                  )}
                   <Collapsible open={showDetails} onOpenChange={setShowDetails}>
                     <CollapsibleTrigger asChild>
                       <Button variant="outline" className="w-full">

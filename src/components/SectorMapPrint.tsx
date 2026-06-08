@@ -99,7 +99,7 @@ const formatBirthDate = (value?: string) => {
 const formatEvolutionDate = (value: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR").format(parsed);
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(parsed);
 };
 
 const getOralScheduleNames = (schedule?: Record<string, unknown>) => {
@@ -142,7 +142,7 @@ const chunkPatients = (items: Patient[], size: number): Patient[][] => {
   return pages;
 };
 
-const truncateObservation = (value: string, maxLength = 90) =>
+const truncateObservation = (value: string, maxLength = 55) =>
   value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
 
 const buildObservationLines = (patientId: string | undefined, evolutions: DailyEvolution[]) => {
