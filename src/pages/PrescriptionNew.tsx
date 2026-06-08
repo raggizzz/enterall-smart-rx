@@ -198,6 +198,9 @@ const allowsAdministrationRoute = (
   return route === "translactation" && formula.administrationRoutes.includes("oral");
 };
 
+const formatWeightBasisLabel = (basis?: "actual" | "ideal" | null) =>
+  basis === "ideal" ? "Peso Ideal" : "Peso Atual";
+
 const buildFallbackCatalogFormula = (formula: any): ExtendedCatalogFormula => {
   const density = formula.density || formula.caloriesPerUnit || 1;
   const proteinPer100 = typeof formula.proteinPerUnit === "number"
@@ -3155,9 +3158,9 @@ const PrescriptionNew = () => {
                               {" | "}
                               {latestGoalsPrescription.tneGoals.targetProteinPerKgActual ?? "-"} g/kg
                               {" | Energia "}
-                              {(latestGoalsPrescription.tneGoals.targetKcalWeightBasis || "PA").toUpperCase()}
+                              {formatWeightBasisLabel(latestGoalsPrescription.tneGoals.targetKcalWeightBasis)}
                               {" | Proteínas "}
-                              {(latestGoalsPrescription.tneGoals.targetProteinWeightBasis || "PA").toUpperCase()}
+                              {formatWeightBasisLabel(latestGoalsPrescription.tneGoals.targetProteinWeightBasis)}
                             </p>
                             {latestGoalsPrescription.startDate && (
                               <p className="text-xs text-emerald-700">
