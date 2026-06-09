@@ -42,7 +42,6 @@ const matchesTherapyFilter = (prescription: Prescription, therapyFilter: Therapy
                 && (
                     (prescription.formulas || []).length > 0
                     || (prescription.modules || []).length > 0
-                    || (prescription.oralDetails?.supplements || []).length > 0
                     || (prescription.oralDetails?.modules || []).length > 0
                     || Boolean(prescription.oralDetails?.needsThickener)
                 )

@@ -14,9 +14,6 @@ import { useAppTools } from "@/hooks/useDatabase";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
 import {
   calculateNitrogenBalance,
-  calculateRestingEnergyExpenditure,
-  calculateTotalEnergyExpenditure,
-  type EnergyEquation,
 } from "@/lib/automatedCalculations";
 
 // --- Types for Predictive Equations ---
@@ -55,7 +52,7 @@ const DEFAULT_EQUATIONS: PredictiveEquation[] = [
 ];
 
 const numberOrZero = (value: string | number): number => {
-  const n = Number(value);
+  const n = Number(String(value).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 };
 
@@ -409,28 +406,39 @@ const Tools = () => {
     );
   }, [nitrogenProtein, nitrogenUun, nitrogenAdditionalLosses]);
 
-  const [energyEquation, setEnergyEquation] = useState<EnergyEquation>("pocket-formula");
   const [energySex, setEnergySex] = useState<"male" | "female">("male");
   const [energyWeight, setEnergyWeight] = useState("");
   const [energyHeight, setEnergyHeight] = useState("");
   const [energyAge, setEnergyAge] = useState("");
-  const [energyActivityFactor, setEnergyActivityFactor] = useState("1");
-  const [energyStressFactor, setEnergyStressFactor] = useState("1");
-  const energyResult = useMemo(() => {
-    const ree = calculateRestingEnergyExpenditure(
-      energyEquation,
-      numberOrZero(energyWeight),
-      numberOrZero(energyHeight),
-      numberOrZero(energyAge),
-      energySex,
-    );
-    const tee = calculateTotalEnergyExpenditure(
-      ree,
-      numberOrZero(energyActivityFactor),
-      numberOrZero(energyStressFactor),
-    );
-    return ree > 0 && tee > 0 ? { ree, tee } : null;
-  }, [energyEquation, energySex, energyWeight, energyHeight, energyAge, energyActivityFactor, energyStressFactor]);
+  const [energyPocketKcalKg, setEnergyPocketKcalKg] = useState("25");
+  const energyResults = useMemo(() => {
+    const weight = numberOrZero(energyWeight);
+    const rawHeight = numberOrZero(energyHeight);
+    const heightCm = rawHeight > 0 && rawHeight <= 3 ? rawHeight * 100 : rawHeight;
+    const age = numberOrZero(energyAge);
+    const pocketKcalKg = numberOrZero(energyPocketKcalKg);
+
+    const hasBaseInputs = weight > 0 && age > 0;
+    const hasHeight = heightCm > 0;
+
+    const iretonJones = hasBaseInputs
+      ? 1784 + (5 * weight) - (11 * age) + (energySex === "male" ? 244 : 0)
+      : 0;
+    const harrisBenedict = hasBaseInputs && hasHeight
+      ? energySex === "male"
+        ? 66.5 + (13.75 * weight) + (5 * heightCm) - (6.75 * age)
+        : 655 + (9.5 * weight) + (1.84 * heightCm) - (4.67 * age)
+      : 0;
+    const pocketFormula = weight > 0 && pocketKcalKg > 0 ? weight * pocketKcalKg : 0;
+
+    return {
+      iretonJones,
+      harrisBenedict,
+      pocketFormula,
+      pocketKcalKg,
+      hasAnyResult: iretonJones > 0 || harrisBenedict > 0 || pocketFormula > 0,
+    };
+  }, [energyAge, energyHeight, energyPocketKcalKg, energySex, energyWeight]);
 
   const nrsResult = useMemo(() => {
     const prescreenPositive = nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4;
@@ -1049,20 +1057,10 @@ const Tools = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Estimativa de Gasto Energético</CardTitle>
+                <CardDescription>Preencha os dados uma vez para visualizar Ireton-Jones, Harris-Benedict e fórmula de bolso na mesma tela.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label>Equação</Label>
-                    <Select value={energyEquation} onValueChange={(value) => setEnergyEquation(value as EnergyEquation)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pocket-formula">Fórmula de bolso (25 kcal/kg)</SelectItem>
-                        <SelectItem value="harris-benedict-revised">Harris-Benedict</SelectItem>
-                        <SelectItem value="ireton-jones">Ireton-Jones</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="space-y-2">
                     <Label>Sexo</Label>
                     <Select value={energySex} onValueChange={(value) => setEnergySex(value as "male" | "female")}>
@@ -1082,26 +1080,36 @@ const Tools = () => {
                     <Input id="energy-weight" type="number" min="0" step="0.1" value={energyWeight} onChange={(event) => setEnergyWeight(event.target.value)} placeholder="Ex: 70" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="energy-height">Altura (cm)</Label>
-                    <Input id="energy-height" type="number" min="0" step="0.1" value={energyHeight} onChange={(event) => setEnergyHeight(event.target.value)} placeholder="Ex: 170" />
+                    <Label htmlFor="energy-height">Estatura (m)</Label>
+                    <Input id="energy-height" type="number" min="0" step="0.01" value={energyHeight} onChange={(event) => setEnergyHeight(event.target.value)} placeholder="Ex: 1.70" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="energy-activity">Fator de atividade</Label>
-                    <Input id="energy-activity" type="number" min="0.1" step="0.05" value={energyActivityFactor} onChange={(event) => setEnergyActivityFactor(event.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="energy-stress">Fator de estresse</Label>
-                    <Input id="energy-stress" type="number" min="0.1" step="0.05" value={energyStressFactor} onChange={(event) => setEnergyStressFactor(event.target.value)} />
+                    <Label htmlFor="energy-pocket">Fórmula de bolso (kcal/kg)</Label>
+                    <Input id="energy-pocket" type="number" min="0" step="1" value={energyPocketKcalKg} onChange={(event) => setEnergyPocketKcalKg(event.target.value)} placeholder="Ex: 25" />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Gasto total estimado = gasto energético de repouso x fator de atividade x fator de estresse.</p>
-                {energyResult && (
-                  <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-2">
-                    <div><p className="text-xs text-muted-foreground">Gasto energético de repouso</p><p className="text-2xl font-bold">{Math.round(energyResult.ree)} kcal/dia</p></div>
-                    <div><p className="text-xs text-muted-foreground">Gasto energético total estimado</p><p className="text-2xl font-bold">{Math.round(energyResult.tee)} kcal/dia</p></div>
+                {energyResults.hasAnyResult ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="rounded-lg border bg-muted/30 p-4">
+                      <p className="text-sm font-semibold text-muted-foreground">Ireton-Jones (1997)</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.iretonJones > 0 ? Math.round(energyResults.iretonJones) : "-"} kcal/dia</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-4">
+                      <p className="text-sm font-semibold text-muted-foreground">Harris-Benedict (1919)</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.harrisBenedict > 0 ? Math.round(energyResults.harrisBenedict) : "-"} kcal/dia</p>
+                    </div>
+                    <div className="rounded-lg border bg-muted/30 p-4">
+                      <p className="text-sm font-semibold text-muted-foreground">Fórmula de bolso</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.pocketFormula > 0 ? Math.round(energyResults.pocketFormula) : "-"} kcal/dia</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{energyResults.pocketKcalKg || 0} kcal/kg</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                    Informe idade, peso e estatura para calcular as estimativas. A fórmula de bolso usa peso e o valor de kcal/kg.
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. A calorimetria direta é o método mais indicado.</p>
+                <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. O usuário visualiza os três resultados e escolhe qual estimativa usar na prescrição.</p>
               </CardContent>
             </Card>
           </TabsContent>

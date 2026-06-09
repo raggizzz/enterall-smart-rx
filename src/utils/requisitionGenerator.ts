@@ -439,17 +439,13 @@ export const generateRequisitionData = ({
         let hydrationDailySetCount = 0;
         let hasMappedDelivery = false;
         const isEnteralViaOral = p.therapyType === 'enteral' && (p.enteralDetails?.access === 'VO' || p.feedingRoute === 'VO');
-        const formulaEntries = p.formulas.length > 0
-            ? p.formulas
-            : p.therapyType === 'oral'
-                ? (p.oralDetails?.supplements || []).map((supplement) => ({
-                    formulaId: supplement.supplementId,
-                    formulaName: supplement.supplementName,
-                    volume: Number(supplement.amount || 0),
-                    timesPerDay: getOralScheduleNames(supplement.schedules).length,
-                    schedules: getOralScheduleNames(supplement.schedules),
-                }))
-                : [];
+        const formulaEntries = p.formulas
+            .filter((formulaEntry) => {
+                if (p.therapyType !== 'oral') return true;
+                const formulaObj = formulas.find((item) => item.id === formulaEntry.formulaId);
+                const lookupText = normalizeLookupText(`${formulaObj?.type || ''} ${formulaObj?.name || ''} ${formulaEntry.formulaName || ''}`);
+                return formulaObj?.type !== 'oral-supplement' && !lookupText.includes('suplement');
+            });
         const moduleEntries = p.modules.length > 0
             ? p.modules
             : p.therapyType === 'oral'

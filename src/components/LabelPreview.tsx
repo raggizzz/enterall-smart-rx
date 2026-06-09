@@ -184,6 +184,10 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
         .replace(/[\u0300-\u036f]/g, "")
         .toUpperCase();
     const isWaterLabel = normalizedWaterText.includes("AGUA");
+    const showInfusionRate = Boolean(data.infusionRate) && !isWaterLabel;
+    const volumeMetricStyle = isWaterLabel && !showInfusionRate
+        ? mergeStyle(labelStyles.metric, { gridColumn: "1 / -1", padding: "0.7mm 1.2mm" })
+        : labelStyles.metric;
 
     return (
         <article
@@ -241,14 +245,14 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
 
                 <div className="clinical-label__metrics grid grid-cols-2 gap-[1mm]" style={labelStyles.metrics}>
                     {data.volumeText && (
-                        <div className="clinical-label__metric rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]" style={labelStyles.metric}>
+                        <div className="clinical-label__metric rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]" style={volumeMetricStyle}>
                             <div className="clinical-label__metric-inline" style={labelStyles.metricInline}>
                                 <div className="clinical-label__metric-label text-[6.6px] font-bold uppercase leading-none whitespace-nowrap" style={labelStyles.caption}>Volume total</div>
-                                <div className="clinical-label__metric-value text-[12.4px] font-extrabold leading-none whitespace-nowrap" style={mergeStyle(labelStyles.metricValue, { marginTop: 0, fontSize: "12.4px" })}>{data.volumeText}</div>
+                                <div className={`clinical-label__metric-value${isWaterLabel ? " clinical-label__metric-value--water" : ""} text-[12.4px] font-extrabold leading-none whitespace-nowrap`} style={mergeStyle(labelStyles.metricValue, { marginTop: 0, fontSize: isWaterLabel ? "14px" : "12.4px" })}>{data.volumeText}</div>
                             </div>
                         </div>
                     )}
-                    {data.infusionRate && (
+                    {showInfusionRate && (
                         <div className="clinical-label__metric rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]" style={labelStyles.metric}>
                             <div className="clinical-label__metric-label text-[6.6px] font-bold uppercase leading-none" style={labelStyles.caption}>Vazao</div>
                             <div className="clinical-label__metric-value mt-[0.8mm] text-[10.2px] font-extrabold leading-none" style={mergeStyle(labelStyles.metricValue, { fontSize: "10.2px" })}>{data.infusionRate}</div>

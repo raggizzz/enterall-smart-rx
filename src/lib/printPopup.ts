@@ -150,7 +150,14 @@ const labelPrintFallbackCss = `
   }
 
   .clinical-label__metric {
-    padding: 1mm 1.2mm !important;
+    padding: 0.75mm 1.2mm !important;
+  }
+
+  .clinical-label__metric-inline {
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
+    gap: 1mm !important;
   }
 
   .clinical-label__metric-value {
@@ -158,6 +165,15 @@ const labelPrintFallbackCss = `
     font-size: 10.8px !important;
     font-weight: 800 !important;
     line-height: 1 !important;
+  }
+
+  .clinical-label__metric-inline .clinical-label__metric-value {
+    margin-top: 0 !important;
+    font-size: 12.4px !important;
+  }
+
+  .clinical-label__metric-value--water {
+    font-size: 14px !important;
   }
 
   .clinical-label__record {
