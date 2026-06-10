@@ -5,7 +5,7 @@ Ambiente avaliado: maquina local Windows em `C:\Users\igorp\Documents\enterall-s
 Banco avaliado: PostgreSQL local Docker, database `enterall_smart_rx`  
 Backend avaliado: Express + Prisma em `http://localhost:3000`  
 Frontend avaliado: Vite/React em `http://localhost:8080`  
-Tunel publico atual: `https://vincent-object-consultation-descending.trycloudflare.com`
+Tunel publico atual: `https://shipments-posts-hottest-grab.trycloudflare.com`
 
 ## 1. Resumo executivo
 
@@ -20,27 +20,29 @@ O EN Met@ esta estruturado como um sistema hospitalar local-first com:
 
 Tecnicamente, a estrutura do banco esta correta e sincronizada com o Prisma. A stack local esta no ar, e o backend respondeu `ready` com banco `ok`.
 
-Ponto critico encontrado: o PostgreSQL local atual esta sem dados assistenciais e cadastrais. As 17 tabelas existem, mas todas aparecem com `0` registros. Isso significa que o banco foi iniciado e estruturado, mas os dados reais ainda nao foram importados para ele.
+Atualizacao da analise: a leitura anterior de banco vazio estava incorreta porque se baseou em estatisticas estimadas do PostgreSQL (`pg_stat_user_tables`), que podem ficar desatualizadas. A contagem real feita pelo Prisma, usando a mesma conexao do backend, confirma que o PostgreSQL local contem dados.
 
-Isso e importante porque o app pode abrir, mas sem registros no banco o backend nao tera:
+Contagem real encontrada em 10/06/2026:
 
-- hospitais cadastrados;
-- usuarios/profissionais para login;
-- pacientes;
-- prescricoes;
-- evolucoes;
-- formulas, modulos e insumos cadastrados;
-- configuracoes da unidade.
+- 2 hospitais;
+- 6 alas/setores;
+- 6 profissionais/usuarios;
+- 17 pacientes;
+- 32 formulas;
+- 11 modulos;
+- 7 insumos;
+- 20 prescricoes;
+- 59 evolucoes/acompanhamentos diarios;
+- 377 registros de idempotencia da sincronizacao.
 
-Se a equipe esta vendo dados no app, eles podem estar em uma destas fontes:
+Conclusao operacional corrigida: o app esta salvando no PostgreSQL quando o backend esta online. Quando o navegador esta offline ou o servidor local esta indisponivel, as operacoes ficam na fila offline do navegador, em IndexedDB/Dexie, e depois sao reenviadas para o backend quando a conexao volta.
 
-- cache/offline do navegador, via IndexedDB;
-- outro banco/volume Docker antigo;
-- Supabase legado;
-- arquivo de backup ainda nao importado;
-- seed/dados de demonstracao em outro ambiente.
+Isso significa que existem duas camadas de persistencia em uso:
 
-Nesta avaliacao, nao foi encontrado backup JSON/SQL evidente em `Downloads` ou `Documents`, alem dos arquivos do proprio projeto. Tambem existem arquivos SQLite antigos em `server/dev.db` e `server/prisma/dev.db`, mas o runtime local nao tinha ferramenta SQLite disponivel para inspecionar o conteudo sem instalar dependencias adicionais.
+- persistencia principal: PostgreSQL local em Docker, acessado pelo backend via Prisma;
+- persistencia temporaria/offline: IndexedDB no navegador, banco `enmeta-offline`.
+
+Tambem ha uso de `localStorage` para sessao, unidade selecionada e alguns fallbacks historicos, mas ele nao deve ser tratado como banco principal.
 
 ## 2. Estado dos servicos locais
 
@@ -53,7 +55,7 @@ Servicos validados em 10/06/2026:
 | Frontend | `http://localhost:8080` | `200` |
 | Grafana | `http://localhost:3001/api/health` | `200` |
 | Prometheus | `http://localhost:9090/-/healthy` | `200` |
-| Tunnel Cloudflare | `https://vincent-object-consultation-descending.trycloudflare.com/health/ready` | `200`, database `ok` |
+| Tunnel Cloudflare | `https://shipments-posts-hottest-grab.trycloudflare.com/health/ready` | `200`, database `ok` |
 
 O arquivo `vercel.json` foi atualizado para redirecionar:
 
@@ -77,7 +79,7 @@ O fluxo principal e:
 8. O backend Express recebe a requisicao em `server/src/routes/...`.
 9. O backend valida JWT/permissao/hospital quando necessario.
 10. O backend usa Prisma para gravar/ler PostgreSQL.
-11. O PostgreSQL persiste os dados no volume Docker `postgres_data`.
+11. O PostgreSQL persiste os dados no volume Docker `postgres_postgres_data`, montado no container em `/var/lib/postgresql/data`.
 
 Fluxo resumido:
 
@@ -162,29 +164,29 @@ Tamanho fisico por tabela, mesmo vazias, por causa de estrutura, indices e metad
 | `RolePermission` | 24 kB |
 | `PrescriptionSupply` | 16 kB |
 
-Contagem atual estimada:
+Contagem real atual, validada via Prisma:
 
 | Tabela | Registros |
 |---|---:|
-| `Hospital` | 0 |
-| `Ward` | 0 |
-| `Professional` | 0 |
-| `Patient` | 0 |
-| `Formula` | 0 |
-| `Module` | 0 |
-| `Supply` | 0 |
-| `Prescription` | 0 |
-| `PrescriptionFormula` | 0 |
-| `PrescriptionModule` | 0 |
+| `Hospital` | 2 |
+| `Ward` | 6 |
+| `Professional` | 6 |
+| `Patient` | 17 |
+| `Formula` | 32 |
+| `Module` | 11 |
+| `Supply` | 7 |
+| `Prescription` | 20 |
+| `PrescriptionFormula` | 13 |
+| `PrescriptionModule` | 10 |
 | `PrescriptionSupply` | 0 |
-| `PrescriptionStatusEvent` | 0 |
-| `DailyEvolution` | 0 |
-| `AppSettings` | 0 |
+| `PrescriptionStatusEvent` | 22 |
+| `DailyEvolution` | 59 |
+| `AppSettings` | 2 |
 | `RolePermission` | 0 |
 | `AppTool` | 0 |
-| `IdempotencyRecord` | 0 |
+| `IdempotencyRecord` | 377 |
 
-Conclusao operacional: o banco esta tecnicamente funcionando, mas ainda nao contem a base real do hospital.
+Conclusao operacional: o banco esta tecnicamente funcionando e contem dados reais/demonstrativos suficientes para o app operar localmente. As tabelas `RolePermission` e `AppTool` estao vazias porque a matriz de permissoes e as ferramentas ainda podem estar vindo de padroes do codigo ou configuracoes locais. A tabela `PrescriptionSupply` esta vazia porque os insumos parecem ser calculados/derivados nos relatorios e etiquetas, nao necessariamente gravados como itens persistidos em toda prescricao.
 
 ## 6. Tabelas do banco e finalidade
 
@@ -911,25 +913,25 @@ Recomendacoes futuras de indices:
 
 ## 10. Problemas e riscos atuais
 
-### 10.1 Banco atual vazio
+### 10.1 Validacao continua da origem dos dados
 
-Este e o principal problema operacional agora.
+O banco atual contem dados, mas o app tambem possui cache offline e fallbacks locais. O risco principal nao e "banco vazio"; o risco real e confundir a origem de um dado exibido na tela.
 
 Risco:
 
-- usuario nao consegue autenticar pelo backend;
-- dashboards sem dados;
-- relatorios gerenciais vazios;
-- faturamento sem insumos;
-- prescricoes e acompanhamento sem base.
+- uma tela pode exibir dado vindo do cache IndexedDB enquanto o backend ainda nao recebeu a sincronizacao;
+- um usuario pode acreditar que salvou no servidor quando a operacao ficou apenas na fila offline;
+- relatorios podem divergir temporariamente se existirem pendencias locais nao sincronizadas;
+- dados de sessao e unidade selecionada em `localStorage` podem mascarar qual hospital esta sendo consultado;
+- estatisticas estimadas do Postgres podem sugerir `0` registros mesmo quando existem dados reais.
 
 Acao recomendada:
 
-- localizar backup real;
-- importar via script `server/scripts/importBackup.ts`;
-- ou restaurar volume Docker antigo;
-- ou migrar dados do Supabase legado se ainda for a fonte ativa;
-- so usar seed de demonstracao se for explicitamente ambiente de teste.
+- mostrar no app quando ha fila offline pendente;
+- exibir origem/estado do dado em telas criticas: `sincronizado`, `pendente`, `falhou`;
+- usar contagens via Prisma/API para auditoria, nao somente `pg_stat_user_tables`;
+- criar rotina de conciliacao diaria entre `pendingOperations` e o PostgreSQL;
+- manter backup automatico do volume PostgreSQL e exportacao operacional em arquivo.
 
 ### 10.2 Muitos campos JSON como texto
 
