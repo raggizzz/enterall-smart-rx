@@ -365,10 +365,12 @@ export const PatientMonitoring = ({
     const handleSave = async () => {
         setIsSaving(true);
         try {
+            const interruptionsWithoutDoi = { ...interruptions };
+            delete interruptionsWithoutDoi.doi;
             await onSave({
                 tneGoals: goals,
                 infusionPercentage24h: infusionPercentage,
-                tneInterruptions: interruptions,
+                tneInterruptions: interruptionsWithoutDoi,
                 unintentionalCalories: unintentionalCal,
                 monitoringNotes,
                 idealWeight: idealWeight,
@@ -596,14 +598,6 @@ export const PatientMonitoring = ({
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                         <CardContent className="space-y-4 pt-4 border-t">
-                            <div className="space-y-2 mb-4">
-                                <Label>DOI de referência</Label>
-                                <Input 
-                                    placeholder="Digite o DOI..."
-                                    value={interruptions.doi || ''}
-                                    onChange={(e) => setInterruptions({ ...interruptions, doi: e.target.value })}
-                                />
-                            </div>
                     {/* Procedimentos */}
                     <Collapsible open={proceduresOpen} onOpenChange={setProceduresOpen}>
                         <CollapsibleTrigger asChild>
@@ -810,7 +804,7 @@ export const PatientMonitoring = ({
                 <CardHeader>
                     <CardTitle>Observações do Acompanhamento</CardTitle>
                     <CardDescription>
-                        Máximo de {MONITORING_NOTE_MAX_LENGTH} caracteres, para caber no mapa do nutricionista.
+                        Máximo de {MONITORING_NOTE_MAX_LENGTH} caracteres: Resumo diário para o mapa do nutricionista.
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">

@@ -1672,129 +1672,88 @@ const PrescriptionNew = () => {
     proteinReferenceWeight,
   ]);
 
-  const detailedSourceLines = useMemo(() => {
-    const formulaLines: string[] = [];
-    const moduleLines: string[] = [];
-
-    if (feedingRoutes.enteral) {
-      if (systemType === "closed" && closedFormula.formulaId) {
-        const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
-        if (formula && (bagCalculation?.totalVolume || 0) > 0) {
-          formulaLines.push(`${buildGenericFormulaDescriptor(formula)}: ${formatSummaryNumber(bagCalculation?.totalVolume || 0, 0)} mL/dia`);
-        }
-      }
-
-      if (systemType === "open") {
-        openFormulas
-          .filter((entry) => isPersistedDbId(entry.formulaId) && entry.times.length > 0)
-          .forEach((entry) => {
-            const formula = availableFormulas.find((item) => item.id === entry.formulaId);
-            if (!formula) return;
-            const totalVolume = (toNumericValue(entry.volume) || 0) * entry.times.length;
-            if (totalVolume > 0) {
-              formulaLines.push(`${buildGenericFormulaDescriptor(formula, enteralAccess)}: ${formatSummaryNumber(totalVolume, 0)} ${formula.presentationForm === "po" ? "g" : "mL"}/dia`);
-            }
-          });
-      }
-
-      modules
-        .filter((entry) => isPersistedDbId(entry.moduleId) && entry.times.length > 0)
-        .forEach((entry) => {
-          const moduleItem = availableModules.find((item) => item.id === entry.moduleId);
-          if (!moduleItem) return;
-          const totalAmount = (toNumericValue(entry.quantity) || 0) * entry.times.length;
-          if (totalAmount > 0) {
-            moduleLines.push(`${buildGenericModuleDescriptor(moduleItem)}: ${formatSummaryNumber(totalAmount, 1)} ${entry.unit}/dia`);
-          }
-        });
-    }
-
-    if (feedingRoutes.oral) {
-      oralSupplements.forEach((supplement) => {
-        if (!isPersistedDbId(supplement.supplementId) || !supplement.supplementName) return;
-        const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
-        const totalAmount = (supplement.amount || 0) * Object.values(supplement.schedules || {}).filter((value) => value === true).length;
-        if (totalAmount > 0) {
-          formulaLines.push(`${buildGenericFormulaDescriptor(formula, "VO")}: ${formatSummaryNumber(totalAmount, 1)} ${supplement.unit || "mL"}/dia`);
-        }
-      });
-
-      oralTherapyModules.forEach((moduleEntry) => {
-        if (!isPersistedDbId(moduleEntry.moduleId) || !moduleEntry.moduleName) return;
-        const moduleItem = availableModules.find((item) => item.id === moduleEntry.moduleId);
-        const totalAmount = (moduleEntry.amount || 0) * Object.values(moduleEntry.schedules || {}).filter((value) => value === true).length;
-        if (totalAmount > 0) {
-          const moduleDescription = moduleItem
-            ? buildGenericModuleDescriptor(moduleItem)
-            : moduleEntry.moduleName;
-          moduleLines.push(`${moduleDescription}: ${formatSummaryNumber(totalAmount, 1)} ${moduleEntry.unit || "g"}/dia`);
-        }
-      });
-    }
-
-    return { formulas: formulaLines, modules: moduleLines };
-  }, [
-    availableFormulas,
-    availableModules,
-    bagCalculation?.totalVolume,
-    closedFormula.formulaId,
-    enteralAccess,
-    feedingRoutes.enteral,
-    feedingRoutes.oral,
-    modules,
-    openFormulas,
-    oralSupplements,
-    oralTherapyModules,
-    systemType,
-  ]);
-
   const commercialProductSummary = useMemo(() => {
-    const names = new Set<string>();
+    const products = new Map<string, { name: string; amount: number; unit: string }>();
+    const standalone = new Set<string>();
+
+    const addProduct = (name?: string, amount?: number, unit = "ml") => {
+      const trimmedName = (name || "").trim();
+      if (!trimmedName) return;
+
+      const normalizedAmount = typeof amount === "number" && Number.isFinite(amount) ? amount : 0;
+      if (normalizedAmount <= 0) {
+        standalone.add(trimmedName);
+        return;
+      }
+
+      const normalizedUnit = unit.toLowerCase() === "ml" ? "ml" : unit.toLowerCase();
+      const key = `${trimmedName}|${normalizedUnit}`;
+      const current = products.get(key);
+      products.set(key, {
+        name: trimmedName,
+        amount: (current?.amount || 0) + normalizedAmount,
+        unit: normalizedUnit,
+      });
+      standalone.delete(trimmedName);
+    };
 
     if (feedingRoutes.enteral) {
       if (systemType === "closed" && closedFormula.formulaId) {
         const formula = availableFormulas.find((item) => item.id === closedFormula.formulaId);
-        if (formula?.name) names.add(formula.name);
+        addProduct(formula?.name, bagCalculation?.totalVolume || 0, "ml");
       }
 
       if (systemType === "open") {
         openFormulas.forEach((entry) => {
           const formula = availableFormulas.find((item) => item.id === entry.formulaId);
-          if (formula?.name) names.add(formula.name);
+          const totalAmount = (toNumericValue(entry.volume) || 0) * entry.times.length;
+          addProduct(formula?.name, totalAmount, formula?.presentationForm === "po" ? "g" : "ml");
         });
       }
 
       modules.forEach((entry) => {
         const moduleItem = availableModules.find((item) => item.id === entry.moduleId);
-        if (moduleItem?.name) names.add(moduleItem.name);
+        const totalAmount = (toNumericValue(entry.quantity) || 0) * entry.times.length;
+        addProduct(moduleItem?.name, totalAmount, entry.unit || "g");
       });
     }
 
     if (feedingRoutes.oral) {
       oralSupplements.forEach((supplement) => {
         const formula = availableFormulas.find((item) => item.id === supplement.supplementId);
-        if (formula?.name || supplement.supplementName) names.add(formula?.name || supplement.supplementName);
+        const scheduleCount = Object.values(supplement.schedules || {}).filter((value) => value === true).length;
+        const totalAmount = (supplement.amount || 0) * scheduleCount;
+        addProduct(formula?.name || supplement.supplementName, totalAmount, supplement.unit || "ml");
       });
 
       oralTherapyModules.forEach((moduleEntry) => {
         const moduleItem = availableModules.find((item) => item.id === moduleEntry.moduleId);
-        if (moduleItem?.name || moduleEntry.moduleName) names.add(moduleItem?.name || moduleEntry.moduleName);
+        const scheduleCount = Object.values(moduleEntry.schedules || {}).filter((value) => value === true).length;
+        const totalAmount = (moduleEntry.amount || 0) * scheduleCount;
+        addProduct(moduleItem?.name || moduleEntry.moduleName, totalAmount, moduleEntry.unit || "g");
       });
 
       const thickenerModule = availableModules.find((item) => item.id === oralThickenerModuleId);
-      if (thickenerModule?.name || oralThickenerProduct.trim()) {
-        names.add(thickenerModule?.name || oralThickenerProduct.trim());
+      if (oralNeedsThickener && (thickenerModule?.name || oralThickenerProduct.trim())) {
+        const totalAmount = (toNumericValue(oralThickenerGrams) || 0) * oralThickenerTimes.length;
+        addProduct(thickenerModule?.name || oralThickenerProduct.trim(), totalAmount, "g");
       }
     }
 
     if (feedingRoutes.parenteral && parenteralVET > 0) {
-      names.add("Terapia nutricional parenteral");
+      standalone.add("Terapia nutricional parenteral");
     }
 
-    return Array.from(names);
+    return [
+      ...Array.from(products.values()).map((item) =>
+        `${item.name} ${formatSummaryNumber(item.amount, item.unit === "ml" ? 0 : 1)}${item.unit}`,
+      ),
+      ...Array.from(standalone),
+    ];
   }, [
     availableFormulas,
     availableModules,
+    bagCalculation?.totalVolume,
     closedFormula.formulaId,
     feedingRoutes.enteral,
     feedingRoutes.oral,
@@ -1803,8 +1762,11 @@ const PrescriptionNew = () => {
     openFormulas,
     oralSupplements,
     oralTherapyModules,
+    oralNeedsThickener,
+    oralThickenerGrams,
     oralThickenerModuleId,
     oralThickenerProduct,
+    oralThickenerTimes.length,
     parenteralVET,
     systemType,
   ]);
@@ -3868,20 +3830,20 @@ const PrescriptionNew = () => {
                       <div>
                         <h4 className="font-semibold mb-2">Macronutrientes</h4>
                         <p><strong>Proteínas:</strong> {formatSummaryNumber(nutritionSummary.protein, 1)}g ({formatSummaryNumber(nutritionSummary.proteinPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.proteinPct, 1)}% VET</p>
-                        <p><strong>Carboidratos:</strong> {formatSummaryNumber(nutritionSummary.carbs, 1)}g ({formatSummaryNumber(nutritionSummary.carbsPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.carbsPct, 1)}% VET</p>
-                        <p><strong>Lipídeos:</strong> {formatSummaryNumber(nutritionSummary.fat, 1)}g ({formatSummaryNumber(nutritionSummary.fatPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.fatPct, 1)}% VET</p>
-                        <p><strong>Fibras:</strong> {formatSummaryNumber(nutritionSummary.fiber, 1)}g/dia</p>
-                        {detailedSourceLines.formulas.length > 0 && (
-                          <div className="ml-2 text-xs text-muted-foreground space-y-1">
-                            <p className="font-medium text-foreground/80">Fórmulas / suplementos</p>
-                            {detailedSourceLines.formulas.map((line) => <p key={line}>{line}</p>)}
-                          </div>
+                        {nutritionSummary.proteinSources.length > 0 && (
+                          <p className="ml-4 text-xs text-muted-foreground">Fontes: {nutritionSummary.proteinSources.join("; ")}</p>
                         )}
-                        {detailedSourceLines.modules.length > 0 && (
-                          <div className="ml-2 text-xs text-muted-foreground space-y-1">
-                            <p className="font-medium text-foreground/80">Módulos</p>
-                            {detailedSourceLines.modules.map((line) => <p key={line}>{line}</p>)}
-                          </div>
+                        <p><strong>Carboidratos:</strong> {formatSummaryNumber(nutritionSummary.carbs, 1)}g ({formatSummaryNumber(nutritionSummary.carbsPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.carbsPct, 1)}% VET</p>
+                        {nutritionSummary.carbSources.length > 0 && (
+                          <p className="ml-4 text-xs text-muted-foreground">Fontes: {nutritionSummary.carbSources.join("; ")}</p>
+                        )}
+                        <p><strong>Lipídeos:</strong> {formatSummaryNumber(nutritionSummary.fat, 1)}g ({formatSummaryNumber(nutritionSummary.fatPerKg, 2)}g/kg) - {formatSummaryNumber(nutritionSummary.fatPct, 1)}% VET</p>
+                        {nutritionSummary.fatSources.length > 0 && (
+                          <p className="ml-4 text-xs text-muted-foreground">Fontes: {nutritionSummary.fatSources.join("; ")}</p>
+                        )}
+                        <p><strong>Fibras:</strong> {formatSummaryNumber(nutritionSummary.fiber, 1)}g/dia</p>
+                        {nutritionSummary.fiberSources.length > 0 && (
+                          <p className="ml-4 text-xs text-muted-foreground">Fontes: {nutritionSummary.fiberSources.join("; ")}</p>
                         )}
                       </div>
 
