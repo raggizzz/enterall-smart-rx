@@ -186,8 +186,17 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
     const isWaterLabel = normalizedWaterText.includes("AGUA");
     const showInfusionRate = Boolean(data.infusionRate) && !isWaterLabel;
     const volumeMetricStyle = isWaterLabel && !showInfusionRate
-        ? mergeStyle(labelStyles.metric, { gridColumn: "1 / -1", padding: "0.7mm 1.2mm" })
+        ? mergeStyle(labelStyles.metric, { gridColumn: "1 / -1", padding: "0.85mm 1.2mm" })
         : labelStyles.metric;
+    const waterCompositionStyle = mergeStyle(labelStyles.composition, {
+        marginTop: "1mm",
+        marginBottom: 0,
+        maxHeight: "7.5mm",
+        overflow: "hidden",
+        padding: "0.7mm 1.2mm",
+        fontSize: "6.2px",
+        lineHeight: 1.1,
+    });
 
     return (
         <article
@@ -237,18 +246,12 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                     </div>
                 )}
 
-                {isWaterLabel && data.compositionText && (
-                    <div className="clinical-label__composition rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.9mm] text-[6.7px] leading-tight break-words" style={labelStyles.composition}>
-                        <strong>Módulos:</strong> {data.compositionText}
-                    </div>
-                )}
-
                 <div className="clinical-label__metrics grid grid-cols-2 gap-[1mm]" style={labelStyles.metrics}>
                     {data.volumeText && (
                         <div className="clinical-label__metric rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]" style={volumeMetricStyle}>
                             <div className="clinical-label__metric-inline" style={labelStyles.metricInline}>
                                 <div className="clinical-label__metric-label text-[6.6px] font-bold uppercase leading-none whitespace-nowrap" style={labelStyles.caption}>Volume total</div>
-                                <div className={`clinical-label__metric-value${isWaterLabel ? " clinical-label__metric-value--water" : ""} text-[12.4px] font-extrabold leading-none whitespace-nowrap`} style={mergeStyle(labelStyles.metricValue, { marginTop: 0, fontSize: isWaterLabel ? "14px" : "12.4px" })}>{data.volumeText}</div>
+                                <div className={`clinical-label__metric-value${isWaterLabel ? " clinical-label__metric-value--water" : ""} text-[12.4px] font-extrabold leading-none whitespace-nowrap`} style={mergeStyle(labelStyles.metricValue, { marginTop: 0, fontSize: isWaterLabel ? "13.5px" : "12.4px" })}>{data.volumeText}</div>
                             </div>
                         </div>
                     )}
@@ -259,6 +262,12 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                         </div>
                     )}
                 </div>
+
+                {isWaterLabel && data.compositionText && (
+                    <div className="clinical-label__composition rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[0.9mm] text-[6.7px] leading-tight break-words" style={waterCompositionStyle}>
+                        <strong>Módulos:</strong> {data.compositionText}
+                    </div>
+                )}
 
                 <div className="clinical-label__record grid grid-cols-1 gap-x-[1.2mm] text-[6.8px] leading-tight" style={labelStyles.record}>
                     <div><strong>Registro:</strong> {data.record}</div>

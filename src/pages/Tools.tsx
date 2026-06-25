@@ -16,40 +16,7 @@ import {
   calculateNitrogenBalance,
 } from "@/lib/automatedCalculations";
 
-// --- Types for Predictive Equations ---
-type EquationType = "weight" | "height";
 type Sex = "male" | "female" | "both";
-type Race = "white" | "black" | "both";
-
-interface PredictiveEquation {
-  id: string;
-  name: string;
-  type: EquationType;
-  sex: Sex;
-  race: Race;
-  minAge: number;
-  maxAge: number;
-  coefKnee: number;
-  coefArm: number;
-  coefAge: number;
-  constant: number;
-  isActive: boolean;
-}
-
-const DEFAULT_EQUATIONS: PredictiveEquation[] = [
-  // Chumlea - White Male
-  { id: "chumlea_w_m_h", name: "Chumlea (Homem Branco) - Altura", type: "height", sex: "male", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.88, coefArm: 0, coefAge: 0, constant: 71.85, isActive: true },
-  { id: "chumlea_w_m_w", name: "Chumlea (Homem Branco) - Peso", type: "weight", sex: "male", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.19, coefArm: 3.21, coefAge: 0, constant: -86.82, isActive: true },
-  // Chumlea - Black Male
-  { id: "chumlea_b_m_h", name: "Chumlea (Homem Negro) - Altura", type: "height", sex: "male", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.79, coefArm: 0, coefAge: 0, constant: 73.42, isActive: true },
-  { id: "chumlea_b_m_w", name: "Chumlea (Homem Negro) - Peso", type: "weight", sex: "male", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.09, coefArm: 3.14, coefAge: 0, constant: -83.72, isActive: true },
-  // Chumlea - White Female
-  { id: "chumlea_w_f_h", name: "Chumlea (Mulher Branca) - Altura", type: "height", sex: "female", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.87, coefArm: 0, coefAge: -0.06, constant: 70.25, isActive: true },
-  { id: "chumlea_w_f_w", name: "Chumlea (Mulher Branca) - Peso", type: "weight", sex: "female", race: "white", minAge: 18, maxAge: 120, coefKnee: 1.01, coefArm: 2.81, coefAge: 0, constant: -66.04, isActive: true },
-  // Chumlea - Black Female
-  { id: "chumlea_b_f_h", name: "Chumlea (Mulher Negra) - Altura", type: "height", sex: "female", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.86, coefArm: 0, coefAge: -0.06, constant: 68.1, isActive: true },
-  { id: "chumlea_b_f_w", name: "Chumlea (Mulher Negra) - Peso", type: "weight", sex: "female", race: "black", minAge: 18, maxAge: 120, coefKnee: 1.24, coefArm: 2.97, coefAge: 0, constant: -82.48, isActive: true },
-];
 
 const numberOrZero = (value: string | number): number => {
   const n = Number(String(value).replace(",", "."));
@@ -191,56 +158,38 @@ const Tools = () => {
   const currentHospitalId = typeof window !== "undefined" ? localStorage.getItem("userHospitalId") || "" : "";
   const [catalogSearch, setCatalogSearch] = useState("");
 
-  // --- PREDICTIVE EQUATIONS STATE ---
-  const [equations] = useState<PredictiveEquation[]>(() => {
-    const saved = localStorage.getItem('predictive_equations');
-    const source = saved ? JSON.parse(saved) as PredictiveEquation[] : DEFAULT_EQUATIONS;
-    return source.map((equation) => equation.id.startsWith("chumlea_") ? { ...equation, minAge: Math.min(equation.minAge, 18) } : equation);
-  });
-
   // Form inputs for Prediction
   const [predSex, setPredSex] = useState<Sex>("male");
-  const [predRace, setPredRace] = useState<Race>("white");
   const [predAge, setPredAge] = useState("65");
   const [predKnee, setPredKnee] = useState("");
   const [predArm, setPredArm] = useState("");
+  const [predCalf, setPredCalf] = useState("");
+  const [predSubscapular, setPredSubscapular] = useState("");
 
   const predictionResult = useMemo(() => {
     const age = numberOrZero(predAge);
     const knee = numberOrZero(predKnee);
     const arm = numberOrZero(predArm);
+    const calf = numberOrZero(predCalf);
+    const subscapular = numberOrZero(predSubscapular);
 
     const hasAge = predAge !== "" && age > 0;
     const hasKnee = predKnee !== "" && knee > 0;
     const hasArm = predArm !== "" && arm > 0;
+    const hasCalf = predCalf !== "" && calf > 0;
+    const hasSubscapular = predSubscapular !== "" && subscapular > 0;
 
-    // Find best match for HEIGHT equation
-    const heightEq = equations.find(e =>
-      e.isActive &&
-      e.type === 'height' &&
-      (e.sex === 'both' || e.sex === predSex) &&
-      (e.race === 'both' || e.race === predRace) &&
-      age >= e.minAge && age <= e.maxAge
-    );
-
-    // Find best match for WEIGHT equation
-    const weightEq = equations.find(e =>
-      e.isActive &&
-      e.type === 'weight' &&
-      (e.sex === 'both' || e.sex === predSex) &&
-      (e.race === 'both' || e.race === predRace) &&
-      age >= e.minAge && age <= e.maxAge
-    );
-
-    // --- HEIGHT: requires sex, age, race, knee (all filled) ---
+    // --- HEIGHT: requires sex, age and knee height ---
     let estHeight = 0;
     let heightMissingFields = false;
     let heightInvalidError = false;
 
     if (!hasAge || !hasKnee) {
       heightMissingFields = true;
-    } else if (heightEq) {
-      const rawHeight = heightEq.constant + (heightEq.coefKnee * knee) + (heightEq.coefArm * arm) + (heightEq.coefAge * age);
+    } else {
+      const rawHeight = predSex === "male"
+        ? 64.19 - (0.04 * age) + (2.02 * knee)
+        : 84.88 - (0.24 * age) + (1.83 * knee);
       if (rawHeight <= 0) {
         heightInvalidError = true;
       } else {
@@ -248,18 +197,17 @@ const Tools = () => {
       }
     }
 
-    // --- WEIGHT: requires sex, age, race, knee, arm (all filled) ---
+    // --- WEIGHT: requires knee height, arm circumference, calf circumference and subscapular skinfold ---
     let estWeight = 0;
-    let weightMissingArm = false;
     let weightMissingFields = false;
     let weightNegativeError = false;
 
-    if (!hasAge || !hasKnee) {
+    if (!hasKnee || !hasArm || !hasCalf || !hasSubscapular) {
       weightMissingFields = true;
-    } else if (!hasArm) {
-      weightMissingArm = true;
-    } else if (weightEq) {
-      const rawWeight = weightEq.constant + (weightEq.coefKnee * knee) + (weightEq.coefArm * arm) + (weightEq.coefAge * age);
+    } else {
+      const rawWeight = predSex === "male"
+        ? (0.98 * calf) + (1.16 * knee) + (1.73 * arm) + (0.37 * subscapular) - 81.69
+        : (1.27 * calf) + (0.87 * knee) + (0.98 * arm) + (0.4 * subscapular) - 62.35;
       if (rawWeight <= 0) {
         weightNegativeError = true;
       } else {
@@ -271,15 +219,12 @@ const Tools = () => {
       estHeightCm: Number(estHeight.toFixed(2)),
       estHeightM: Number((estHeight / 100).toFixed(2)),
       estWeightKg: Number(estWeight.toFixed(2)),
-      heightEqName: heightEq?.name || "Nenhuma equação encontrada",
-      weightEqName: weightEq?.name || "Nenhuma equação encontrada",
       heightMissingFields,
       heightInvalidError,
-      weightMissingArm,
       weightMissingFields,
       weightNegativeError,
     };
-  }, [equations, predSex, predRace, predAge, predKnee, predArm]);
+  }, [predSex, predAge, predKnee, predArm, predCalf, predSubscapular]);
 
   // --- GLIM STATE (Manual) ---
   const [glimWeightLoss, setGlimWeightLoss] = useState<"none" | "moderate" | "severe">("none");
@@ -599,7 +544,7 @@ const Tools = () => {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Estimativa de Peso e Altura</CardTitle>
-                  <CardDescription>Preencha os campos para estimar peso e estatura, utilizando as equações de Chumlea (1985; 1988).</CardDescription>
+                  <CardDescription>Preencha os campos para estimar estatura e peso, utilizando equações antropométricas de Chumlea.</CardDescription>
                 </div>
                 <Badge variant="secondary">Equações padronizadas</Badge>
               </CardHeader>
@@ -621,16 +566,6 @@ const Tools = () => {
                       <Input type="number" value={predAge} onChange={e => setPredAge(e.target.value)} placeholder="Ex: 65" />
                     </div>
                     <div className="space-y-1">
-                      <Label>Raça/Cor</Label>
-                      <Select value={predRace} onValueChange={(v: any) => setPredRace(v)}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="white">Branco(a)</SelectItem>
-                          <SelectItem value="black">Negro(a)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
                       <Label>Altura do Joelho (cm)</Label>
                       <Input type="number" value={predKnee} onChange={e => setPredKnee(e.target.value)} placeholder="Ex: 50" />
                     </div>
@@ -638,8 +573,16 @@ const Tools = () => {
                       <Label>Circunferência do Braço (cm)</Label>
                       <Input type="number" value={predArm} onChange={e => setPredArm(e.target.value)} placeholder="Ex: 28" />
                     </div>
+                    <div className="space-y-1">
+                      <Label>Circunferência da Panturrilha (cm)</Label>
+                      <Input type="number" value={predCalf} onChange={e => setPredCalf(e.target.value)} placeholder="Ex: 34" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Dobra Subescapular (mm)</Label>
+                      <Input type="number" value={predSubscapular} onChange={e => setPredSubscapular(e.target.value)} placeholder="Ex: 12" />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Para altura: preencha sexo, idade, raça/cor e altura do joelho. Para peso: informe também a circunferência do braço.</p>
+                  <p className="text-xs text-muted-foreground">Para altura: sexo, idade e altura do joelho. Para peso: altura do joelho, circunferência do braço, circunferência da panturrilha e dobra subescapular.</p>
                   <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
                     <p className="font-semibold text-foreground/70">Referências:</p>
                     <p>CHUMLEA, William Cameron; ROCHE, Alex F.; STEINBAUGH, Maria L. Estimating Stature from Knee Height for Persons 60 to 90 Years of Age. Journal of the American Geriatrics Society, v. 33, n. 2, p. 116-120, 1985.</p>
@@ -652,8 +595,8 @@ const Tools = () => {
                     {/* Profile label */}
                     <p className="text-lg font-semibold text-foreground">
                       {predSex === "male"
-                        ? (predRace === "white" ? "Homem Branco" : "Homem Negro")
-                        : (predRace === "white" ? "Mulher Branca" : "Mulher Negra")}
+                        ? "Homem"
+                        : "Mulher"}
                     </p>
 
                     {(predictionResult.heightMissingFields && predictionResult.weightMissingFields) ? (
@@ -677,8 +620,6 @@ const Tools = () => {
                           <p className="text-sm text-muted-foreground">Peso estimado</p>
                           {predictionResult.weightMissingFields ? (
                             <p className="text-sm text-amber-600">Preencha todos os campos para calcular.</p>
-                          ) : predictionResult.weightMissingArm ? (
-                            <p className="text-sm text-amber-600">Informe a circunferência do braço para estimar o peso.</p>
                           ) : predictionResult.weightNegativeError ? (
                             <p className="text-sm text-red-600">Verifique os dados informados.</p>
                           ) : (
@@ -1048,6 +989,10 @@ const Tools = () => {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">Ferramenta de apoio. O resultado deve ser interpretado junto ao quadro clínico, função renal e perdas não urinárias.</p>
+                <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                  <p className="font-semibold text-foreground/70">Referência:</p>
+                  <p>Balanço nitrogenado estimado pela ingestão de nitrogênio proteico menos perdas urinárias e perdas insensíveis: BN = proteína/6,25 - (UUN + 4). Usar como ferramenta de apoio clínico.</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -1110,6 +1055,10 @@ const Tools = () => {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. O usuário visualiza os três resultados e escolhe qual estimativa usar na prescrição.</p>
+                <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
+                  <p className="font-semibold text-foreground/70">Referências:</p>
+                  <p>Ireton-Jones (1997): masculino = 1784 + 5 x peso - 11 x idade + 244; feminino = 1784 + 5 x peso - 11 x idade. Harris-Benedict (1919): masculino = 66,5 + 13,75 x peso + 5 x estatura(cm) - 6,75 x idade; feminino = 655 + 9,5 x peso + 1,84 x estatura(cm) - 4,67 x idade.</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
