@@ -3,15 +3,15 @@
   "rewrites": [
     {
       "source": "/health",
-      "destination": "https://caring-tutorial-communications-fin.trycloudflare.com/health"
+      "destination": "https://keeping-calculate-arrive-midwest.trycloudflare.com/health"
     },
     {
       "source": "/health/:path*",
-      "destination": "https://caring-tutorial-communications-fin.trycloudflare.com/health/:path*"
+      "destination": "https://keeping-calculate-arrive-midwest.trycloudflare.com/health/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://caring-tutorial-communications-fin.trycloudflare.com/api/:path*"
+      "destination": "https://keeping-calculate-arrive-midwest.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",

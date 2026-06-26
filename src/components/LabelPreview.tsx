@@ -249,9 +249,12 @@ const LabelPreview = ({ data }: { data: LabelData }) => {
                 <div className="clinical-label__metrics grid grid-cols-2 gap-[1mm]" style={labelStyles.metrics}>
                     {data.volumeText && (
                         <div className="clinical-label__metric rounded-[1mm] border border-gray-500 print:border-gray-300 px-[1.2mm] py-[1mm]" style={volumeMetricStyle}>
-                            <div className="clinical-label__metric-inline" style={labelStyles.metricInline}>
+                            <div
+                                className="clinical-label__metric-inline"
+                                style={isWaterLabel ? mergeStyle(labelStyles.metricInline, { display: "block" }) : labelStyles.metricInline}
+                            >
                                 <div className="clinical-label__metric-label text-[6.6px] font-bold uppercase leading-none whitespace-nowrap" style={labelStyles.caption}>Volume total</div>
-                                <div className={`clinical-label__metric-value${isWaterLabel ? " clinical-label__metric-value--water" : ""} text-[12.4px] font-extrabold leading-none whitespace-nowrap`} style={mergeStyle(labelStyles.metricValue, { marginTop: 0, fontSize: isWaterLabel ? "13.5px" : "12.4px" })}>{data.volumeText}</div>
+                                <div className={`clinical-label__metric-value${isWaterLabel ? " clinical-label__metric-value--water" : ""} text-[12.4px] font-extrabold leading-none whitespace-nowrap`} style={mergeStyle(labelStyles.metricValue, { marginTop: isWaterLabel ? "0.9mm" : 0, fontSize: isWaterLabel ? "14px" : "12.4px" })}>{data.volumeText}</div>
                             </div>
                         </div>
                     )}

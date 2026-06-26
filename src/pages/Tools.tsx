@@ -17,11 +17,22 @@ import {
 } from "@/lib/automatedCalculations";
 
 type Sex = "male" | "female" | "both";
+type Race = "white" | "black";
 
 const numberOrZero = (value: string | number): number => {
   const n = Number(String(value).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 };
+
+const formatDecimal = (value: number, digits = 1): string => (
+  Number.isFinite(value)
+    ? value.toLocaleString("pt-BR", { minimumFractionDigits: digits, maximumFractionDigits: digits })
+    : "-"
+);
+
+const formatInteger = (value: number): string => (
+  Number.isFinite(value) ? Math.round(value).toLocaleString("pt-BR") : "-"
+);
 
 // --- Helper Data ---
 const TOOLS_FALLBACK = [
@@ -160,36 +171,55 @@ const Tools = () => {
 
   // Form inputs for Prediction
   const [predSex, setPredSex] = useState<Sex>("male");
+  const [predRace, setPredRace] = useState<Race>("white");
   const [predAge, setPredAge] = useState("65");
   const [predKnee, setPredKnee] = useState("");
   const [predArm, setPredArm] = useState("");
-  const [predCalf, setPredCalf] = useState("");
-  const [predSubscapular, setPredSubscapular] = useState("");
 
   const predictionResult = useMemo(() => {
     const age = numberOrZero(predAge);
     const knee = numberOrZero(predKnee);
     const arm = numberOrZero(predArm);
-    const calf = numberOrZero(predCalf);
-    const subscapular = numberOrZero(predSubscapular);
 
     const hasAge = predAge !== "" && age > 0;
     const hasKnee = predKnee !== "" && knee > 0;
     const hasArm = predArm !== "" && arm > 0;
-    const hasCalf = predCalf !== "" && calf > 0;
-    const hasSubscapular = predSubscapular !== "" && subscapular > 0;
+    const adultGroup = age < 60 ? "19-59" : "60-80";
 
-    // --- HEIGHT: requires sex, age and knee height ---
     let estHeight = 0;
     let heightMissingFields = false;
     let heightInvalidError = false;
+    let heightFormula = "";
 
     if (!hasAge || !hasKnee) {
       heightMissingFields = true;
     } else {
-      const rawHeight = predSex === "male"
-        ? 64.19 - (0.04 * age) + (2.02 * knee)
-        : 84.88 - (0.24 * age) + (1.83 * knee);
+      let rawHeight = 0;
+      if (predSex === "female" && predRace === "white" && adultGroup === "19-59") {
+        rawHeight = 70.25 + (knee * 1.87) - (0.06 * age);
+        heightFormula = "70,25 + (1,87 x altura do joelho) - (0,06 x idade)";
+      } else if (predSex === "female" && predRace === "black" && adultGroup === "19-59") {
+        rawHeight = 68.1 + (knee * 1.86) - (0.06 * age);
+        heightFormula = "68,10 + (1,86 x altura do joelho) - (0,06 x idade)";
+      } else if (predSex === "male" && predRace === "white" && adultGroup === "19-59") {
+        rawHeight = 71.85 + (1.88 * knee);
+        heightFormula = "71,85 + (1,88 x altura do joelho)";
+      } else if (predSex === "male" && predRace === "black" && adultGroup === "19-59") {
+        rawHeight = 73.42 + (1.79 * knee);
+        heightFormula = "73,42 + (1,79 x altura do joelho)";
+      } else if (predSex === "female" && predRace === "white") {
+        rawHeight = 75 + (knee * 1.91) - (0.17 * age);
+        heightFormula = "75 + (1,91 x altura do joelho) - (0,17 x idade)";
+      } else if (predSex === "female" && predRace === "black") {
+        rawHeight = 58.72 + (knee * 1.96);
+        heightFormula = "58,72 + (1,96 x altura do joelho)";
+      } else if (predSex === "male" && predRace === "white") {
+        rawHeight = 71.85 + (1.88 * knee);
+        heightFormula = "71,85 + (1,88 x altura do joelho)";
+      } else {
+        rawHeight = 95.79 + (1.37 * knee);
+        heightFormula = "95,79 + (1,37 x altura do joelho)";
+      }
       if (rawHeight <= 0) {
         heightInvalidError = true;
       } else {
@@ -197,17 +227,40 @@ const Tools = () => {
       }
     }
 
-    // --- WEIGHT: requires knee height, arm circumference, calf circumference and subscapular skinfold ---
     let estWeight = 0;
     let weightMissingFields = false;
     let weightNegativeError = false;
+    let weightFormula = "";
 
-    if (!hasKnee || !hasArm || !hasCalf || !hasSubscapular) {
+    if (!hasKnee || !hasArm) {
       weightMissingFields = true;
     } else {
-      const rawWeight = predSex === "male"
-        ? (0.98 * calf) + (1.16 * knee) + (1.73 * arm) + (0.37 * subscapular) - 81.69
-        : (1.27 * calf) + (0.87 * knee) + (0.98 * arm) + (0.4 * subscapular) - 62.35;
+      let rawWeight = 0;
+      if (predSex === "female" && predRace === "white" && adultGroup === "19-59") {
+        rawWeight = (knee * 1.01) + (arm * 2.81) - 66.04;
+        weightFormula = "(altura do joelho x 1,01) + (circunferência do braço x 2,81) - 66,04";
+      } else if (predSex === "female" && predRace === "black" && adultGroup === "19-59") {
+        rawWeight = (knee * 1.24) + (arm * 2.97) - 82.48;
+        weightFormula = "(altura do joelho x 1,24) + (circunferência do braço x 2,97) - 82,48";
+      } else if (predSex === "male" && predRace === "white" && adultGroup === "19-59") {
+        rawWeight = (knee * 1.19) + (arm * 3.21) - 86.82;
+        weightFormula = "(altura do joelho x 1,19) + (circunferência do braço x 3,21) - 86,82";
+      } else if (predSex === "male" && predRace === "black" && adultGroup === "19-59") {
+        rawWeight = (knee * 1.09) + (arm * 3.14) - 83.72;
+        weightFormula = "(altura do joelho x 1,09) + (circunferência do braço x 3,14) - 83,72";
+      } else if (predSex === "female" && predRace === "white") {
+        rawWeight = (knee * 1.09) + (arm * 2.68) - 65.51;
+        weightFormula = "(altura do joelho x 1,09) + (circunferência do braço x 2,68) - 65,51";
+      } else if (predSex === "female" && predRace === "black") {
+        rawWeight = (knee * 1.5) + (arm * 2.58) - 84.22;
+        weightFormula = "(altura do joelho x 1,50) + (circunferência do braço x 2,58) - 84,22";
+      } else if (predSex === "male" && predRace === "white") {
+        rawWeight = (knee * 1.1) + (arm * 3.07) - 75.81;
+        weightFormula = "(altura do joelho x 1,10) + (circunferência do braço x 3,07) - 75,81";
+      } else {
+        rawWeight = (knee * 0.44) + (arm * 2.86) - 39.21;
+        weightFormula = "(altura do joelho x 0,44) + (circunferência do braço x 2,86) - 39,21";
+      }
       if (rawWeight <= 0) {
         weightNegativeError = true;
       } else {
@@ -223,8 +276,11 @@ const Tools = () => {
       heightInvalidError,
       weightMissingFields,
       weightNegativeError,
+      ageGroup: adultGroup,
+      heightFormula,
+      weightFormula,
     };
-  }, [predSex, predAge, predKnee, predArm, predCalf, predSubscapular]);
+  }, [predSex, predRace, predAge, predKnee, predArm]);
 
   // --- GLIM STATE (Manual) ---
   const [glimWeightLoss, setGlimWeightLoss] = useState<"none" | "moderate" | "severe">("none");
@@ -322,7 +378,7 @@ const Tools = () => {
   const dvaResult = useMemo(() => {
     const weight = numberOrZero(dvaWeight);
     const norDose = weight > 0 ? ((numberOrZero(norAmpoules) * 4 * 1000) / numberOrZero(norDilution)) * (numberOrZero(norRate) / 60) / weight : 0;
-    const vasoDose = ((numberOrZero(vasoAmpoules) * 20) / numberOrZero(vasoDilution)) * (numberOrZero(vasoRate) / 60);
+    const vasoDose = ((numberOrZero(vasoAmpoules) * 40) / numberOrZero(vasoDilution)) * (numberOrZero(vasoRate) / 60);
     return {
       norDose: Number(norDose.toFixed(2)),
       vasoDose: Number(vasoDose.toFixed(2)),
@@ -340,26 +396,27 @@ const Tools = () => {
   const [nrsDiseaseScore, setNrsDiseaseScore] = useState("0");
 
   const [nitrogenProtein, setNitrogenProtein] = useState("");
-  const [nitrogenUun, setNitrogenUun] = useState("");
+  const [nitrogenUrea, setNitrogenUrea] = useState("");
   const [nitrogenAdditionalLosses, setNitrogenAdditionalLosses] = useState("4");
   const nitrogenBalance = useMemo(() => {
-    if (!nitrogenProtein || !nitrogenUun) return null;
+    if (!nitrogenProtein || !nitrogenUrea) return null;
     return calculateNitrogenBalance(
       numberOrZero(nitrogenProtein),
-      numberOrZero(nitrogenUun),
+      numberOrZero(nitrogenUrea),
       numberOrZero(nitrogenAdditionalLosses),
     );
-  }, [nitrogenProtein, nitrogenUun, nitrogenAdditionalLosses]);
+  }, [nitrogenProtein, nitrogenUrea, nitrogenAdditionalLosses]);
 
   const [energySex, setEnergySex] = useState<"male" | "female">("male");
   const [energyWeight, setEnergyWeight] = useState("");
   const [energyHeight, setEnergyHeight] = useState("");
   const [energyAge, setEnergyAge] = useState("");
   const [energyPocketKcalKg, setEnergyPocketKcalKg] = useState("25");
+  const [energyTrauma, setEnergyTrauma] = useState(false);
+  const [energyBurn, setEnergyBurn] = useState(false);
   const energyResults = useMemo(() => {
     const weight = numberOrZero(energyWeight);
-    const rawHeight = numberOrZero(energyHeight);
-    const heightCm = rawHeight > 0 && rawHeight <= 3 ? rawHeight * 100 : rawHeight;
+    const heightCm = numberOrZero(energyHeight);
     const age = numberOrZero(energyAge);
     const pocketKcalKg = numberOrZero(energyPocketKcalKg);
 
@@ -367,12 +424,12 @@ const Tools = () => {
     const hasHeight = heightCm > 0;
 
     const iretonJones = hasBaseInputs
-      ? 1784 + (5 * weight) - (11 * age) + (energySex === "male" ? 244 : 0)
+      ? 1925 - (10 * age) + (5 * weight) + (energySex === "male" ? 281 : 0) + (energyTrauma ? 292 : 0) + (energyBurn ? 851 : 0)
       : 0;
     const harrisBenedict = hasBaseInputs && hasHeight
       ? energySex === "male"
-        ? 66.5 + (13.75 * weight) + (5 * heightCm) - (6.75 * age)
-        : 655 + (9.5 * weight) + (1.84 * heightCm) - (4.67 * age)
+        ? 66.5 + (13.7516 * weight) + (5.0033 * heightCm) - (6.7555 * age)
+        : 655.0955 + (9.5634 * weight) + (1.8496 * heightCm) - (4.6756 * age)
       : 0;
     const pocketFormula = weight > 0 && pocketKcalKg > 0 ? weight * pocketKcalKg : 0;
 
@@ -381,9 +438,10 @@ const Tools = () => {
       harrisBenedict,
       pocketFormula,
       pocketKcalKg,
+      formulaNote: `Ireton-Jones: 1925 - (10 x idade) + (5 x peso)${energySex === "male" ? " + 281" : ""}${energyTrauma ? " + 292" : ""}${energyBurn ? " + 851" : ""}`,
       hasAnyResult: iretonJones > 0 || harrisBenedict > 0 || pocketFormula > 0,
     };
-  }, [energyAge, energyHeight, energyPocketKcalKg, energySex, energyWeight]);
+  }, [energyAge, energyBurn, energyHeight, energyPocketKcalKg, energySex, energyTrauma, energyWeight]);
 
   const nrsResult = useMemo(() => {
     const prescreenPositive = nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4;
@@ -544,7 +602,7 @@ const Tools = () => {
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle>Estimativa de Peso e Altura</CardTitle>
-                  <CardDescription>Preencha os campos para estimar estatura e peso, utilizando equações antropométricas de Chumlea.</CardDescription>
+                  <CardDescription>Preencha os campos para estimar estatura e peso pelas equações simplificadas de Chumlea.</CardDescription>
                 </div>
                 <Badge variant="secondary">Equações padronizadas</Badge>
               </CardHeader>
@@ -566,6 +624,16 @@ const Tools = () => {
                       <Input type="number" value={predAge} onChange={e => setPredAge(e.target.value)} placeholder="Ex: 65" />
                     </div>
                     <div className="space-y-1">
+                      <Label>Etnia</Label>
+                      <Select value={predRace} onValueChange={(v: Race) => setPredRace(v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="white">Branco(a)</SelectItem>
+                          <SelectItem value="black">Negro(a)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
                       <Label>Altura do Joelho (cm)</Label>
                       <Input type="number" value={predKnee} onChange={e => setPredKnee(e.target.value)} placeholder="Ex: 50" />
                     </div>
@@ -573,18 +641,11 @@ const Tools = () => {
                       <Label>Circunferência do Braço (cm)</Label>
                       <Input type="number" value={predArm} onChange={e => setPredArm(e.target.value)} placeholder="Ex: 28" />
                     </div>
-                    <div className="space-y-1">
-                      <Label>Circunferência da Panturrilha (cm)</Label>
-                      <Input type="number" value={predCalf} onChange={e => setPredCalf(e.target.value)} placeholder="Ex: 34" />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Dobra Subescapular (mm)</Label>
-                      <Input type="number" value={predSubscapular} onChange={e => setPredSubscapular(e.target.value)} placeholder="Ex: 12" />
-                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Para altura: sexo, idade e altura do joelho. Para peso: altura do joelho, circunferência do braço, circunferência da panturrilha e dobra subescapular.</p>
+                  <p className="text-xs text-muted-foreground">Para altura: sexo, idade, etnia e altura do joelho. Para peso: informe também a circunferência do braço.</p>
                   <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
                     <p className="font-semibold text-foreground/70">Referências:</p>
+                    <p>CHUMLEA, W. C.; GUO, S. Equations for predicting stature in white and black elderly individuals. Journal of Gerontology: Biological Sciences, v. 47, n. 6, p. M197-M203, 1992.</p>
                     <p>CHUMLEA, William Cameron; ROCHE, Alex F.; STEINBAUGH, Maria L. Estimating Stature from Knee Height for Persons 60 to 90 Years of Age. Journal of the American Geriatrics Society, v. 33, n. 2, p. 116-120, 1985.</p>
                     <p>CHUMLEA, W. C.; GUO, S.; ROCHE, A. F.; et al. Prediction of body weight for the nonambulatory elderly from anthropometry. Journal of the American Dietetic Association, v. 88, n. 5, p. 564-568, 1988.</p>
                   </div>
@@ -595,8 +656,9 @@ const Tools = () => {
                     {/* Profile label */}
                     <p className="text-lg font-semibold text-foreground">
                       {predSex === "male"
-                        ? "Homem"
-                        : "Mulher"}
+                        ? (predRace === "white" ? "Homem branco" : "Homem negro")
+                        : (predRace === "white" ? "Mulher branca" : "Mulher negra")}
+                      {" · "}{predictionResult.ageGroup} anos
                     </p>
 
                     {(predictionResult.heightMissingFields && predictionResult.weightMissingFields) ? (
@@ -629,6 +691,13 @@ const Tools = () => {
                       </>
                     )}
                   </div>
+                  {(predictionResult.heightFormula || predictionResult.weightFormula) && (
+                    <div className="rounded-md border bg-background p-3 text-xs text-muted-foreground text-left">
+                      <p className="font-semibold text-foreground/70">Fórmulas utilizadas:</p>
+                      {predictionResult.weightFormula && <p><strong>Peso:</strong> {predictionResult.weightFormula}</p>}
+                      {predictionResult.heightFormula && <p><strong>Estatura:</strong> {predictionResult.heightFormula}</p>}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -744,8 +813,8 @@ const Tools = () => {
                   <Input type="number" value={norAmpoules} onChange={e => setNorAmpoules(e.target.value)} />
 
                   <div className="mt-4 p-3 bg-blue-50 text-blue-800 rounded text-center">
-                    <div className="text-lg font-bold">{dvaResult.norDose}</div>
-                    <div className="text-xs uppercase">mcg / kg / min</div>
+                    <div className="text-lg font-bold">{formatDecimal(dvaResult.norDose, 2)}</div>
+                    <div className="text-xs">mcg/kg/min</div>
                   </div>
                 </CardContent>
               </Card>
@@ -760,19 +829,15 @@ const Tools = () => {
                   <Input type="number" value={vasoRate} onChange={e => setVasoRate(e.target.value)} />
                   <Label>Diluição: Volume Total (ml)</Label>
                   <Input type="number" value={vasoDilution} onChange={e => setVasoDilution(e.target.value)} />
-                  <Label>Número de Ampolas (20 UI)</Label>
+                  <Label>Número de Ampolas (40 UI)</Label>
                   <Input type="number" value={vasoAmpoules} onChange={e => setVasoAmpoules(e.target.value)} />
 
                   <div className="mt-4 p-3 bg-purple-50 text-purple-800 rounded text-center">
-                    <div className="text-lg font-bold">{dvaResult.vasoDose}</div>
-                    <div className="text-xs uppercase">UI / min</div>
+                    <div className="text-lg font-bold">{formatDecimal(dvaResult.vasoDose, 2)}</div>
+                    <div className="text-xs">UI/min</div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
-            <div className="mt-4 rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
-              <p className="font-semibold text-foreground/70">Referência:</p>
-              <p>Gottschall CBA, Schneider CD, Rabito EI, Busnello FM. Guia prático de clínica nutricional: tabelas, valores e referências. São Paulo: Atheneu; 2012.</p>
             </div>
           </TabsContent>
 
@@ -962,7 +1027,7 @@ const Tools = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Balanço Nitrogenado</CardTitle>
-                <CardDescription>Estimativa pela ingestão proteica e pelo nitrogênio ureico urinário de 24 horas.</CardDescription>
+                <CardDescription>Estimativa pela ingestão proteica e pela ureia urinária de 24 horas.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -971,27 +1036,27 @@ const Tools = () => {
                     <Input id="nitrogen-protein" type="number" min="0" step="0.1" value={nitrogenProtein} onChange={(event) => setNitrogenProtein(event.target.value)} placeholder="Ex: 90" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="nitrogen-uun">Nitrogênio ureico urinário - UUN (g/24h)</Label>
-                    <Input id="nitrogen-uun" type="number" min="0" step="0.1" value={nitrogenUun} onChange={(event) => setNitrogenUun(event.target.value)} placeholder="Ex: 12" />
+                    <Label htmlFor="nitrogen-urea">Ureia urinária (g/dia)</Label>
+                    <Input id="nitrogen-urea" type="number" min="0" step="0.1" value={nitrogenUrea} onChange={(event) => setNitrogenUrea(event.target.value)} placeholder="Ex: 12" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="nitrogen-losses">Perdas adicionais estimadas (g/dia)</Label>
                     <Input id="nitrogen-losses" type="number" min="0" step="0.1" value={nitrogenAdditionalLosses} onChange={(event) => setNitrogenAdditionalLosses(event.target.value)} />
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground">Fórmula: proteína / 6,25 - (UUN + perdas adicionais). O valor padrão de perdas adicionais é 4 g/dia e pode ser ajustado pela equipe.</p>
+                <p className="text-xs text-muted-foreground">Fórmula: BN = ingestão de nitrogênio - perdas de nitrogênio. Ingestão = proteína/6,25. Perdas = ureia urinária/2,14 + perdas estimadas.</p>
                 {nitrogenBalance && (
                   <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-4">
-                    <div><p className="text-xs text-muted-foreground">Entrada de N</p><p className="text-xl font-bold">{nitrogenBalance.nitrogenIntake.toFixed(1)} g</p></div>
-                    <div><p className="text-xs text-muted-foreground">Saída de N</p><p className="text-xl font-bold">{nitrogenBalance.nitrogenOutput.toFixed(1)} g</p></div>
-                    <div><p className="text-xs text-muted-foreground">Balanço</p><p className="text-xl font-bold">{nitrogenBalance.balance.toFixed(1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">N ingerido</p><p className="text-xl font-bold">{formatDecimal(nitrogenBalance.nitrogenIntake, 1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">Perdas de N</p><p className="text-xl font-bold">{formatDecimal(nitrogenBalance.nitrogenOutput, 1)} g</p></div>
+                    <div><p className="text-xs text-muted-foreground">Balanço</p><p className="text-xl font-bold">{formatDecimal(nitrogenBalance.balance, 1)} g</p></div>
                     <div><p className="text-xs text-muted-foreground">Interpretação</p><p className="text-lg font-semibold">{nitrogenBalance.status}</p></div>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">Ferramenta de apoio. O resultado deve ser interpretado junto ao quadro clínico, função renal e perdas não urinárias.</p>
                 <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
                   <p className="font-semibold text-foreground/70">Referência:</p>
-                  <p>Balanço nitrogenado estimado pela ingestão de nitrogênio proteico menos perdas urinárias e perdas insensíveis: BN = proteína/6,25 - (UUN + 4). Usar como ferramenta de apoio clínico.</p>
+                  <p>Gottschall CBA, Schneider CD, Rabito EI, Busnello FM. Guia prático de clínica nutricional: tabelas, valores e referências. São Paulo: Atheneu; 2012.</p>
                 </div>
               </CardContent>
             </Card>
@@ -1025,28 +1090,37 @@ const Tools = () => {
                     <Input id="energy-weight" type="number" min="0" step="0.1" value={energyWeight} onChange={(event) => setEnergyWeight(event.target.value)} placeholder="Ex: 70" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="energy-height">Estatura (m)</Label>
-                    <Input id="energy-height" type="number" min="0" step="0.01" value={energyHeight} onChange={(event) => setEnergyHeight(event.target.value)} placeholder="Ex: 1.70" />
+                    <Label htmlFor="energy-height">Estatura (cm)</Label>
+                    <Input id="energy-height" type="number" min="0" step="1" value={energyHeight} onChange={(event) => setEnergyHeight(event.target.value)} placeholder="Ex: 170" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="energy-pocket">Fórmula de bolso (kcal/kg)</Label>
                     <Input id="energy-pocket" type="number" min="0" step="1" value={energyPocketKcalKg} onChange={(event) => setEnergyPocketKcalKg(event.target.value)} placeholder="Ex: 25" />
                   </div>
+                  <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                    <Checkbox checked={energyTrauma} onCheckedChange={(value) => setEnergyTrauma(!!value)} />
+                    Trauma
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
+                    <Checkbox checked={energyBurn} onCheckedChange={(value) => setEnergyBurn(!!value)} />
+                    Queimadura
+                  </label>
                 </div>
                 {energyResults.hasAnyResult ? (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div className="rounded-lg border bg-muted/30 p-4">
-                      <p className="text-sm font-semibold text-muted-foreground">Ireton-Jones (1997)</p>
-                      <p className="mt-2 text-2xl font-bold">{energyResults.iretonJones > 0 ? Math.round(energyResults.iretonJones) : "-"} kcal/dia</p>
+                      <p className="text-sm font-semibold text-muted-foreground">Ireton-Jones (1992)</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.iretonJones > 0 ? formatInteger(energyResults.iretonJones) : "-"} kcal/dia</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{energyResults.formulaNote}</p>
                     </div>
                     <div className="rounded-lg border bg-muted/30 p-4">
                       <p className="text-sm font-semibold text-muted-foreground">Harris-Benedict (1919)</p>
-                      <p className="mt-2 text-2xl font-bold">{energyResults.harrisBenedict > 0 ? Math.round(energyResults.harrisBenedict) : "-"} kcal/dia</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.harrisBenedict > 0 ? formatInteger(energyResults.harrisBenedict) : "-"} kcal/dia</p>
                     </div>
                     <div className="rounded-lg border bg-muted/30 p-4">
                       <p className="text-sm font-semibold text-muted-foreground">Fórmula de bolso</p>
-                      <p className="mt-2 text-2xl font-bold">{energyResults.pocketFormula > 0 ? Math.round(energyResults.pocketFormula) : "-"} kcal/dia</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{energyResults.pocketKcalKg || 0} kcal/kg</p>
+                      <p className="mt-2 text-2xl font-bold">{energyResults.pocketFormula > 0 ? formatInteger(energyResults.pocketFormula) : "-"} kcal/dia</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDecimal(energyResults.pocketKcalKg || 0, 0)} kcal/kg</p>
                     </div>
                   </div>
                 ) : (
@@ -1057,7 +1131,10 @@ const Tools = () => {
                 <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. O usuário visualiza os três resultados e escolhe qual estimativa usar na prescrição.</p>
                 <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
                   <p className="font-semibold text-foreground/70">Referências:</p>
-                  <p>Ireton-Jones (1997): masculino = 1784 + 5 x peso - 11 x idade + 244; feminino = 1784 + 5 x peso - 11 x idade. Harris-Benedict (1919): masculino = 66,5 + 13,75 x peso + 5 x estatura(cm) - 6,75 x idade; feminino = 655 + 9,5 x peso + 1,84 x estatura(cm) - 4,67 x idade.</p>
+                  <p>Ireton-Jones (1992): masculino = 1925 + (5 x peso) - (10 x idade) + 281 + 292 se trauma + 851 se queimadura; feminino = 1925 + (5 x peso) - (10 x idade) + 292 se trauma + 851 se queimadura.</p>
+                  <p>Harris-Benedict (1919): masculino = 66,5 + (13,7516 x peso) + (5,0033 x estatura) - (6,7555 x idade); feminino = 655,0955 + (9,5634 x peso) + (1,8496 x estatura) - (4,6756 x idade). Fórmula de bolso: peso x kcal/kg.</p>
+                  <p>Ireton-Jones CS, Turner WW, Liepa GU, et al. Equations for estimation of energy expenditures in patients with burns with special reference to ventilatory status. J Burn Care Rehab, v. 13, p. 330-333, 1992.</p>
+                  <p>Harris-Benedict (1919), apud Ang, C.Y.S. et al. Methods for estimating resting energy expenditure in intensive care patients: A comparative study of predictive equations with machine learning and deep learning approaches. Computer Methods and Programs in Biomedicine, v. 262, p. 108657, 2025.</p>
                 </div>
               </CardContent>
             </Card>

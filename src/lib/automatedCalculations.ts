@@ -373,7 +373,7 @@ export function calculateFluidRequirements(weight: number, age: number): {
  */
 export function calculateNitrogenBalance(
   proteinIntake: number,
-  urinaryNitrogen: number,
+  urinaryUrea: number,
   additionalLosses: number = 4
 ): {
   nitrogenIntake: number;
@@ -382,24 +382,23 @@ export function calculateNitrogenBalance(
   status: string;
 } {
   const nitrogenIntake = proteinIntake / 6.25; // 1g protein = 0.16g nitrogen
-  const nitrogenOutput = urinaryNitrogen + additionalLosses;
+  const nitrogenOutput = (urinaryUrea / 2.14) + additionalLosses;
   const balance = nitrogenIntake - nitrogenOutput;
+  const roundedBalance = Math.round(balance * 10) / 10;
 
   let status: string;
-  if (balance < -5) {
-    status = 'Catabolismo severo';
-  } else if (balance < 0) {
-    status = 'Catabolismo leve';
-  } else if (balance < 2) {
+  if (roundedBalance === 0) {
     status = 'Equilíbrio';
-  } else {
+  } else if (roundedBalance > 0) {
     status = 'Anabolismo';
+  } else {
+    status = 'Catabolismo';
   }
 
   return {
     nitrogenIntake: Math.round(nitrogenIntake * 10) / 10,
     nitrogenOutput: Math.round(nitrogenOutput * 10) / 10,
-    balance: Math.round(balance * 10) / 10,
+    balance: roundedBalance,
     status,
   };
 }
@@ -420,16 +419,15 @@ export function calculateRestingEnergyExpenditure(
   }
 
   if (equation === 'ireton-jones') {
-    const sexFactor = gender === 'male' ? 1 : 0;
-    return 1784 - (11 * ageYears) + (5 * weightKg) + (244 * sexFactor);
+    return 1925 - (10 * ageYears) + (5 * weightKg) + (gender === 'male' ? 281 : 0);
   }
 
   if (heightCm <= 0) return 0;
 
   if (equation === 'harris-benedict-revised') {
     return gender === 'male'
-      ? 88.362 + (13.397 * weightKg) + (4.799 * heightCm) - (5.677 * ageYears)
-      : 447.593 + (9.247 * weightKg) + (3.098 * heightCm) - (4.330 * ageYears);
+      ? 66.5 + (13.7516 * weightKg) + (5.0033 * heightCm) - (6.7555 * ageYears)
+      : 655.0955 + (9.5634 * weightKg) + (1.8496 * heightCm) - (4.6756 * ageYears);
   }
 
   return gender === 'male'
