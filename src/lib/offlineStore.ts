@@ -123,7 +123,7 @@ const replaceIdsDeep = (value: unknown, replacements: Record<string, string>): u
 const replaceIdsInText = (text: string, replacements: Record<string, string>) => {
   let next = text;
   Object.entries(replacements).forEach(([tempId, realId]) => {
-    next = next.replaceAll(tempId, realId);
+    next = next.split(tempId).join(realId);
   });
   return next;
 };

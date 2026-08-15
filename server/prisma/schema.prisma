@@ -404,6 +404,7 @@ model DailyEvolution {
   @@index([hospitalId, date])
   @@index([patientId, date])
   @@index([prescriptionId, date])
+  @@unique([hospitalId, patientId, date])
 }
 
 model AppSettings {

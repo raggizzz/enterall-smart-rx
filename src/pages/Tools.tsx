@@ -13,8 +13,12 @@ import { Search, Calculator } from "lucide-react";
 import { useAppTools } from "@/hooks/useDatabase";
 import { useFormulas, useModules } from "@/hooks/useDatabase";
 import {
+  calculateChumleaEstimates,
+  calculateEnergyEstimates,
+  calculateNoradrenalineDose,
   calculateNitrogenBalance,
-} from "@/lib/automatedCalculations";
+  calculateVasopressinDose,
+} from "@/lib/clinicalCalculations";
 
 type Sex = "male" | "female" | "both";
 type Race = "white" | "black";
@@ -33,6 +37,13 @@ const formatDecimal = (value: number, digits = 1): string => (
 const formatInteger = (value: number): string => (
   Number.isFinite(value) ? Math.round(value).toLocaleString("pt-BR") : "-"
 );
+
+const NITROGEN_LOSS_OPTIONS = [
+  { value: "3", label: "Constipacao - 3 g/dia" },
+  { value: "4", label: "Funcao intestinal normal - 4 g/dia" },
+  { value: "5", label: "Diarreia - 5 g/dia" },
+  { value: "8", label: "Fistula - 8 g/dia" },
+];
 
 // --- Helper Data ---
 const TOOLS_FALLBACK = [
@@ -96,19 +107,19 @@ const GIDS_SEVERE_DISPLAY_OPTIONS: Array<{ key: GidsSevereKey; label: string }> 
 const GIDS_RESULT_COPY: Record<number, { title: string; description: string }> = {
   0: {
     title: "GIDS 0 (sem risco)",
-    description: "Sem sintomas, ou apenas um sintoma leve com ingestão oral mantida.",
+    description: "Dieta oral mantida com até um sintoma leve.",
   },
   1: {
     title: "GIDS 1 (risco aumentado)",
-    description: "Acúmulo inicial de sinais gastrointestinais ou ausência de ingestão oral.",
+    description: "Sem dieta oral com um sintoma leve; dois sintomas leves permanecem na faixa seguinte.",
   },
   2: {
     title: "GIDS 2 (disfunção gastrointestinal)",
-    description: "Três ou mais critérios leves/de risco ou até dois critérios maiores.",
+    description: "Sem dieta oral com dois ou mais sintomas leves, ou um ou dois sintomas graves.",
   },
   3: {
     title: "GIDS 3 (falência gastrointestinal)",
-    description: "Três ou mais critérios maiores, sugerindo perda importante de função.",
+    description: "Três ou mais critérios: procinéticos, íleo, distensão, diarreia grave, sangramento transfundido ou PIA acima de 20 mmHg.",
   },
   4: {
     title: "GIDS 4 (ameaça à vida)",
@@ -184,89 +195,21 @@ const Tools = () => {
     const hasAge = predAge !== "" && age > 0;
     const hasKnee = predKnee !== "" && knee > 0;
     const hasArm = predArm !== "" && arm > 0;
-    const adultGroup = age < 60 ? "19-59" : "60-80";
-
-    let estHeight = 0;
-    let heightMissingFields = false;
-    let heightInvalidError = false;
-    let heightFormula = "";
-
-    if (!hasAge || !hasKnee) {
-      heightMissingFields = true;
-    } else {
-      let rawHeight = 0;
-      if (predSex === "female" && predRace === "white" && adultGroup === "19-59") {
-        rawHeight = 70.25 + (knee * 1.87) - (0.06 * age);
-        heightFormula = "70,25 + (1,87 x altura do joelho) - (0,06 x idade)";
-      } else if (predSex === "female" && predRace === "black" && adultGroup === "19-59") {
-        rawHeight = 68.1 + (knee * 1.86) - (0.06 * age);
-        heightFormula = "68,10 + (1,86 x altura do joelho) - (0,06 x idade)";
-      } else if (predSex === "male" && predRace === "white" && adultGroup === "19-59") {
-        rawHeight = 71.85 + (1.88 * knee);
-        heightFormula = "71,85 + (1,88 x altura do joelho)";
-      } else if (predSex === "male" && predRace === "black" && adultGroup === "19-59") {
-        rawHeight = 73.42 + (1.79 * knee);
-        heightFormula = "73,42 + (1,79 x altura do joelho)";
-      } else if (predSex === "female" && predRace === "white") {
-        rawHeight = 75 + (knee * 1.91) - (0.17 * age);
-        heightFormula = "75 + (1,91 x altura do joelho) - (0,17 x idade)";
-      } else if (predSex === "female" && predRace === "black") {
-        rawHeight = 58.72 + (knee * 1.96);
-        heightFormula = "58,72 + (1,96 x altura do joelho)";
-      } else if (predSex === "male" && predRace === "white") {
-        rawHeight = 71.85 + (1.88 * knee);
-        heightFormula = "71,85 + (1,88 x altura do joelho)";
-      } else {
-        rawHeight = 95.79 + (1.37 * knee);
-        heightFormula = "95,79 + (1,37 x altura do joelho)";
-      }
-      if (rawHeight <= 0) {
-        heightInvalidError = true;
-      } else {
-        estHeight = rawHeight;
-      }
-    }
-
-    let estWeight = 0;
-    let weightMissingFields = false;
-    let weightNegativeError = false;
-    let weightFormula = "";
-
-    if (!hasKnee || !hasArm) {
-      weightMissingFields = true;
-    } else {
-      let rawWeight = 0;
-      if (predSex === "female" && predRace === "white" && adultGroup === "19-59") {
-        rawWeight = (knee * 1.01) + (arm * 2.81) - 66.04;
-        weightFormula = "(altura do joelho x 1,01) + (circunferência do braço x 2,81) - 66,04";
-      } else if (predSex === "female" && predRace === "black" && adultGroup === "19-59") {
-        rawWeight = (knee * 1.24) + (arm * 2.97) - 82.48;
-        weightFormula = "(altura do joelho x 1,24) + (circunferência do braço x 2,97) - 82,48";
-      } else if (predSex === "male" && predRace === "white" && adultGroup === "19-59") {
-        rawWeight = (knee * 1.19) + (arm * 3.21) - 86.82;
-        weightFormula = "(altura do joelho x 1,19) + (circunferência do braço x 3,21) - 86,82";
-      } else if (predSex === "male" && predRace === "black" && adultGroup === "19-59") {
-        rawWeight = (knee * 1.09) + (arm * 3.14) - 83.72;
-        weightFormula = "(altura do joelho x 1,09) + (circunferência do braço x 3,14) - 83,72";
-      } else if (predSex === "female" && predRace === "white") {
-        rawWeight = (knee * 1.09) + (arm * 2.68) - 65.51;
-        weightFormula = "(altura do joelho x 1,09) + (circunferência do braço x 2,68) - 65,51";
-      } else if (predSex === "female" && predRace === "black") {
-        rawWeight = (knee * 1.5) + (arm * 2.58) - 84.22;
-        weightFormula = "(altura do joelho x 1,50) + (circunferência do braço x 2,58) - 84,22";
-      } else if (predSex === "male" && predRace === "white") {
-        rawWeight = (knee * 1.1) + (arm * 3.07) - 75.81;
-        weightFormula = "(altura do joelho x 1,10) + (circunferência do braço x 3,07) - 75,81";
-      } else {
-        rawWeight = (knee * 0.44) + (arm * 2.86) - 39.21;
-        weightFormula = "(altura do joelho x 0,44) + (circunferência do braço x 2,86) - 39,21";
-      }
-      if (rawWeight <= 0) {
-        weightNegativeError = true;
-      } else {
-        estWeight = rawWeight;
-      }
-    }
+    const ageRangeError = hasAge && (age < 19 || age > 80);
+    const hasPredictionInputs = hasAge && hasKnee && !ageRangeError;
+    const estimates = calculateChumleaEstimates({
+      ageYears: hasPredictionInputs ? age : 0,
+      kneeHeightCm: hasPredictionInputs ? knee : 0,
+      armCircumferenceCm: hasPredictionInputs && hasArm ? arm : 0,
+      sex: predSex === "female" ? "female" : "male",
+      race: predRace,
+    });
+    const estHeight = hasPredictionInputs ? estimates.heightCm : 0;
+    const estWeight = hasPredictionInputs && hasArm ? estimates.weightKg : 0;
+    const heightMissingFields = !hasAge || !hasKnee;
+    const heightInvalidError = Boolean(hasPredictionInputs && estHeight <= 0);
+    const weightMissingFields = !hasKnee || !hasArm;
+    const weightNegativeError = Boolean(hasPredictionInputs && hasArm && estWeight <= 0);
 
     return {
       estHeightCm: Number(estHeight.toFixed(2)),
@@ -276,9 +219,10 @@ const Tools = () => {
       heightInvalidError,
       weightMissingFields,
       weightNegativeError,
-      ageGroup: adultGroup,
-      heightFormula,
-      weightFormula,
+      ageRangeError,
+      ageGroup: estimates.ageGroup,
+      heightFormula: estimates.heightFormula,
+      weightFormula: estimates.weightFormula,
     };
   }, [predSex, predRace, predAge, predKnee, predArm]);
 
@@ -344,8 +288,8 @@ const Tools = () => {
 
     if (threateningCount > 0) score = 4;
     else if (severeCount >= 3) score = 3;
-    else if (scoreOneFeatureCount >= 3 || severeCount >= 1) score = 2;
-    else if (!gidsOralDiet || scoreOneFeatureCount >= 2) score = 1;
+    else if (severeCount >= 1 || (!gidsOralDiet && mildCount >= 2)) score = 2;
+    else if (!gidsOralDiet || mildCount >= 2) score = 1;
 
     const rationale: string[] = [];
     if (!gidsOralDiet) rationale.push("Sem ingestão oral mantida.");
@@ -377,8 +321,17 @@ const Tools = () => {
 
   const dvaResult = useMemo(() => {
     const weight = numberOrZero(dvaWeight);
-    const norDose = weight > 0 ? ((numberOrZero(norAmpoules) * 4 * 1000) / numberOrZero(norDilution)) * (numberOrZero(norRate) / 60) / weight : 0;
-    const vasoDose = ((numberOrZero(vasoAmpoules) * 40) / numberOrZero(vasoDilution)) * (numberOrZero(vasoRate) / 60);
+    const norDose = calculateNoradrenalineDose({
+      weightKg: weight,
+      rateMlH: numberOrZero(norRate),
+      dilutionMl: numberOrZero(norDilution),
+      ampoules: numberOrZero(norAmpoules),
+    });
+    const vasoDose = calculateVasopressinDose({
+      rateMlH: numberOrZero(vasoRate),
+      dilutionMl: numberOrZero(vasoDilution),
+      ampoules: numberOrZero(vasoAmpoules),
+    });
     return {
       norDose: Number(norDose.toFixed(2)),
       vasoDose: Number(vasoDose.toFixed(2)),
@@ -412,8 +365,6 @@ const Tools = () => {
   const [energyHeight, setEnergyHeight] = useState("");
   const [energyAge, setEnergyAge] = useState("");
   const [energyPocketKcalKg, setEnergyPocketKcalKg] = useState("25");
-  const [energyTrauma, setEnergyTrauma] = useState(false);
-  const [energyBurn, setEnergyBurn] = useState(false);
   const energyResults = useMemo(() => {
     const weight = numberOrZero(energyWeight);
     const heightCm = numberOrZero(energyHeight);
@@ -423,25 +374,20 @@ const Tools = () => {
     const hasBaseInputs = weight > 0 && age > 0;
     const hasHeight = heightCm > 0;
 
-    const iretonJones = hasBaseInputs
-      ? 1925 - (10 * age) + (5 * weight) + (energySex === "male" ? 281 : 0) + (energyTrauma ? 292 : 0) + (energyBurn ? 851 : 0)
-      : 0;
-    const harrisBenedict = hasBaseInputs && hasHeight
-      ? energySex === "male"
-        ? 66.5 + (13.7516 * weight) + (5.0033 * heightCm) - (6.7555 * age)
-        : 655.0955 + (9.5634 * weight) + (1.8496 * heightCm) - (4.6756 * age)
-      : 0;
-    const pocketFormula = weight > 0 && pocketKcalKg > 0 ? weight * pocketKcalKg : 0;
+    const estimates = calculateEnergyEstimates({
+      ageYears: hasBaseInputs ? age : 0,
+      weightKg: weight,
+      heightCm: hasHeight ? heightCm : 0,
+      sex: energySex,
+      pocketKcalKg,
+    });
 
     return {
-      iretonJones,
-      harrisBenedict,
-      pocketFormula,
-      pocketKcalKg,
-      formulaNote: `Ireton-Jones: 1925 - (10 x idade) + (5 x peso)${energySex === "male" ? " + 281" : ""}${energyTrauma ? " + 292" : ""}${energyBurn ? " + 851" : ""}`,
-      hasAnyResult: iretonJones > 0 || harrisBenedict > 0 || pocketFormula > 0,
+      ...estimates,
+      formulaNote: `Ireton-Jones: ${estimates.formulas.iretonJones}`,
+      hasAnyResult: estimates.iretonJones > 0 || estimates.harrisBenedict > 0 || estimates.pocketFormula > 0,
     };
-  }, [energyAge, energyBurn, energyHeight, energyPocketKcalKg, energySex, energyTrauma, energyWeight]);
+  }, [energyAge, energyHeight, energyPocketKcalKg, energySex, energyWeight]);
 
   const nrsResult = useMemo(() => {
     const prescreenPositive = nrsQ1 || nrsQ2 || nrsQ3 || nrsQ4;
@@ -621,7 +567,7 @@ const Tools = () => {
                     </div>
                     <div className="space-y-1">
                       <Label>Idade (anos)</Label>
-                      <Input type="number" value={predAge} onChange={e => setPredAge(e.target.value)} placeholder="Ex: 65" />
+                      <Input type="number" min="19" max="80" value={predAge} onChange={e => setPredAge(e.target.value)} placeholder="19 a 80" />
                     </div>
                     <div className="space-y-1">
                       <Label>Etnia</Label>
@@ -661,7 +607,9 @@ const Tools = () => {
                       {" · "}{predictionResult.ageGroup} anos
                     </p>
 
-                    {(predictionResult.heightMissingFields && predictionResult.weightMissingFields) ? (
+                    {predictionResult.ageRangeError ? (
+                      <p className="text-sm text-red-600">As equações desta ferramenta se aplicam a adultos de 19 a 80 anos.</p>
+                    ) : (predictionResult.heightMissingFields && predictionResult.weightMissingFields) ? (
                       <p className="text-sm text-amber-600">Preencha todos os campos para calcular.</p>
                     ) : (
                       <>
@@ -1040,8 +988,15 @@ const Tools = () => {
                     <Input id="nitrogen-urea" type="number" min="0" step="0.1" value={nitrogenUrea} onChange={(event) => setNitrogenUrea(event.target.value)} placeholder="Ex: 12" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="nitrogen-losses">Perdas adicionais estimadas (g/dia)</Label>
-                    <Input id="nitrogen-losses" type="number" min="0" step="0.1" value={nitrogenAdditionalLosses} onChange={(event) => setNitrogenAdditionalLosses(event.target.value)} />
+                    <Label htmlFor="nitrogen-losses">Perdas adicionais estimadas</Label>
+                    <Select value={nitrogenAdditionalLosses} onValueChange={setNitrogenAdditionalLosses}>
+                      <SelectTrigger id="nitrogen-losses"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {NITROGEN_LOSS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">Fórmula: BN = ingestão de nitrogênio - perdas de nitrogênio. Ingestão = proteína/6,25. Perdas = ureia urinária/2,14 + perdas estimadas.</p>
@@ -1097,14 +1052,6 @@ const Tools = () => {
                     <Label htmlFor="energy-pocket">Fórmula de bolso (kcal/kg)</Label>
                     <Input id="energy-pocket" type="number" min="0" step="1" value={energyPocketKcalKg} onChange={(event) => setEnergyPocketKcalKg(event.target.value)} placeholder="Ex: 25" />
                   </div>
-                  <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
-                    <Checkbox checked={energyTrauma} onCheckedChange={(value) => setEnergyTrauma(!!value)} />
-                    Trauma
-                  </label>
-                  <label className="flex items-center gap-2 rounded-md border p-3 text-sm">
-                    <Checkbox checked={energyBurn} onCheckedChange={(value) => setEnergyBurn(!!value)} />
-                    Queimadura
-                  </label>
                 </div>
                 {energyResults.hasAnyResult ? (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -1131,7 +1078,7 @@ const Tools = () => {
                 <p className="text-xs text-muted-foreground">Ferramenta para uso em adultos. O usuário visualiza os três resultados e escolhe qual estimativa usar na prescrição.</p>
                 <div className="rounded-md bg-muted/40 p-3 text-[11px] leading-snug text-muted-foreground">
                   <p className="font-semibold text-foreground/70">Referências:</p>
-                  <p>Ireton-Jones (1992): masculino = 1925 + (5 x peso) - (10 x idade) + 281 + 292 se trauma + 851 se queimadura; feminino = 1925 + (5 x peso) - (10 x idade) + 292 se trauma + 851 se queimadura.</p>
+                  <p>Ireton-Jones (1992): masculino = 1925 + (5 x peso) - (10 x idade) + 281; feminino = 1925 + (5 x peso) - (10 x idade).</p>
                   <p>Harris-Benedict (1919): masculino = 66,5 + (13,7516 x peso) + (5,0033 x estatura) - (6,7555 x idade); feminino = 655,0955 + (9,5634 x peso) + (1,8496 x estatura) - (4,6756 x idade). Fórmula de bolso: peso x kcal/kg.</p>
                   <p>Ireton-Jones CS, Turner WW, Liepa GU, et al. Equations for estimation of energy expenditures in patients with burns with special reference to ventilatory status. J Burn Care Rehab, v. 13, p. 330-333, 1992.</p>
                   <p>Harris-Benedict (1919), apud Ang, C.Y.S. et al. Methods for estimating resting energy expenditure in intensive care patients: A comparative study of predictive equations with machine learning and deep learning approaches. Computer Methods and Programs in Biomedicine, v. 262, p. 108657, 2025.</p>

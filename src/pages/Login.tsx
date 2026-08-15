@@ -11,6 +11,7 @@ import LogoEnmeta from "@/components/LogoEnmeta";
 import { useHospitals } from "@/hooks/useDatabase";
 import { ApiError, apiClient } from "@/lib/api";
 import { rolePermissionsService } from "@/lib/database";
+import { useConnectivityContext } from "@/components/ConnectivityProvider";
 import {
   applyRolePermissionsFromDatabase,
   ROLE_OPTIONS,
@@ -28,6 +29,7 @@ const Login = () => {
     role: "nutritionist",
   });
   const { hospitals, isLoading: hospitalsLoading } = useHospitals();
+  const { isOnline, isServerReachable } = useConnectivityContext();
 
   const selectedHospitalName = hospitals.find((hospital) => hospital.id === formData.hospital)?.name || "";
 
@@ -158,6 +160,11 @@ const Login = () => {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!isOnline || !isServerReachable ? (
+                    <p className="text-xs text-amber-700">
+                      Sem servidor: unidades previamente carregadas ficam disponiveis para consulta offline, mas o login precisa ser validado pelo servidor.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">

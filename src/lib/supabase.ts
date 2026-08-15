@@ -24,7 +24,7 @@ const buildSelectQuery = <T>(table: string) => {
   const execute = async (): SupabaseResult<T> => {
     try {
       const data = await apiClient.get(buildResourcePath(table, filters));
-      return { data, error: null };
+      return { data: data as T, error: null };
     } catch (error) {
       return {
         data: null,
@@ -48,12 +48,12 @@ const buildInsertQuery = <T>(table: string, rows: unknown[]) => {
   const payload = rows[0];
 
   return {
-    select() {
+    select(_columns?: string) {
       return {
         async single(): SupabaseResult<T> {
           try {
             const data = await apiClient.post(`/${table}`, payload);
-            return { data, error: null };
+            return { data: data as T, error: null };
           } catch (error) {
             return {
               data: null,
@@ -69,7 +69,7 @@ const buildInsertQuery = <T>(table: string, rows: unknown[]) => {
 export const supabase = {
   from<T = any>(table: string) {
     return {
-      select() {
+      select(_columns?: string) {
         return buildSelectQuery<T>(table);
       },
       insert(rows: unknown[]) {

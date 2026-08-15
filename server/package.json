@@ -10,7 +10,8 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "backup:import": "tsx scripts/importBackup.ts",
-    "smoke:sync": "tsx scripts/smokeSyncContracts.ts"
+    "smoke:sync": "tsx scripts/smokeSyncContracts.ts",
+    "smoke:clinical": "tsx ../scripts/clinicalCalculationsSmoke.ts"
   },
   "keywords": [],
   "author": "",

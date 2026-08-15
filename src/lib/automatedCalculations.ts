@@ -4,6 +4,12 @@
  * Calculates macronutrients, micronutrients, volumes, infusion rates, and costs
  */
 
+import {
+  calculateEnergyEstimates,
+  calculateNitrogenBalance as calculateClinicalNitrogenBalance,
+} from "@/lib/clinicalCalculations";
+import { calculateIdealWeight as calculateBmi25IdealWeight } from "@/lib/prescriptionCalculations";
+
 export interface NutritionalCalculation {
   calories: number;
   protein: number;
@@ -302,13 +308,7 @@ export function calculateIdealWeight(height: number, gender: 'male' | 'female', 
     return 0;
   }
 
-  const heightInInches = height / 2.54;
-  
-  if (gender === 'male') {
-    return Math.round(50 + 2.3 * (heightInInches - 60));
-  } else {
-    return Math.round(45.5 + 2.3 * (heightInInches - 60));
-  }
+  return calculateBmi25IdealWeight(height) ?? 0;
 }
 
 export function calculateFreeWaterPowder(totalVolume: number, grammage: number): number {
@@ -381,26 +381,8 @@ export function calculateNitrogenBalance(
   balance: number;
   status: string;
 } {
-  const nitrogenIntake = proteinIntake / 6.25; // 1g protein = 0.16g nitrogen
-  const nitrogenOutput = (urinaryUrea / 2.14) + additionalLosses;
-  const balance = nitrogenIntake - nitrogenOutput;
-  const roundedBalance = Math.round(balance * 10) / 10;
+  return calculateClinicalNitrogenBalance(proteinIntake, urinaryUrea, additionalLosses);
 
-  let status: string;
-  if (roundedBalance === 0) {
-    status = 'Equilíbrio';
-  } else if (roundedBalance > 0) {
-    status = 'Anabolismo';
-  } else {
-    status = 'Catabolismo';
-  }
-
-  return {
-    nitrogenIntake: Math.round(nitrogenIntake * 10) / 10,
-    nitrogenOutput: Math.round(nitrogenOutput * 10) / 10,
-    balance: roundedBalance,
-    status,
-  };
 }
 
 export type EnergyEquation = 'pocket-formula' | 'harris-benedict-revised' | 'ireton-jones' | 'mifflin-st-jeor';
@@ -410,25 +392,20 @@ export function calculateRestingEnergyExpenditure(
   weightKg: number,
   heightCm: number,
   ageYears: number,
-  gender: 'male' | 'female'
+  gender: 'male' | 'female',
+  pocketKcalKg = 25,
 ): number {
-  if (weightKg <= 0 || ageYears <= 0) return 0;
+  const estimates = calculateEnergyEstimates({
+    ageYears,
+    weightKg,
+    heightCm,
+    sex: gender,
+    pocketKcalKg,
+  });
 
-  if (equation === 'pocket-formula') {
-    return 25 * weightKg;
-  }
-
-  if (equation === 'ireton-jones') {
-    return 1925 - (10 * ageYears) + (5 * weightKg) + (gender === 'male' ? 281 : 0);
-  }
-
-  if (heightCm <= 0) return 0;
-
-  if (equation === 'harris-benedict-revised') {
-    return gender === 'male'
-      ? 66.5 + (13.7516 * weightKg) + (5.0033 * heightCm) - (6.7555 * ageYears)
-      : 655.0955 + (9.5634 * weightKg) + (1.8496 * heightCm) - (4.6756 * ageYears);
-  }
+  if (equation === 'pocket-formula') return estimates.pocketFormula;
+  if (equation === 'ireton-jones') return estimates.iretonJones;
+  if (equation === 'harris-benedict-revised') return estimates.harrisBenedict;
 
   return gender === 'male'
     ? (10 * weightKg) + (6.25 * heightCm) - (5 * ageYears) + 5

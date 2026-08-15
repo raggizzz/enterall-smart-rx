@@ -201,6 +201,8 @@ export function getAllTypes(): Array<{type: Formula['type'], label: string, coun
     'peptide': 'Peptídica',
     'fiber': 'Com Fibras',
     'immune': 'Imunomoduladora',
+    'oral-supplement': 'Suplemento oral',
+    'infant-formula': 'Formula infantil',
   };
 
   return types.map(type => ({

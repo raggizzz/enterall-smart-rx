@@ -27,6 +27,7 @@ const appendHospitalIdQuery = (path: string, hospitalId?: string) => {
 
 // Motivos de Interrupção da TNE
 export interface TNEInterruptions {
+    quickReasons?: string[];
     procedures?: {
         airways?: boolean;
         therapeutic?: boolean;
@@ -81,7 +82,10 @@ export interface Patient {
     idealWeight?: number;
     bed?: string;
     ward?: string;
+    wardId?: string;
     hospitalId?: string;
+    targetKcal?: number;
+    prescriptions?: Prescription[];
     observation?: string;
     monitoringNotes?: string;
     admissionDate?: string;
@@ -323,6 +327,7 @@ export interface Prescription {
             rate?: string;
             duration?: string;
             bagQuantities?: Record<string, number>;
+            bagQuantitiesProvided?: boolean;
         };
         openFormulas?: Array<{
             formulaId?: string;
@@ -1104,6 +1109,7 @@ const mapPrescriptionPayload = (data: any) => ({
 const mapEvolutionPayload = (data: any) => ({
     ...data,
     date: toDateOnly(data.date),
+    tneInterruptions: data.tneInterruptions,
 });
 
 const mapFormulaPayload = (data: any) => ({
@@ -1122,32 +1128,34 @@ const mapModulePayload = (data: any) => ({
 
 const nowIso = () => new Date().toISOString();
 
-const withSyncState = <T extends Record<string, unknown>>(
-    entity: T,
-    syncStatus: 'synced' | 'pending' | 'failed' = 'synced',
-): T => ({
-    ...entity,
-    syncStatus,
-});
+type SyncState = 'synced' | 'pending' | 'failed';
 
-const mergeRemoteWithOffline = async <T extends Record<string, unknown>>(
+const withSyncState = <T>(
+    entity: T,
+    syncStatus: SyncState = 'synced',
+): T => ({
+    ...(entity as object),
+    syncStatus,
+} as T);
+
+const mergeRemoteWithOffline = async <T>(
     entityType: OfflineEntityType,
     fetchRemote: () => Promise<T[]>,
 ): Promise<T[]> => {
     try {
         const remote = await fetchRemote();
-        await cacheSnapshot(entityType, remote);
-        return (await getMergedRecords(entityType, remote)).map((record) =>
-            withSyncState(record as T, (record.syncStatus as T['syncStatus']) || 'synced'),
-        ) as T[];
+        await cacheSnapshot(entityType, remote as unknown as Record<string, unknown>[]);
+        return (await getMergedRecords(entityType, remote as unknown as Record<string, unknown>[])).map((record) =>
+            withSyncState(record as T, (record.syncStatus as SyncState) || 'synced'),
+        );
     } catch {
         return (await getMergedRecords(entityType)).map((record) =>
-            withSyncState(record as T, (record.syncStatus as T['syncStatus']) || 'pending'),
-        ) as T[];
+            withSyncState(record as T, (record.syncStatus as SyncState) || 'pending'),
+        );
     }
 };
 
-const buildCreateEntity = <T extends Record<string, unknown>>(
+const buildCreateEntity = <T>(
     entityType: OfflineEntityType,
     payload: Record<string, unknown>,
     normalizer: (raw: any) => T,
@@ -1163,13 +1171,13 @@ const buildCreateEntity = <T extends Record<string, unknown>>(
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 version: 1,
-            }) as Record<string, unknown>,
+            }),
             'pending',
         ),
     };
 };
 
-const buildUpdatedEntity = async <T extends Record<string, unknown>>(
+const buildUpdatedEntity = async <T>(
     entityType: OfflineEntityType,
     entityId: string,
     patch: Record<string, unknown>,
@@ -1184,19 +1192,19 @@ const buildUpdatedEntity = async <T extends Record<string, unknown>>(
             ...patch,
             id: entityId,
             updatedAt: timestamp,
-            createdAt: (current as Record<string, unknown> | undefined)?.createdAt || timestamp,
+            createdAt: (current as { createdAt?: string } | undefined)?.createdAt || timestamp,
             version,
-        }) as Record<string, unknown>,
+        }),
         'pending',
     );
 
     return {
         expectedVersion: current?.version,
-        localEntity,
+        localEntity: localEntity as unknown as Record<string, unknown>,
     };
 };
 
-const queueCreate = async <T extends Record<string, unknown>>(
+const queueCreate = async <T>(
     entityType: OfflineEntityType,
     endpoint: string,
     payload: Record<string, unknown>,
@@ -1210,11 +1218,11 @@ const queueCreate = async <T extends Record<string, unknown>>(
         method: 'POST',
         payload,
         entityId,
-        localEntity,
+        localEntity: localEntity as unknown as Record<string, unknown>,
     });
 };
 
-const queueUpdate = async <T extends Record<string, unknown>>(
+const queueUpdate = async <T>(
     entityType: OfflineEntityType,
     endpoint: string,
     entityId: string,
@@ -1266,7 +1274,7 @@ export const patientsService = {
     },
     async create(data: any) {
         const result = await queueCreate('patients', '/patients', mapPatientPayload(data), normalizePatient);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) {
         return queueUpdate('patients', `/patients/${id}`, id, mapPatientPayload(data), normalizePatient);
@@ -1298,7 +1306,7 @@ export const formulasService = {
     },
     async create(data: any) {
         const result = await queueCreate('formulas', '/formulas', mapFormulaPayload(data), normalizeFormula);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('formulas', `/formulas/${id}`, id, mapFormulaPayload(data), normalizeFormula); },
     async delete(id: string) { return queueDelete('formulas', `/formulas/${id}`, id); },
@@ -1323,7 +1331,7 @@ export const modulesService = {
     },
     async create(data: any) {
         const result = await queueCreate('modules', '/modules', mapModulePayload(data), normalizeModule);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('modules', `/modules/${id}`, id, mapModulePayload(data), normalizeModule); },
     async delete(id: string) { return queueDelete('modules', `/modules/${id}`, id); },
@@ -1348,7 +1356,7 @@ export const suppliesService = {
     },
     async create(data: any) {
         const result = await queueCreate('supplies', '/supplies', data, normalizeSupply);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('supplies', `/supplies/${id}`, id, data, normalizeSupply); },
     async delete(id: string) { return queueDelete('supplies', `/supplies/${id}`, id); },
@@ -1373,7 +1381,7 @@ export const professionalsService = {
     },
     async create(data: any) {
         const result = await queueCreate('professionals', '/professionals', data, normalizeProfessional);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('professionals', `/professionals/${id}`, id, data, normalizeProfessional); },
     async delete(id: string) { return queueDelete('professionals', `/professionals/${id}`, id); }
@@ -1393,7 +1401,7 @@ export const prescriptionsService = {
         return all.filter((p: any) => p.patientId === patientId);
     },
     async getHistory(id: string) {
-        return (await apiClient.get(`/prescriptions/${id}/history`)).map((event: any) => ({
+        return (await apiClient.get(`/prescriptions/${id}/history`) as any[]).map((event: any) => ({
             id: event.id,
             fromStatus: event.fromStatus,
             toStatus: event.toStatus,
@@ -1418,7 +1426,7 @@ export const prescriptionsService = {
     async create(data: any) {
         const payload = mapPrescriptionPayload(data);
         const result = await queueCreate('prescriptions', '/prescriptions', payload, normalizePrescription);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) {
         const payload = mapPrescriptionPayload(data);
@@ -1455,7 +1463,7 @@ export const evolutionsService = {
     async getAll(requestedHospitalId?: string) {
         const hospitalId = requestedHospitalId || resolveSessionHospitalId();
         return mergeRemoteWithOffline('evolutions', async () =>
-            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/evolutions', hospitalId)).catch(() => [])).map(normalizeEvolution),
+            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/evolutions', hospitalId))).map(normalizeEvolution),
         ) as Promise<DailyEvolution[]>;
     },
     async getByDate(date: string) { return (await this.getAll()).filter((evolution: DailyEvolution) => evolution.date === toDateOnly(date)); },
@@ -1470,7 +1478,7 @@ export const evolutionsService = {
     async create(data: any) {
         const payload = mapEvolutionPayload(data);
         const result = await queueCreate('evolutions', '/evolutions', payload, normalizeEvolution);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('evolutions', `/evolutions/${id}`, id, mapEvolutionPayload(data), normalizeEvolution); },
     async delete(id: string) { return queueDelete('evolutions', `/evolutions/${id}`, id); }
@@ -1492,7 +1500,7 @@ export const clinicsService = {
             hospitalId: data.hospitalId ?? resolveSessionHospitalId(),
         };
         const result = await queueCreate('clinics', '/clinics', payload, normalizeClinic);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) {
         return queueUpdate('clinics', `/clinics/${id}`, id, data, normalizeClinic);
@@ -1505,13 +1513,13 @@ export const hospitalsService = {
             ? undefined
             : resolveSessionHospitalId();
         return mergeRemoteWithOffline('hospitals', async () =>
-            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/hospitals', hospitalId)).catch(() => [])).map(normalizeHospital),
+            extractCollection<any>(await apiClient.get(appendHospitalIdQuery('/hospitals', hospitalId))).map(normalizeHospital),
         ) as Promise<Hospital[]>;
     },
     async getActive() { return (await this.getAll()).filter((hospital: Hospital) => hospital.isActive); },
     async create(data: any) {
         const result = await queueCreate('hospitals', '/hospitals', data, normalizeHospital);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('hospitals', `/hospitals/${id}`, id, data, normalizeHospital); },
     async delete(id: string) { return queueDelete('hospitals', `/hospitals/${id}`, id); }
@@ -1531,7 +1539,7 @@ export const wardsService = {
     },
     async create(data: any) {
         const result = await queueCreate('wards', '/wards', data, normalizeWard);
-        return String(result.entityId ?? result.id);
+        return String(result.entityId);
     },
     async update(id: string, data: any) { return queueUpdate('wards', `/wards/${id}`, id, data, normalizeWard); },
     async delete(id: string) { return queueDelete('wards', `/wards/${id}`, id); }
@@ -1573,7 +1581,7 @@ export const appToolsService = {
         return normalizeAppTool({
             ...payload,
             ...result,
-            id: result.entityId ?? result.id,
+            id: result.entityId,
             syncStatus: result.queued ? 'pending' : 'synced',
         });
     },
@@ -1709,7 +1717,7 @@ export const settingsService = {
                 'settings',
                 `/settings/${hospitalId}`,
                 hospitalId,
-                next as Record<string, unknown>,
+                next as unknown as Record<string, unknown>,
                 (raw) => normalizeSettings(raw, hospitalId),
             );
             persisted = normalizeSettings({

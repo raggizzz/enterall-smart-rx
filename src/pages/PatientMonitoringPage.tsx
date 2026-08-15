@@ -18,7 +18,7 @@ import {
     clampPercent,
     resolveTargetKcalForDay,
 } from "@/lib/monitoringCalculations";
-import { getLocalDateKey, getPreviousLocalDateKey } from "@/lib/dateOnly";
+import { getClinicalMonitoringDateKey, getLocalDateKey } from "@/lib/dateOnly";
 
 type ChartRow = {
     date: string;
@@ -129,7 +129,7 @@ export default function PatientMonitoringPage() {
             };
         }
 
-        const targetDate = getPreviousLocalDateKey();
+        const targetDate = getClinicalMonitoringDateKey();
         const prescriptionsOnTargetDate = prescriptions.filter(
             (prescription) =>
                 prescription.patientId === selectedPatient.id &&
@@ -198,7 +198,7 @@ export default function PatientMonitoringPage() {
     const savedEvolution = useMemo(() => {
         if (!selectedPatient?.id) return undefined;
 
-        const targetDate = getPreviousLocalDateKey();
+        const targetDate = getClinicalMonitoringDateKey();
         return pickLatestEvolutionForDate(evolutions, selectedPatient.id, targetDate);
     }, [selectedPatient, evolutions]);
 
@@ -264,7 +264,7 @@ export default function PatientMonitoringPage() {
     const handleSave = async (data: Partial<Patient> & Partial<DailyEvolution>) => {
         if (selectedPatient?.id) {
             const updatedPatient = { ...selectedPatient, ...data };
-            const targetDate = getPreviousLocalDateKey();
+            const targetDate = getClinicalMonitoringDateKey();
             const prescriptionsOnTargetDate = prescriptions.filter(
                 (prescription) =>
                     prescription.patientId === selectedPatient.id &&
@@ -399,7 +399,7 @@ export default function PatientMonitoringPage() {
                     parenteralFiber={totals.parenteralFiber}
                     historyData={chartData}
                     savedEvolution={savedEvolution}
-                    monitoringDate={getPreviousLocalDateKey()}
+                    monitoringDate={getClinicalMonitoringDateKey()}
                 />
             </div>
             <BottomNav />

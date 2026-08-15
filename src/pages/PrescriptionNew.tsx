@@ -74,6 +74,7 @@ const isPersistedDbId = (value?: string) => Boolean(value && !value.startsWith("
 
 type TherapyType = Prescription["therapyType"];
 type ScheduleSource = "patient" | "ward" | "unit";
+type OralMealKey = Exclude<keyof OralSupplementSchedule["schedules"], "other">;
 type ExtendedCatalogFormula = CatalogFormula & {
   macronutrientComplexity?: "polymeric" | "oligomeric";
   ageGroup?: "adult" | "pediatric" | "infant";
@@ -105,6 +106,8 @@ type ExtendedCatalogFormula = CatalogFormula & {
 };
 
 type ExtendedCatalogModule = CatalogModule & {
+  billingUnit?: "g" | "ml" | "unit";
+  billingPrice?: number;
   carbs?: number;
   fat?: number;
   calcium?: number;
@@ -737,7 +740,7 @@ const PrescriptionNew = () => {
     return w / (heightM * heightM);
   }, [selectedPatient?.weight, selectedPatient?.height]);
 
-  const ORAL_MEAL_SCHEDULES = useMemo(() => [
+  const ORAL_MEAL_SCHEDULES = useMemo<Array<{ key: OralMealKey; label: string }>>(() => [
     { key: 'breakfast', label: 'Desjejum' },
     { key: 'midMorning', label: 'Colação' },
     { key: 'lunch', label: 'Almoço' },
@@ -1329,7 +1332,7 @@ const PrescriptionNew = () => {
           unit: "ml",
           schedules: (formula.schedules || []).reduce((acc, schedule) => {
             const meal = ORAL_MEAL_SCHEDULES.find((entry) => entry.label === schedule || entry.key === schedule);
-            if (meal) acc[meal.key as keyof OralSupplementSchedule["schedules"]] = true;
+            if (meal) acc[meal.key as OralMealKey] = true;
             return acc;
           }, {} as OralSupplementSchedule["schedules"]),
         })),
@@ -1344,7 +1347,7 @@ const PrescriptionNew = () => {
           unit: module.unit || "g",
           schedules: (module.schedules || []).reduce((acc, schedule) => {
             const meal = ORAL_MEAL_SCHEDULES.find((entry) => entry.label === schedule || entry.key === schedule);
-            if (meal) acc[meal.key as keyof OralModuleSchedule["schedules"]] = true;
+            if (meal) acc[meal.key as OralMealKey] = true;
             return acc;
           }, {} as OralModuleSchedule["schedules"]),
         })),
@@ -1466,6 +1469,17 @@ const PrescriptionNew = () => {
       .filter((prescription) => prescription.patientId === selectedPatient.id && Boolean(prescription.tneGoals))
       .sort(sortByMostRecentStartDate)[0];
   }, [selectedPatient, prescriptions]);
+
+  const latestGoalWeightBasis = useMemo(() => ({
+    energy: latestGoalsPrescription?.tneGoals?.targetKcalWeightBasis || autoWeightConfig.energyWeight,
+    protein: latestGoalsPrescription?.tneGoals?.targetProteinWeightBasis || autoWeightConfig.proteinWeight,
+  }), [autoWeightConfig.energyWeight, autoWeightConfig.proteinWeight, latestGoalsPrescription]);
+
+  const latestGoalProteinPerKg = latestGoalsPrescription?.tneGoals
+    ? latestGoalWeightBasis.protein === "ideal"
+      ? latestGoalsPrescription.tneGoals.targetProteinPerKgIdeal ?? latestGoalsPrescription.tneGoals.targetProteinPerKgActual
+      : latestGoalsPrescription.tneGoals.targetProteinPerKgActual ?? latestGoalsPrescription.tneGoals.targetProteinPerKgIdeal
+    : undefined;
 
   const activePrescriptionsByType = useMemo(() => {
     if (!selectedPatient?.id) return { enteral: undefined, oral: undefined, parenteral: undefined } as Record<TherapyType, Prescription | undefined>;
@@ -1856,7 +1870,7 @@ const PrescriptionNew = () => {
             return `- ${buildGenericFormulaDescriptor(formula)}, fracionada em ${stageCount} etapas de ${formatDecimalValue(stageVolume)} ml, em bolus;`;
           }
 
-          const derivedRate = calculateOpenStageRate(stageVolume, openInfusionMode, durationHours);
+          const derivedRate = calculateOpenStageRate(stageVolume, openInfusionMode || undefined, durationHours);
           const rateLabel = openInfusionMode === "gravity"
             ? (derivedRate.dropsPerMin ? `${formatDecimalValue(derivedRate.dropsPerMin)} gotas/min` : "velocidade não calculada")
             : (derivedRate.mlPerHour ? `${formatDecimalValue(derivedRate.mlPerHour)} ml/h` : "velocidade não calculada");
@@ -2507,7 +2521,7 @@ const PrescriptionNew = () => {
       const openRateBaseVolume = uniqueOpenStageVolumes.length === 1 ? Number(uniqueOpenStageVolumes[0]) : undefined;
       const openDerivedRate = calculateOpenStageRate(
         openRateBaseVolume,
-        openInfusionMode,
+        openInfusionMode || undefined,
         parseFloat(openDurationPerStep) || undefined,
       );
       const enteralTotalVolume = systemType === "open"
@@ -3118,11 +3132,11 @@ const PrescriptionNew = () => {
                             <p className="text-xs text-emerald-800">
                               {latestGoalsPrescription.tneGoals.targetKcalPerKg ?? "-"} kcal/kg
                               {" | "}
-                              {latestGoalsPrescription.tneGoals.targetProteinPerKgActual ?? "-"} g/kg
+                              {latestGoalProteinPerKg ?? "-"} g/kg
                               {" | Energia "}
-                              {formatWeightBasisLabel(latestGoalsPrescription.tneGoals.targetKcalWeightBasis)}
+                              {formatWeightBasisLabel(latestGoalWeightBasis.energy)}
                               {" | Proteínas "}
-                              {formatWeightBasisLabel(latestGoalsPrescription.tneGoals.targetProteinWeightBasis)}
+                              {formatWeightBasisLabel(latestGoalWeightBasis.protein)}
                             </p>
                             {latestGoalsPrescription.startDate && (
                               <p className="text-xs text-emerald-700">

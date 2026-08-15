@@ -1,6 +1,10 @@
 import type { DailyEvolution, Patient, Prescription } from "@/lib/database";
 import { getPrescriptionRateLabel } from "@/lib/prescriptionInfusion";
 import { calculateUnintentionalCaloriesBreakdown } from "@/lib/monitoringCalculations";
+import {
+  calculateBmi as calculatePrescriptionBmi,
+  calculateIdealWeight as calculatePrescriptionIdealWeight,
+} from "@/lib/prescriptionCalculations";
 
 interface SectorMapPrintProps {
   hospitalName?: string;
@@ -27,39 +31,11 @@ const getActivePrescriptionsForPatient = (prescriptionList: Prescription[], pati
     .filter((prescription) => prescription.patientId === patientId && prescription.status === "active")
     .sort(sortByMostRecentStartDate);
 
-const normalizeHeightCm = (heightCm: number): number =>
-  heightCm < 3 ? heightCm * 100 : heightCm;
+const calculateBmi = (patient: Patient): number | null =>
+  calculatePrescriptionBmi(patient.weight, patient.height, patient.dob);
 
-const getPatientAgeYears = (patient: Patient): number | null => {
-  if (!patient.dob) return null;
-  const birth = new Date(patient.dob);
-  if (Number.isNaN(birth.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const monthDiff = today.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age -= 1;
-  }
-  return age;
-};
-
-const calculateBmi = (patient: Patient): number | null => {
-  const age = getPatientAgeYears(patient);
-  if (age !== null && age < 2) return null;
-  if (!patient.weight || !patient.height) return null;
-  const heightMeters = normalizeHeightCm(patient.height) / 100;
-  if (!heightMeters) return null;
-  return patient.weight / (heightMeters * heightMeters);
-};
-
-const calculateIdealWeight = (patient: Patient): number | null => {
-  const age = getPatientAgeYears(patient);
-  if (age !== null && age < 18) return null;
-  const bmi = calculateBmi(patient);
-  if (!bmi || bmi < 30 || !patient.height) return null;
-  const heightMeters = normalizeHeightCm(patient.height) / 100;
-  return 25 * heightMeters * heightMeters;
-};
+const calculateIdealWeight = (patient: Patient): number | null =>
+  calculatePrescriptionIdealWeight(patient.height, patient.dob);
 
 const formatNumber = (value?: number | string, digits = 2) => {
   if (value === undefined || value === null || value === "" || Number.isNaN(Number(value))) return "-";

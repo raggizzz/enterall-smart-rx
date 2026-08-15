@@ -11,6 +11,8 @@ import { useEvolutions } from "@/hooks/useDatabase";
 import { useSession } from "@/hooks/useSession";
 import { getPreviousLocalDateKey } from "@/lib/dateOnly";
 
+const MAX_EVOLUTION_NOTE_LENGTH = 55;
+
 interface DailyEvolutionDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
@@ -30,7 +32,7 @@ export function DailyEvolutionDialog({
     prescribedVolume,
     prescribedCalories
 }: DailyEvolutionDialogProps) {
-    const { createEvolution } = useEvolutions();
+    const { evolutions, createEvolution, updateEvolution } = useEvolutions();
     const { hospitalId: sessionHospitalId, professionalId: sessionProfessionalId } = useSession();
     const [infusedVolume, setInfusedVolume] = useState("");
     const [intercurrences, setIntercurrences] = useState<string[]>([]);
@@ -75,22 +77,33 @@ export function DailyEvolutionDialog({
 
         setIsSaving(true);
         try {
-            const serializedIntercurrences = intercurrences.length > 0
-                ? `Intercorrências: ${intercurrences.join(", ")}`
-                : "";
-            const serializedNotes = notes.trim();
-            const combinedNotes = [serializedIntercurrences, serializedNotes].filter(Boolean).join(" | ");
+            const serializedNotes = notes.trim().slice(0, MAX_EVOLUTION_NOTE_LENGTH);
+            const operationalDate = getPreviousLocalDateKey();
+            const existingEvolution = evolutions
+                .filter((evolution) => evolution.patientId === patientId && evolution.date === operationalDate)
+                .sort((left, right) => {
+                    const leftTimestamp = left.updatedAt || left.createdAt || "";
+                    const rightTimestamp = right.updatedAt || right.createdAt || "";
+                    return rightTimestamp.localeCompare(leftTimestamp);
+                })[0];
 
-            await createEvolution({
+            const evolutionPayload = {
                 hospitalId: sessionHospitalId,
                 professionalId: sessionProfessionalId,
                 patientId,
                 prescriptionId,
-                date: getPreviousLocalDateKey(),
+                date: operationalDate,
                 volumeInfused: parseFloat(infusedVolume),
                 metaReached: Number(percentage.toFixed(2)),
-                notes: combinedNotes || undefined,
-            });
+                tneInterruptions: intercurrences.length > 0 ? { quickReasons: intercurrences } : undefined,
+                notes: serializedNotes || undefined,
+            };
+
+            if (existingEvolution?.id) {
+                await updateEvolution(existingEvolution.id, evolutionPayload);
+            } else {
+                await createEvolution(evolutionPayload);
+            }
 
             toast.success("Acompanhamento registrado com sucesso");
             onOpenChange(false);
@@ -187,8 +200,12 @@ export function DailyEvolutionDialog({
                             id="notes"
                             placeholder="Outras observações relevantes..."
                             value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
+                            onChange={(e) => setNotes(e.target.value.slice(0, MAX_EVOLUTION_NOTE_LENGTH))}
+                            maxLength={MAX_EVOLUTION_NOTE_LENGTH}
                         />
+                        <p className="text-xs text-muted-foreground text-right">
+                            {notes.length}/{MAX_EVOLUTION_NOTE_LENGTH} caracteres
+                        </p>
                     </div>
                 </div>
 

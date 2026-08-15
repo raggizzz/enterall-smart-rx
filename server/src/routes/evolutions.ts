@@ -115,26 +115,22 @@ router.post('/', async (req, res) => {
                 return { statusCode: 404, body: { error: 'Patient not found' } };
             }
 
-            const existingEvolution = targetDate
-                ? await prisma.dailyEvolution.findFirst({
+            if (targetDate) {
+                const savedEvolution = await prisma.dailyEvolution.upsert({
                     where: {
-                        hospitalId,
-                        patientId: payload.patientId,
-                        date: targetDate,
+                        hospitalId_patientId_date: {
+                            hospitalId,
+                            patientId: payload.patientId,
+                            date: targetDate,
+                        },
                     },
-                    orderBy: { updatedAt: 'desc' },
-                })
-                : null;
-
-            if (existingEvolution?.id) {
-                const updatedExisting = await prisma.dailyEvolution.update({
-                    where: { id: existingEvolution.id },
-                    data: {
+                    update: {
                         ...payload,
                         version: { increment: 1 },
                     },
+                    create: payload,
                 });
-                return { body: { id: updatedExisting.id, version: updatedExisting.version } };
+                return { body: { id: savedEvolution.id, version: savedEvolution.version } };
             }
 
             const newEvo = await prisma.dailyEvolution.create({ data: payload });

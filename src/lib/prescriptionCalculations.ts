@@ -343,7 +343,9 @@ export const calculateFormulaFreeWater = (
   }
 
   if (formula.presentationForm === "po") {
-    return dilutedAmount - totalAmount;
+    // For powder, totalAmount is grams and dilutedAmount is the final
+    // preparation volume in mL. Subtracting them mixes incompatible units.
+    return dilutedAmount;
   }
 
   return baseFreeWater + (dilutedAmount - totalAmount);

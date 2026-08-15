@@ -420,7 +420,7 @@ const getWaterSupply = (supplies: Supply[]): Supply | undefined =>
 const getOrCreateAccumulator = (
   usageMap: Map<string, UsageAccumulator>,
   key: string,
-  seed: Omit<UsageAccumulator, "therapyTypes" | "patientIds" | "totalQuantity" | "totalVolumeMl" | "estimatedUnits" | "patientDays" | "totalCalories" | "totalCost" | "plasticG" | "paperG" | "metalG" | "glassG">,
+  seed: Omit<UsageAccumulator, "therapyTypes" | "patientIds" | "prescriptionIds" | "totalQuantity" | "totalVolumeMl" | "estimatedUnits" | "patientDays" | "totalCalories" | "totalCost" | "plasticG" | "paperG" | "metalG" | "glassG">,
 ) => {
   const existing = usageMap.get(key);
   if (existing) return existing;
@@ -741,16 +741,21 @@ const Reports = () => {
         const administrationsPerDay = isClosedEnteralFormula
           ? 1
           : getAdministrationCount(entry.schedules, entry.timesPerDay);
-        const dailyVolumeMl = entry.volume * administrationsPerDay;
+        const billableUnit = getFormulaBillingUnit(formula);
+        const openFormulaEntry = prescription.enteralDetails?.openFormulas?.find((item) => item.formulaId === entry.formulaId);
+        const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
+        const dailyAmount = entry.volume * administrationsPerDay;
+        // Powder quantity is billed in grams. Only a configured final dilution
+        // can be reported as mL; never expose grams in a volume column.
+        const dailyVolumeMl = billableUnit === "g"
+          ? (diluteTo > 0 ? diluteTo * administrationsPerDay : 0)
+          : dailyAmount;
         const totalVolumeMl = dailyVolumeMl * overlapDays;
         const equipmentVolumePerDay = prescription.systemType === "open" && prescription.therapyType === "enteral"
           ? (prescription.equipmentVolume || 0) * administrationsPerDay
           : 0;
-        const billableUnit = getFormulaBillingUnit(formula);
         const bagSize = formula?.presentations?.[0] || 0;
         const billingPrice = formula?.billingPrice || 0;
-        const openFormulaEntry = prescription.enteralDetails?.openFormulas?.find((item) => item.formulaId === entry.formulaId);
-        const diluteTo = Number(openFormulaEntry?.diluteTo || 0);
         const extraPowderPerAdministration = billableUnit === "g" && equipmentVolumePerDay > 0 && diluteTo > 0
           ? (entry.volume / diluteTo) * (prescription.equipmentVolume || 0)
           : 0;
@@ -796,7 +801,7 @@ const Reports = () => {
         }
 
         const caloriesPerMl = getFormulaCaloriesPerMl(formula);
-        const totalCalories = totalVolumeMl * caloriesPerMl;
+        const totalCalories = (dailyAmount * overlapDays) * caloriesPerMl;
 
         const item = getOrCreateAccumulator(
           usageMap,
@@ -1053,7 +1058,7 @@ const Reports = () => {
       .map((item) => {
         const uniquePatients = item.patientIds.size;
         const wasteTotalG = item.plasticG + item.paperG + item.metalG + item.glassG;
-        const therapyType = item.therapyTypes.size === 1
+        const therapyType: ProductUsageRow["therapyType"] = item.therapyTypes.size === 1
           ? Array.from(item.therapyTypes)[0]
           : "mixed";
 
@@ -1136,7 +1141,9 @@ const Reports = () => {
 
   const reportProductUsage = useMemo(
     () => [
-      ...productUsage.filter((item) => item.therapyType === "enteral"),
+      // Gerencial consolida todas as vias. A requisicao do lactario continua
+      // usando sua propria regra para excluir suplementos orais nao faturaveis.
+      ...productUsage,
       ...manualAdjustmentRows,
     ],
     [manualAdjustmentRows, productUsage],
@@ -1156,14 +1163,17 @@ const Reports = () => {
     let therapyCostTotal = 0;
 
     filteredEvolutions.forEach((evolution) => {
-      const hasEnteralInfusion = (evolution.volumeInfused || 0) > 0 || (evolution.enteralKcal || 0) > 0;
-      if (!hasEnteralInfusion) return;
+      const hasTherapy = (evolution.volumeInfused || 0) > 0
+        || (evolution.enteralKcal || 0) > 0
+        || (evolution.oralKcal || 0) > 0
+        || (evolution.parenteralKcal || 0) > 0;
+      if (!hasTherapy) return;
 
       attendedPatients.add(evolution.patientId);
       patientDaySet.add(`${evolution.patientId}:${evolution.date}`);
     });
 
-    enteralPrescriptions.forEach((prescription) => {
+    filteredPrescriptions.forEach((prescription) => {
       const overlapDays = getOverlapDays(prescription.startDate, prescription.endDate, startDate, endDate);
       if (overlapDays <= 0) return;
 
@@ -1193,13 +1203,15 @@ const Reports = () => {
     const totalProductCost = formulasCost + modulesCost + suppliesCost + manualAdjustmentsCost;
     const patientCount = attendedPatients.size;
     const patientDays = patientDaySet.size;
-    const averagePatientsPerDay = daysInPeriod.length > 0 ? patientDays / daysInPeriod.length : 0;
+    const prescriptionCount = filteredPrescriptions.filter((prescription) =>
+      getOverlapDays(prescription.startDate, prescription.endDate, startDate, endDate) > 0,
+    ).length;
 
     return {
       patientCount,
-      prescriptionCount: patientDaySet.size,
-      patientDays: averagePatientsPerDay,
-      prescriptionDays: patientDaySet.size,
+      prescriptionCount,
+      patientDays,
+      prescriptionDays: patientDays,
       productCount: reportProductUsage.length,
       formulasCost,
       modulesCost,
@@ -1214,7 +1226,7 @@ const Reports = () => {
       therapyCostTotal,
       indirectCostPerDay: settings?.indirectCosts?.laborCosts || 0,
     };
-  }, [daysInPeriod, endDate, enteralPrescriptions, filteredEvolutions, reportProductUsage, settings, startDate]);
+  }, [daysInPeriod, endDate, filteredEvolutions, filteredPrescriptions, reportProductUsage, settings, startDate]);
 
   const comparisonRows = useMemo(() => {
     const selected = selectedProducts.filter(Boolean);
@@ -1718,7 +1730,7 @@ const Reports = () => {
                             <th className="p-3 font-medium">Via</th>
                             <th className="p-3 font-medium text-right">Qtd total</th>
                             <th className="p-3 font-medium">Unidade</th>
-                            <th className="p-3 font-medium text-right">Volume (ml)</th>
+                            <th className="p-3 font-medium text-right">Volume final (mL)</th>
                             <th className="p-3 font-medium text-right">Unidades calculadas</th>
                             <th className="p-3 font-medium text-right">Pacientes</th>
                             <th className="p-3 font-medium text-right">Prescricoes</th>
@@ -1746,7 +1758,7 @@ const Reports = () => {
                               </td>
                               <td className="p-3 text-right">{numberFormatter.format(item.totalQuantity)}</td>
                               <td className="p-3">{item.billingUnit}</td>
-                              <td className="p-3 text-right">{item.totalVolumeMl.toLocaleString("pt-BR")}</td>
+                              <td className="p-3 text-right">{item.totalVolumeMl > 0 ? item.totalVolumeMl.toLocaleString("pt-BR") : "-"}</td>
                               <td className="p-3 text-right">{billingNumberFormatter.format(item.estimatedUnits)}</td>
                               <td className="p-3 text-right">{item.uniquePatients}</td>
                               <td className="p-3 text-right">{item.uniquePrescriptions}</td>

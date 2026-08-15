@@ -11,6 +11,10 @@ export const getPreviousLocalDateKey = (date = new Date()): string => {
   return getLocalDateKey(previousDay);
 };
 
+/** Data clinica do acompanhamento: registra o dia completo encerrado. */
+export const getClinicalMonitoringDateKey = (date = new Date()): string =>
+  getPreviousLocalDateKey(date);
+
 export const formatLocalDateKey = (dateKey: string): string => {
   const [year, month, day] = dateKey.split("-");
   return year && month && day ? `${day}/${month}/${year}` : dateKey;

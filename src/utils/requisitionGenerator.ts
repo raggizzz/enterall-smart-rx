@@ -417,9 +417,10 @@ export const generateRequisitionData = ({
 
     activePrescriptions.forEach(p => {
         const resolvedSystemType = p.systemType || p.enteralDetails?.systemType;
-        const resolvedInfusionMode = p.infusionMode
+        const resolvedInfusionMode: Prescription["infusionMode"] = p.infusionMode
             || p.enteralDetails?.infusionMode
-            || p.enteralDetails?.closedFormula?.infusionMode;
+            || p.enteralDetails?.closedFormula?.infusionMode
+            || undefined;
         const patient = patientsById.get(p.patientId);
         const patientInfo = {
             patientId: p.patientId,
@@ -439,6 +440,7 @@ export const generateRequisitionData = ({
         let hydrationDailySetCount = 0;
         let hasMappedDelivery = false;
         const isEnteralViaOral = p.therapyType === 'enteral' && (p.enteralDetails?.access === 'VO' || p.feedingRoute === 'VO');
+        const requiresEnteralEquipment = p.therapyType === 'enteral' && !isEnteralViaOral;
         const formulaEntries = p.formulas
             .filter((formulaEntry) => {
                 if (p.therapyType !== 'oral') return true;
@@ -508,7 +510,7 @@ export const generateRequisitionData = ({
                 const administrationsForVolume = resolvedSystemType === 'closed' ? 1 : matchingTimes.length;
                 const totalVol = f.volume * administrationsForVolume * dayDiff;
                 const price = getFormulaPrice(f.formulaId);
-                const equipmentVolumePerAdministration = resolvedSystemType === 'open' && p.therapyType === 'enteral'
+                const equipmentVolumePerAdministration = resolvedSystemType === 'open' && requiresEnteralEquipment
                     ? (p.equipmentVolume || 0)
                     : 0;
                 let rowUnitPrice = price;
@@ -587,7 +589,7 @@ export const generateRequisitionData = ({
 
                 // Heuristic for Bottles: If Open System, 1 bottle per administration?
                 if (resolvedSystemType === 'open') {
-                    if (!isEnteralViaOral) {
+                    if (requiresEnteralEquipment) {
                         addBottleCharge(finalStageVolume, matchingTimes.length * dayDiff);
                         mainDailySetCount = 1;
                     }
@@ -718,7 +720,7 @@ export const generateRequisitionData = ({
                 // Exclude water from consolidated billing as requested
                 // addToConsolidated('WATER-001', 'ÁGUA FILTRADA', totalVol, 'ml', 0, 'diet');
 
-                if (!isEnteralViaOral) {
+                if (requiresEnteralEquipment) {
                     addBottleCharge(p.hydrationVolume, matchingTimes.length * dayDiff);
                     hydrationDailySetCount = 1;
                 }
@@ -727,7 +729,7 @@ export const generateRequisitionData = ({
 
         // --- Supplies Heuristics (Consolidated Only) ---
         if (selectedTimes.length > 0 && hasMappedDelivery) { // Only charge if this prescription generated map lines for selected times.
-            if (includeAutomaticSets && !isEnteralViaOral && mainDailySetCount > 0) {
+            if (includeAutomaticSets && requiresEnteralEquipment && mainDailySetCount > 0) {
                 if (resolvedInfusionMode === 'pump') {
                     addSupplyCharge(getPumpSupply(resolvedSystemType), mainDailySetCount * dayDiff);
                 } else if (resolvedInfusionMode === 'gravity') {
@@ -737,7 +739,7 @@ export const generateRequisitionData = ({
                 }
             }
 
-            if (includeAutomaticSets && !isEnteralViaOral && hydrationDailySetCount > 0) {
+            if (includeAutomaticSets && requiresEnteralEquipment && hydrationDailySetCount > 0) {
                 addSupplyCharge(getGravitySupply(), hydrationDailySetCount * dayDiff);
             }
         }

@@ -78,6 +78,8 @@ export interface Module {
   referenceTimesPerDay: number;
   calories: number; // Kcal in ref
   protein: number; // PTN in ref
+  carbs?: number;
+  fat?: number;
   sodium: number; // Na in ref
   potassium: number; // K in ref
   fiber: number; // Fibras in ref

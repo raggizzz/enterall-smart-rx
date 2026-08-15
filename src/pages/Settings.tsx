@@ -241,7 +241,7 @@ const Settings = () => {
             ROLE_OPTIONS.forEach((roleOption) => {
                 PERMISSION_DEFINITIONS.forEach((permission) => {
                     rows.push({
-                        role: roleOption.value,
+                        role: roleOption.value === "manager" ? "general_manager" : roleOption.value,
                         permissionKey: permission.key,
                         allowed: Boolean(rolePermissions[roleOption.value]?.[permission.key]),
                     });
@@ -1257,7 +1257,6 @@ const WardList = ({ hospitalId, canManageWards }: { hospitalId: string; canManag
         </div>
     );
 };
-
 
 
 
